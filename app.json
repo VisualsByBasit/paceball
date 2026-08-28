@@ -4,16 +4,12 @@
     "slug": "paceball",
     "version": "1.0.0",
     "android": {
-      "package": "com.paceball.app"
-    },
-     "plugins": [
-      [
-        "react-native-vision-camera",
-        {
-          "cameraPermissionText": "Paceball needs camera access to record deliveries."
-        }
+      "package": "com.paceball.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
-    ],
+    },
     "extra": {
       "eas": {
         "projectId": "2187a0d6-2bcb-4757-9e6c-18c9e7c5e8e4"
