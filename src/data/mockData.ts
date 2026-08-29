@@ -34,4 +34,3 @@ export const mockSessions: Session[] = [
   createMockSession('demo-2', 123.7, now - 2 * 24 * 60 * 60 * 1000),
   createMockSession('demo-1', 119.2, now - 5 * 24 * 60 * 60 * 1000),
 ];
-

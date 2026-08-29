@@ -11,4 +11,3 @@ export type SessionFilter = {
 
 export const SESSION_INDEX_KEY = 'sessions:index';
 export const sessionKey = (id: string) => `sessions:${id}`;
-
