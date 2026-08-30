@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { Camera, useCameraDevice, useCameraPermission, useVideoOutput } from 'react-native-vision-camera';
+import FrameExtractor from './modules/frame-extractor/src/FrameExtractorModule';
 
 export default function App() {
   const { hasPermission, requestPermission } = useCameraPermission();
@@ -42,10 +43,21 @@ export default function App() {
       recorderRef.current = recorder;
       setRecording(true);
       await recorder.startRecording(
-        (path: string, reason: any) => {
+         async (path: string, reason: any) => {
           setRecording(false);
-          setResult(`path: ${path}\nreason: ${JSON.stringify(reason)}`);
-          console.log('FINISHED', path, reason);
+          try {
+            const info = await FrameExtractor.getVideoInfo(path);
+            setResult(
+              `frames: ${info.frameCount}\n` +
+              `duration: ${info.durationMs}ms\n` +
+              `captureFps: ${info.captureFps}\n` +
+              `derivedFps: ${info.derivedFps.toFixed(2)}\n` +
+              `${info.width}x${info.height}`
+            );
+            console.log('INFO', info);
+          } catch (e: any) {
+            setResult(`extractor failed: ${e?.message ?? String(e)}`);
+          }
         },
         (e: any) => {
           setRecording(false);
