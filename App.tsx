@@ -1,11 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
-import { useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
+import { Camera, useCameraDevice, useCameraPermission, useVideoOutput } from 'react-native-vision-camera';
 
 export default function App() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
-
+  const [ready, setReady] = useState(false);
+  const cameraRef = useRef<any>(null);
+  const [recording, setRecording] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const videoOutput = useVideoOutput({ fileType: 'mp4' });
+  const recorderRef = useRef<any>(null);
+  
   useEffect(() => {
     if (!hasPermission) requestPermission();
   }, [hasPermission]);
@@ -21,7 +27,7 @@ export default function App() {
     );
   }
 
-  if (!device) {
+    if (!device) {
     return (
       <View style={styles.center}>
         <Text style={styles.text}>No camera device found</Text>
@@ -29,35 +35,57 @@ export default function App() {
     );
   }
 
-  const d = device as any;
-  const ranges = d.supportedFPSRanges ?? [];
-
-  const check = (n: number) => {
-    try { return d.supportsFPS(n) ? 'YES' : 'no'; }
-    catch (e) { return 'error'; }
+    const start = async () => {
+    try {
+      setResult(null);
+      const recorder = await videoOutput.createRecorder({});
+      recorderRef.current = recorder;
+      setRecording(true);
+      await recorder.startRecording(
+        (path: string, reason: any) => {
+          setRecording(false);
+          setResult(`path: ${path}\nreason: ${JSON.stringify(reason)}`);
+          console.log('FINISHED', path, reason);
+        },
+        (e: any) => {
+          setRecording(false);
+          setResult(`error: ${e?.message ?? String(e)}`);
+        }
+      );
+    } catch (e: any) {
+      setRecording(false);
+      setResult(`start failed: ${e?.message ?? String(e)}`);
+    }
   };
 
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-      <Text style={styles.h1}>Camera</Text>
-      <Text style={styles.sub}>{String(d.name)} · id {String(d.id)}</Text>
+  const stop = async () => {
+    try { await recorderRef.current?.stopRecording(); }
+    catch (e: any) { setResult(`stop failed: ${e?.message ?? String(e)}`); }
+  };
 
-      <Text style={styles.h2}>Fixed FPS support</Text>
-      {[30, 60, 90, 120, 240].map(n => (
-        <View key={n} style={styles.row}>
-          <Text style={styles.rowText}>{n} fps</Text>
-          <Text style={check(n) === 'YES' ? styles.fps : styles.warn}>{check(n)}</Text>
-        </View>
-      ))}
+      return (
+    <View style={{ flex: 1, backgroundColor: '#0A0B0D' }}>
+        <Camera
+        ref={cameraRef}
+        style={{ flex: 1 }}
+        device={device}
+        isActive={true}
+        outputs={[videoOutput]}
+        constraints={[{ fps: 60 }, { videoStabilizationMode: 'off' }]}
+        exposure={ready ? -4 : undefined}
+        onStarted={() => setReady(true)}
+      />
 
-      <Text style={styles.h2}>Supported FPS ranges ({ranges.length})</Text>
-      {ranges.map((r: any, i: number) => (
-        <View key={i} style={styles.row}>
-          <Text style={styles.rowText}>Range {i + 1}</Text>
-          <Text style={styles.fps}>{r.minFps ?? r.min} – {r.maxFps ?? r.max} fps</Text>
-        </View>
-      ))}
-    </ScrollView>
+      <View style={{ padding: 24, paddingBottom: 40 }}>
+        {result ? <Text style={styles.text}>{result}</Text> : null}
+        <Pressable
+          onPress={recording ? stop : start}
+          style={[styles.btn, { backgroundColor: recording ? '#FF6B6B' : '#D4FF3F' }]}
+        >
+          <Text style={styles.btnText}>{recording ? 'Stop' : 'Record'}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
  
