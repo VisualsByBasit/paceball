@@ -1,14 +1,24 @@
+import { Directory, File, Paths } from 'expo-file-system';
 import { createMMKV } from 'react-native-mmkv';
 import type { Diff, Player, Session, Trend } from '../types';
-import { createMockSession, mockPlayer, mockSessions } from './mockData';
+import { createMockSession } from './mockData';
 import {
+  PLAYER_INDEX_KEY,
+  PLAYER_KEY_PREFIX,
+  playerKey,
   SESSION_INDEX_KEY,
+  SESSION_KEY_PREFIX,
   sessionKey,
   type SaveSessionInput,
   type SessionFilter,
 } from './schema';
 
 const storage = createMMKV({ id: 'paceball-data' });
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const warnAboutStoredData = (message: string, error?: unknown) => {
+  console.warn(`[Paceball storage] ${message}`, error);
+};
 
 const parseStoredValue = (key: string): unknown => {
   const value = storage.getString(key);
@@ -19,23 +29,11 @@ const parseStoredValue = (key: string): unknown => {
 
   try {
     return JSON.parse(value);
-  } catch {
-    throw new Error(`Stored Paceball data is invalid at key "${key}".`);
+  } catch (error) {
+    throw new Error(`Stored Paceball data is invalid at key "${key}".`, {
+      cause: error,
+    });
   }
-};
-
-const readSessionIndex = (): string[] => {
-  const value = parseStoredValue(SESSION_INDEX_KEY);
-
-  if (value === undefined) {
-    return [];
-  }
-
-  if (!Array.isArray(value) || !value.every((id) => typeof id === 'string')) {
-    throw new Error('Stored Paceball session index is invalid.');
-  }
-
-  return value;
 };
 
 const isSession = (value: unknown): value is Session => {
@@ -61,10 +59,29 @@ const isSession = (value: unknown): value is Session => {
     typeof session.playerId === 'string' &&
     typeof session.videoPath === 'string' &&
     typeof session.framesDir === 'string' &&
-    numbers.every((field) => typeof session[field] === 'number') &&
+    numbers.every(
+      (field) =>
+        typeof session[field] === 'number' && Number.isFinite(session[field]),
+    ) &&
     nullableNumbers.every(
-      (field) => session[field] === null || typeof session[field] === 'number',
+      (field) =>
+        session[field] === null ||
+        (typeof session[field] === 'number' && Number.isFinite(session[field])),
     )
+  );
+};
+
+const isPlayer = (value: unknown): value is Player => {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const player = value as Record<string, unknown>;
+  return (
+    typeof player.id === 'string' &&
+    typeof player.name === 'string' &&
+    typeof player.createdAt === 'number' &&
+    Number.isFinite(player.createdAt)
   );
 };
 
@@ -75,15 +92,169 @@ const readSession = (id: string): Session | undefined => {
     return undefined;
   }
 
-  if (!isSession(value)) {
+  if (!isSession(value) || value.id !== id) {
     throw new Error(`Stored Paceball session "${id}" is invalid.`);
   }
 
   return value;
 };
 
+const readPlayer = (id: string): Player | undefined => {
+  const value = parseStoredValue(playerKey(id));
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isPlayer(value) || value.id !== id) {
+    throw new Error(`Stored Paceball player "${id}" is invalid.`);
+  }
+
+  return value;
+};
+
+const writeIndex = (key: string, ids: string[]) => {
+  storage.set(key, JSON.stringify(ids));
+};
+
+const rebuildIndex = <T extends { id: string; createdAt: number }>(
+  indexKey: string,
+  recordPrefix: string,
+  readRecord: (id: string) => T | undefined,
+): string[] => {
+  const records: T[] = [];
+
+  for (const key of storage.getAllKeys()) {
+    if (key === indexKey || !key.startsWith(recordPrefix)) {
+      continue;
+    }
+
+    const id = key.slice(recordPrefix.length);
+    try {
+      const record = readRecord(id);
+      if (record !== undefined) {
+        records.push(record);
+      }
+    } catch (error) {
+      warnAboutStoredData(`Skipping corrupt record at "${key}".`, error);
+    }
+  }
+
+  const ids = records
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map(({ id }) => id);
+  writeIndex(indexKey, ids);
+  return ids;
+};
+
+const readIndex = (indexKey: string, rebuild: () => string[]): string[] => {
+  try {
+    const value = parseStoredValue(indexKey);
+
+    if (value === undefined) {
+      return [];
+    }
+
+    if (!Array.isArray(value) || !value.every((id) => typeof id === 'string')) {
+      throw new Error(`Stored Paceball index "${indexKey}" is invalid.`);
+    }
+
+    const uniqueIds = [...new Set(value)];
+    if (uniqueIds.length !== value.length) {
+      writeIndex(indexKey, uniqueIds);
+    }
+    return uniqueIds;
+  } catch (error) {
+    warnAboutStoredData(`Rebuilding corrupt index "${indexKey}".`, error);
+    return rebuild();
+  }
+};
+
+const rebuildSessionIndex = () =>
+  rebuildIndex(SESSION_INDEX_KEY, SESSION_KEY_PREFIX, readSession);
+
+const readSessionIndex = () =>
+  readIndex(SESSION_INDEX_KEY, rebuildSessionIndex);
+
+const rebuildPlayerIndex = () =>
+  rebuildIndex(PLAYER_INDEX_KEY, PLAYER_KEY_PREFIX, readPlayer);
+
+const readPlayerIndex = () => readIndex(PLAYER_INDEX_KEY, rebuildPlayerIndex);
+
+const recoverUnindexedRecords = <T>(
+  indexKey: string,
+  recordPrefix: string,
+  indexedIds: Set<string>,
+  readRecord: (id: string) => T | undefined,
+): T[] => {
+  const recovered: T[] = [];
+
+  for (const key of storage.getAllKeys()) {
+    if (key === indexKey || !key.startsWith(recordPrefix)) {
+      continue;
+    }
+
+    const id = key.slice(recordPrefix.length);
+    if (indexedIds.has(id)) {
+      continue;
+    }
+
+    try {
+      const record = readRecord(id);
+      if (record !== undefined) {
+        recovered.push(record);
+      }
+    } catch (error) {
+      warnAboutStoredData(`Skipping corrupt orphan at "${key}".`, error);
+    }
+  }
+
+  return recovered;
+};
+
+const indexMatches = (expected: string[], actual: string[]) =>
+  expected.length === actual.length &&
+  expected.every((id, index) => id === actual[index]);
+
 const createId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const isInsideAppStorage = (uri: string) =>
+  [Paths.cache, Paths.document].some((root) => {
+    const relativePath = Paths.relative(root, uri);
+    return (
+      relativePath !== '' &&
+      relativePath !== '..' &&
+      !relativePath.startsWith('../') &&
+      !relativePath.startsWith('..\\') &&
+      !Paths.isAbsolute(relativePath)
+    );
+  });
+
+const assertInsideAppStorage = (uri: string) => {
+  if (!isInsideAppStorage(uri)) {
+    throw new Error(`Refusing to delete a path outside Paceball storage: "${uri}".`);
+  }
+};
+
+const deleteSandboxPath = (uri: string, expectedType: 'file' | 'directory') => {
+  assertInsideAppStorage(uri);
+
+  const info = Paths.info(uri);
+  if (!info.exists) {
+    return;
+  }
+
+  if ((expectedType === 'directory') !== info.isDirectory) {
+    throw new Error(`Stored Paceball ${expectedType} path has the wrong type: "${uri}".`);
+  }
+
+  if (expectedType === 'directory') {
+    new Directory(uri).delete();
+  } else {
+    new File(uri).delete();
+  }
+};
 
 export async function saveSession(record: SaveSessionInput): Promise<Session> {
   const session: Session = {
@@ -94,7 +265,7 @@ export async function saveSession(record: SaveSessionInput): Promise<Session> {
 
   const index = readSessionIndex();
   storage.set(sessionKey(session.id), JSON.stringify(session));
-  storage.set(SESSION_INDEX_KEY, JSON.stringify([session.id, ...index]));
+  writeIndex(SESSION_INDEX_KEY, [session.id, ...index]);
 
   return session;
 }
@@ -102,40 +273,77 @@ export async function saveSession(record: SaveSessionInput): Promise<Session> {
 export async function listSessions(
   filter: SessionFilter = {},
 ): Promise<Session[]> {
-  let sessions = readSessionIndex()
-    .map(readSession)
-    .filter((session): session is Session => session !== undefined)
-    .sort((a, b) => b.createdAt - a.createdAt);
+  const index = readSessionIndex();
+  const sessions: Session[] = [];
+  const validIds: string[] = [];
 
+  for (const id of index) {
+    try {
+      const session = readSession(id);
+      if (session !== undefined) {
+        sessions.push(session);
+        validIds.push(id);
+      }
+    } catch (error) {
+      warnAboutStoredData(`Skipping corrupt session "${id}".`, error);
+    }
+  }
+
+  const recovered = recoverUnindexedRecords(
+    SESSION_INDEX_KEY,
+    SESSION_KEY_PREFIX,
+    new Set(index),
+    readSession,
+  );
+  sessions.push(...recovered);
+  validIds.push(...recovered.map(({ id }) => id));
+
+  if (!indexMatches(index, validIds)) {
+    writeIndex(SESSION_INDEX_KEY, validIds);
+  }
+
+  let filteredSessions = sessions.sort((a, b) => b.createdAt - a.createdAt);
   if (filter.playerId !== undefined) {
-    sessions = sessions.filter((session) => session.playerId === filter.playerId);
+    filteredSessions = filteredSessions.filter(
+      (session) => session.playerId === filter.playerId,
+    );
   }
   if (filter.from !== undefined) {
     const from = filter.from;
-    sessions = sessions.filter((session) => session.createdAt >= from);
+    filteredSessions = filteredSessions.filter(
+      (session) => session.createdAt >= from,
+    );
   }
   if (filter.to !== undefined) {
     const to = filter.to;
-    sessions = sessions.filter((session) => session.createdAt <= to);
+    filteredSessions = filteredSessions.filter(
+      (session) => session.createdAt <= to,
+    );
   }
   if (filter.limit !== undefined) {
     const limit = Math.max(0, Math.floor(filter.limit));
-    sessions = sessions.slice(0, limit);
+    filteredSessions = filteredSessions.slice(0, limit);
   }
 
-  return sessions;
+  return filteredSessions;
 }
 
 export async function getTrend(
   playerId: string,
   range: 'week' | 'month' | 'all',
 ): Promise<Trend> {
-  void playerId;
-  void range;
-
-  const points = [...mockSessions]
-    .reverse()
+  const days = range === 'week' ? 7 : range === 'month' ? 30 : undefined;
+  const sessions = await listSessions({
+    playerId,
+    from: days === undefined ? undefined : Date.now() - days * DAY_MS,
+  });
+  const points = sessions
+    .sort((a, b) => a.createdAt - b.createdAt)
     .map(({ createdAt: t, speedKmh }) => ({ t, speedKmh }));
+
+  if (points.length === 0) {
+    return { points: [], best: 0, avg: 0, count: 0 };
+  }
 
   return {
     points,
@@ -189,23 +397,84 @@ export async function renderExport(options: {
 }
 
 export async function listPlayers(): Promise<Player[]> {
-  return [{ ...mockPlayer }];
+  const index = readPlayerIndex();
+  const players: Player[] = [];
+  const validIds: string[] = [];
+
+  for (const id of index) {
+    try {
+      const player = readPlayer(id);
+      if (player !== undefined) {
+        players.push(player);
+        validIds.push(id);
+      }
+    } catch (error) {
+      warnAboutStoredData(`Skipping corrupt player "${id}".`, error);
+    }
+  }
+
+  const recovered = recoverUnindexedRecords(
+    PLAYER_INDEX_KEY,
+    PLAYER_KEY_PREFIX,
+    new Set(index),
+    readPlayer,
+  );
+  players.push(...recovered);
+  validIds.push(...recovered.map(({ id }) => id));
+
+  if (!indexMatches(index, validIds)) {
+    writeIndex(PLAYER_INDEX_KEY, validIds);
+  }
+
+  return players.sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function createPlayer(name: string): Promise<Player> {
-  return {
+  const trimmedName = name.trim();
+  if (trimmedName.length === 0) {
+    throw new Error('Player name cannot be empty.');
+  }
+
+  const player: Player = {
     id: createId('player'),
-    name: name.trim() || 'New player',
+    name: trimmedName,
     createdAt: Date.now(),
   };
+  const index = readPlayerIndex();
+  storage.set(playerKey(player.id), JSON.stringify(player));
+  writeIndex(PLAYER_INDEX_KEY, [...index, player.id]);
+  return player;
 }
 
 export async function deleteSession(id: string): Promise<void> {
+  const session = readSession(id);
   const index = readSessionIndex();
+
+  if (session !== undefined) {
+    assertInsideAppStorage(session.videoPath);
+    assertInsideAppStorage(session.framesDir);
+
+    const errors: unknown[] = [];
+    for (const [uri, type] of [
+      [session.videoPath, 'file'],
+      [session.framesDir, 'directory'],
+    ] as const) {
+      try {
+        deleteSandboxPath(uri, type);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new AggregateError(errors, `Could not delete files for session "${id}".`);
+    }
+  }
+
   storage.remove(sessionKey(id));
-  storage.set(
+  writeIndex(
     SESSION_INDEX_KEY,
-    JSON.stringify(index.filter((sessionId) => sessionId !== id)),
+    index.filter((sessionId) => sessionId !== id),
   );
 }
 
