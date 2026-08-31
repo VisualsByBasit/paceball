@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test tests/data.test.cjs",
+    "typecheck": "tsc --noEmit",
     "start": "expo start"
   },
   "keywords": [],
