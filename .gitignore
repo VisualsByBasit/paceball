@@ -6,8 +6,8 @@ node_modules/
 dist/
 
 # native
-android/
-ios/
+/android/
+/ios/
 
 # environment
 .env
