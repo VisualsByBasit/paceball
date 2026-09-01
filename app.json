@@ -15,6 +15,9 @@
         "projectId": "2187a0d6-2bcb-4757-9e6c-18c9e7c5e8e4"
       }
     },
-    "owner": "visualsbybasit"
+    "owner": "visualsbybasit",
+    "plugins": [
+      "expo-router"
+    ]
   }
 }
