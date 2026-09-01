@@ -84,7 +84,7 @@ export default function App() {
         isActive={true}
         outputs={[videoOutput]}
         constraints={[{ fps: 60 }, { videoStabilizationMode: 'off' }]}
-        exposure={ready ? -4 : undefined}
+        exposure={ready ? -8 : undefined}
         onStarted={() => setReady(true)}
       />
 
