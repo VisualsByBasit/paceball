@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { Camera, useCameraDevice, useCameraPermission, useVideoOutput } from 'react-native-vision-camera';
-import FrameExtractor from './modules/frame-extractor/src/FrameExtractorModule';
+import FrameExtractor from '../modules/frame-extractor/src/FrameExtractorModule';
 
-export default function App() {
+export default function Index() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const [ready, setReady] = useState(false);
@@ -84,7 +84,7 @@ export default function App() {
         isActive={true}
         outputs={[videoOutput]}
         constraints={[{ fps: 60 }, { videoStabilizationMode: 'off' }]}
-        exposure={ready ? -4 : undefined}
+        exposure={ready ? -8 : undefined}
         onStarted={() => setReady(true)}
       />
 
@@ -118,3 +118,4 @@ const styles = StyleSheet.create({
   btnText: { color: '#0A0B0D', fontWeight: '700' },
   mono: { color: '#8A9099', fontSize: 11, fontFamily: 'monospace' },
 });
+
