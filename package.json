@@ -11,7 +11,7 @@
   "type": "commonjs",
   "dependencies": {
     "@types/react": "~19.2.4",
-    "expo": "^57.0.17",
+    "expo": "~57.0.19",
     "expo-constants": "~57.0.17",
     "expo-dev-client": "~57.0.16",
     "expo-linking": "~57.0.9",
@@ -25,7 +25,9 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-vision-camera": "^5.2.3",
-    "react-native-worklets": "0.10.1",
     "typescript": "~6.0.3"
+  },
+  "overrides": {
+    "react-native-worklets": "0.12.1"
   }
 }
