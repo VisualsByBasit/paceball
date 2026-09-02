@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFrames } from '../src/capture/useFrames';
+import { framesDirUri, useFrames } from '../src/capture/useFrames';
 import { colors, radius, space, type } from '../src/ui/tokens';
 import type { Point } from '../src/types';
 
@@ -195,16 +195,18 @@ export default function MarkScreen() {
 
   const place = useCallback(
     (event: GestureResponderEvent) => {
-      if (!fit || !currentUri || !activeKey) return;
+      if (!fit || !currentUri || !activeKey || !imageSize) return;
       const { locationX, locationY } = event.nativeEvent;
-      const x = locationX / fit.scale;
-      const y = locationY / fit.scale;
+      // A tap on the last pixel column lands exactly on the width, which the
+      // session validator rejects — it wants points strictly inside the frame.
+      const x = Math.min(imageSize.w - 1, Math.max(0, locationX / fit.scale));
+      const y = Math.min(imageSize.h - 1, Math.max(0, locationY / fit.scale));
 
       setHistory((h) => [...h, points]);
       setPoints((p) => ({ ...p, [activeKey]: { x, y, frame: current } }));
       setSelected(null);
     },
-    [fit, currentUri, activeKey, current, points]
+    [fit, currentUri, activeKey, current, points, imageSize]
   );
 
   const undo = useCallback(() => {
@@ -241,6 +243,7 @@ export default function MarkScreen() {
       pathname: '/result',
       params: {
         videoPath,
+        framesDir: framesDirUri(videoPath),
         fps: String(fps),
         captureFps: first(params.captureFps),
         frameCount: String(total),

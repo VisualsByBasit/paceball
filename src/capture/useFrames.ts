@@ -63,6 +63,14 @@ function framesDirFor(videoPath: string): Directory {
   return new Directory(Paths.cache, 'paceball-frames', safe);
 }
 
+/**
+ * Where this clip's frames live on disk. Saving a session copies this directory
+ * out of the cache, so the screens downstream need to be able to name it.
+ */
+export function framesDirUri(videoPath: string): string {
+  return framesDirFor(videoPath).uri;
+}
+
 const FRAME_NAME = /^frame_(\d+)\.jpg$/;
 
 /** Frames left over from an earlier visit, so an interrupted run is not repeated. */
