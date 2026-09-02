@@ -1,6 +1,6 @@
-import { Directory, File, Paths } from 'expo-file-system';
 import { createMMKV } from 'react-native-mmkv';
 import type { Diff, Player, Session, Trend } from '../types';
+import { deleteSessionFiles, stageSessionFiles } from './files';
 import { createMockSession } from './mockData';
 import {
   PLAYER_INDEX_KEY,
@@ -12,6 +12,7 @@ import {
   type SaveSessionInput,
   type SessionFilter,
 } from './schema';
+import { isPlayer, isSession } from './validation';
 
 const storage = createMMKV({ id: 'paceball-data' });
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -34,55 +35,6 @@ const parseStoredValue = (key: string): unknown => {
       cause: error,
     });
   }
-};
-
-const isSession = (value: unknown): value is Session => {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const session = value as Record<string, unknown>;
-  const nullableNumbers = ['releaseSpeedKmh', 'releaseAngleDeg'];
-  const numbers = [
-    'createdAt',
-    'fps',
-    'frameCount',
-    'distanceM',
-    'releaseFrame',
-    'bounceFrame',
-    'speedKmh',
-    'errorKmh',
-  ];
-
-  return (
-    typeof session.id === 'string' &&
-    typeof session.playerId === 'string' &&
-    typeof session.videoPath === 'string' &&
-    typeof session.framesDir === 'string' &&
-    numbers.every(
-      (field) =>
-        typeof session[field] === 'number' && Number.isFinite(session[field]),
-    ) &&
-    nullableNumbers.every(
-      (field) =>
-        session[field] === null ||
-        (typeof session[field] === 'number' && Number.isFinite(session[field])),
-    )
-  );
-};
-
-const isPlayer = (value: unknown): value is Player => {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const player = value as Record<string, unknown>;
-  return (
-    typeof player.id === 'string' &&
-    typeof player.name === 'string' &&
-    typeof player.createdAt === 'number' &&
-    Number.isFinite(player.createdAt)
-  );
 };
 
 const readSession = (id: string): Session | undefined => {
@@ -219,54 +171,47 @@ const indexMatches = (expected: string[], actual: string[]) =>
 const createId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-const isInsideAppStorage = (uri: string) =>
-  [Paths.cache, Paths.document].some((root) => {
-    const relativePath = Paths.relative(root, uri);
-    return (
-      relativePath !== '' &&
-      relativePath !== '..' &&
-      !relativePath.startsWith('../') &&
-      !relativePath.startsWith('..\\') &&
-      !Paths.isAbsolute(relativePath)
-    );
-  });
-
-const assertInsideAppStorage = (uri: string) => {
-  if (!isInsideAppStorage(uri)) {
-    throw new Error(`Refusing to delete a path outside Paceball storage: "${uri}".`);
-  }
-};
-
-const deleteSandboxPath = (uri: string, expectedType: 'file' | 'directory') => {
-  assertInsideAppStorage(uri);
-
-  const info = Paths.info(uri);
-  if (!info.exists) {
-    return;
-  }
-
-  if ((expectedType === 'directory') !== info.isDirectory) {
-    throw new Error(`Stored Paceball ${expectedType} path has the wrong type: "${uri}".`);
-  }
-
-  if (expectedType === 'directory') {
-    new Directory(uri).delete();
-  } else {
-    new File(uri).delete();
-  }
-};
-
 export async function saveSession(record: SaveSessionInput): Promise<Session> {
+  const id = createId('session');
+  const createdAt = Date.now();
+  const index = readSessionIndex();
+  const candidate: Session = { ...record, id, createdAt };
+  if (!isSession(candidate)) {
+    throw new Error('Cannot save an invalid Paceball session.');
+  }
+
+  const stagedFiles = await stageSessionFiles(
+    id,
+    record.videoPath,
+    record.framesDir,
+  );
   const session: Session = {
     ...record,
-    id: createId('session'),
-    createdAt: Date.now(),
+    id,
+    createdAt,
+    videoPath: stagedFiles.videoPath,
+    framesDir: stagedFiles.framesDir,
   };
 
-  const index = readSessionIndex();
-  storage.set(sessionKey(session.id), JSON.stringify(session));
-  writeIndex(SESSION_INDEX_KEY, [session.id, ...index]);
+  try {
+    storage.set(sessionKey(session.id), JSON.stringify(session));
+    writeIndex(SESSION_INDEX_KEY, [session.id, ...index]);
+  } catch (error) {
+    try {
+      storage.remove(sessionKey(session.id));
+      writeIndex(SESSION_INDEX_KEY, index);
+    } catch (recoveryError) {
+      warnAboutStoredData('Could not roll back MMKV after a failed save.', recoveryError);
+    }
+    try {
+      stagedFiles.rollback();
+    } catch (recoveryError) {
+      warnAboutStoredData('Could not roll back files after a failed save.', recoveryError);
+    }
+    throw new Error(`Could not save session "${session.id}".`, { cause: error });
+  }
 
+  stagedFiles.finalize();
   return session;
 }
 
@@ -374,9 +319,9 @@ export async function getComparison(
     },
     {
       label: 'Distance',
-      a: a.distanceM,
-      b: b.distanceM,
-      delta: b.distanceM - a.distanceM,
+      a: a.travelMetres,
+      b: b.travelMetres,
+      delta: b.travelMetres - a.travelMetres,
       better: 'equal',
     },
   ];
@@ -451,24 +396,7 @@ export async function deleteSession(id: string): Promise<void> {
   const index = readSessionIndex();
 
   if (session !== undefined) {
-    assertInsideAppStorage(session.videoPath);
-    assertInsideAppStorage(session.framesDir);
-
-    const errors: unknown[] = [];
-    for (const [uri, type] of [
-      [session.videoPath, 'file'],
-      [session.framesDir, 'directory'],
-    ] as const) {
-      try {
-        deleteSandboxPath(uri, type);
-      } catch (error) {
-        errors.push(error);
-      }
-    }
-
-    if (errors.length > 0) {
-      throw new AggregateError(errors, `Could not delete files for session "${id}".`);
-    }
+    deleteSessionFiles(session.videoPath, session.framesDir);
   }
 
   storage.remove(sessionKey(id));

@@ -13,15 +13,25 @@ export const createMockSession = (
   targetSpeedKmh: number,
   createdAt = now,
 ): Session => {
-  const fps = 60;
-  const distanceM = 20.12;
-  const releaseFrame = 42;
+  const fps = 59.94;
+  const width = 1920;
+  const height = 1080;
+  const frameCount = 180;
+  const calRealMetres = 20.12;
+  const calA = { x: 100, y: 850, frame: 0 };
+  const calB = { x: 1820, y: 850, frame: 0 };
+  const calibrationPixels = Math.hypot(calB.x - calA.x, calB.y - calA.y);
+  const pixelsPerMetre = calibrationPixels / calRealMetres;
+  const travelMetres = 11;
+  const release = { x: 400, y: 430, frame: 42 };
+  const travelPixels = travelMetres * pixelsPerMetre;
+  const trajectoryAngleRad = (20 * Math.PI) / 180;
   const frameDelta = Math.max(
     1,
-    Math.round((distanceM * fps * 3.6) / targetSpeedKmh),
+    Math.round((travelMetres * fps * 3.6) / targetSpeedKmh),
   );
   const speedKmh =
-    Math.round((distanceM / (frameDelta / fps)) * 3.6 * 10) / 10;
+    Math.round((travelMetres / (frameDelta / fps)) * 3.6 * 10) / 10;
 
   return {
     id,
@@ -30,14 +40,26 @@ export const createMockSession = (
     videoPath: `file:///mock/${id}.mp4`,
     framesDir: `file:///mock/${id}-frames`,
     fps,
-    frameCount: 180,
-    distanceM,
-    releaseFrame,
-    bounceFrame: releaseFrame + frameDelta,
+    frameCount,
+    width,
+    height,
+    exposureBias: -4,
+    calibrationMethod: 'stumps',
+    calA,
+    calB,
+    calRealMetres,
+    pixelsPerMetre,
+    release,
+    bounce: {
+      x: release.x + travelPixels * Math.cos(trajectoryAngleRad),
+      y: release.y + travelPixels * Math.sin(trajectoryAngleRad),
+      frame: release.frame + frameDelta,
+    },
+    travelMetres,
     speedKmh,
     errorKmh: 4,
     releaseSpeedKmh: Math.round(speedKmh * 1.06 * 10) / 10,
-    releaseAngleDeg: 12,
+    releaseAngleDeg: 20,
   };
 };
 
