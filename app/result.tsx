@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +11,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createPlayer, listPlayers, saveSession } from '../src/data';
 import { computeSpeed, PITCH_LENGTH_M, type SpeedResult } from '../src/physics/computeSpeed';
-import { colors, radius, space, type } from '../src/ui/tokens';
+import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import type { Point } from '../src/types';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -54,7 +53,11 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** Reuses the existing player, or opens one the first time a session is saved. */
+/**
+ * Setup creates the profile, so this normally just reads it back. The fallback
+ * only fires if a reading somehow reaches this screen with no player on file,
+ * where opening one beats losing the delivery.
+ */
 async function resolvePlayerId(): Promise<string> {
   const players = await listPlayers();
   if (players.length > 0) return players[0].id;
@@ -347,9 +350,6 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** The numbers are the hero, so they get a fixed-width face on both platforms. */
-const MONO = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' });
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: space.lg, flexGrow: 1 },
@@ -361,22 +361,21 @@ const styles = StyleSheet.create({
   heroLabel: { ...type.label, color: colors.muted, marginBottom: space.md },
   heroNumber: {
     ...type.hero,
-    fontFamily: MONO,
+    ...type.mono,
     color: colors.accent,
-    fontVariant: ['tabular-nums'],
   },
   heroUnit: { ...type.body, color: colors.muted, marginTop: space.xs },
   heroError: {
     ...type.h2,
+    ...type.mono,
     color: colors.text,
-    fontVariant: ['tabular-nums'],
     marginTop: space.md,
   },
 
   note: {
     ...type.caption,
     color: colors.warn,
-    borderWidth: 1,
+    borderWidth: stroke.hairline,
     borderColor: colors.warn,
     borderRadius: radius.md,
     padding: space.md,
@@ -405,9 +404,8 @@ const styles = StyleSheet.create({
   rowLabel: { ...type.caption, color: colors.muted },
   rowValue: {
     ...type.caption,
+    ...type.mono,
     color: colors.text,
-    fontFamily: MONO,
-    fontVariant: ['tabular-nums'],
   },
   workingFootnote: { ...type.caption, color: colors.muted, marginTop: space.sm },
 
@@ -422,9 +420,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
-  savedButton: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
+  savedButton: { backgroundColor: colors.surface, borderWidth: stroke.hairline, borderColor: colors.line },
   savedButtonText: { color: colors.muted },
-  buttonOff: { opacity: 0.3 },
+  buttonOff: { opacity: opacity.disabled },
 
   secondaryButton: { paddingVertical: space.md, alignItems: 'center' },
   secondaryButtonText: { ...type.body, color: colors.text },

@@ -12,7 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { framesDirUri, useFrames } from '../src/capture/useFrames';
-import { colors, radius, space, type } from '../src/ui/tokens';
+import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import type { Point } from '../src/types';
 
 type StepKey = 'nearWicket' | 'farWicket' | 'release' | 'bounce';
@@ -592,10 +592,10 @@ const styles = StyleSheet.create({
     width: MARKER_SIZE,
     height: MARKER_SIZE,
     borderRadius: radius.pill,
-    borderWidth: CROSSHAIR,
-    opacity: 0.5,
+    borderWidth: stroke.hairline,
+    opacity: opacity.inactive,
   },
-  markerRingActive: { borderWidth: 2, opacity: 1 },
+  markerRingActive: { borderWidth: stroke.medium, opacity: opacity.full },
   markerTickV: { position: 'absolute', width: CROSSHAIR, height: MARKER_SIZE },
   markerTickH: { position: 'absolute', height: CROSSHAIR, width: MARKER_SIZE },
   markerLabel: {
@@ -617,7 +617,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: stroke.hairline,
     borderColor: colors.line,
     backgroundColor: colors.surface,
     paddingHorizontal: space.sm,
@@ -632,9 +632,9 @@ const styles = StyleSheet.create({
   chipTextActiveBall: { color: colors.bg, fontWeight: '800' },
   chipFrame: {
     ...type.caption,
+    ...type.tabular,
     color: colors.muted,
     marginLeft: space.xs,
-    fontVariant: ['tabular-nums'],
   },
 
   strip: {
@@ -643,7 +643,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     overflow: 'hidden',
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: stroke.hairline,
     borderColor: colors.line,
   },
   stripThumbs: { flexDirection: 'row', height: '100%' },
@@ -667,22 +667,22 @@ const styles = StyleSheet.create({
     width: space.xl,
     height: space.xl,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: stroke.hairline,
     borderColor: colors.line,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepButtonOff: { opacity: 0.3 },
+  stepButtonOff: { opacity: opacity.disabled },
   stepButtonText: { ...type.h2, color: colors.text },
   readout: { alignItems: 'center' },
-  frameNumber: { ...type.h2, color: colors.text, fontVariant: ['tabular-nums'] },
+  frameNumber: { ...type.h2, ...type.tabular, color: colors.text },
   frameTotal: { ...type.caption, color: colors.muted },
-  frameTime: { ...type.caption, color: colors.muted, fontVariant: ['tabular-nums'] },
+  frameTime: { ...type.caption, ...type.tabular, color: colors.muted },
 
   progress: { ...type.caption, color: colors.muted, marginTop: space.sm },
   warn: { ...type.caption, color: colors.warn, marginTop: space.sm },
   problem: { ...type.caption, color: colors.danger, marginTop: space.sm },
-  debug: { ...type.caption, color: colors.muted, marginTop: space.xs, opacity: 0.6 },
+  debug: { ...type.caption, color: colors.muted, marginTop: space.xs, opacity: opacity.secondary },
 
   footer: { flexDirection: 'row', alignItems: 'center', marginTop: space.md },
   primaryButton: {
@@ -695,7 +695,7 @@ const styles = StyleSheet.create({
   primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
   secondaryButton: {
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: stroke.hairline,
     borderColor: colors.line,
     paddingVertical: space.md,
     paddingHorizontal: space.lg,
@@ -703,7 +703,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryButtonText: { ...type.body, color: colors.text },
-  buttonOff: { opacity: 0.3 },
+  buttonOff: { opacity: opacity.disabled },
 
   fallback: {
     alignItems: 'center',

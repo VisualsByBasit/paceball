@@ -16,7 +16,7 @@ import {
   type CaptureResult,
 } from '../src/capture/useCapture';
 import { Screen } from '../src/ui/Screen';
-import { colors, radius, space, type } from '../src/ui/tokens';
+import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
 const TIPS = [
   'Stand side-on to the pitch, level with the bounce.',
@@ -231,12 +231,12 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
 
-  scrim: { backgroundColor: colors.bg, opacity: 0.75 },
+  scrim: { backgroundColor: colors.bg, opacity: opacity.scrim },
 
   tipsCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
-    borderWidth: 1,
+    borderWidth: stroke.hairline,
     borderColor: colors.line,
     padding: space.md,
   },
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     backgroundColor: colors.surface,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: stroke.hairline,
     borderColor: colors.line,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
   errorCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
-    borderWidth: 1,
+    borderWidth: stroke.hairline,
     borderColor: colors.danger,
     padding: space.md,
     marginBottom: space.md,
@@ -284,8 +284,8 @@ const styles = StyleSheet.create({
   },
   timer: {
     ...type.h1,
+    ...type.tabular,
     color: colors.text,
-    fontVariant: ['tabular-nums'],
   },
   timerIdle: { color: colors.muted },
 
@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
     width: SHUTTER_SIZE,
     height: SHUTTER_SIZE,
     borderRadius: radius.pill,
-    borderWidth: 3,
+    borderWidth: stroke.heavy,
     borderColor: colors.line,
     alignItems: 'center',
     justifyContent: 'center',
@@ -314,8 +314,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.danger,
   },
-  shutterCoreLocked: { opacity: 0.45 },
-  countdown: { ...type.h2, color: colors.text, fontVariant: ['tabular-nums'] },
+  shutterCoreLocked: { opacity: opacity.disabled },
+  countdown: { ...type.h2, ...type.tabular, color: colors.text },
 
   hint: { ...type.caption, color: colors.muted, marginTop: space.md },
 });
