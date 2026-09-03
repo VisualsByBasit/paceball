@@ -83,7 +83,7 @@ export default function Index() {
             >
               <Text style={styles.primaryButtonText}>Get started</Text>
             </Pressable>
-            <Text style={styles.footnote}>Two screens. Nothing to sign up for.</Text>
+            <Text style={styles.footnote}>Three screens. Nothing to sign up for.</Text>
           </>
         ) : (
           <>

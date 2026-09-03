@@ -52,7 +52,7 @@ export default function SetupPlayerScreen() {
           <Pressable onPress={() => router.back()} hitSlop={space.md}>
             <Text style={styles.headerAction}>Back</Text>
           </Pressable>
-          <Text style={styles.headerStep}>1 OF 2</Text>
+          <Text style={styles.headerStep}>1 OF 3</Text>
         </View>
 
         <View style={styles.body}>

@@ -1,6 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,9 +8,8 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createPlayer } from '../../src/data';
 import { PITCH_LENGTH_M } from '../../src/physics/computeSpeed';
-import { colors, opacity, radius, space, stroke, type } from '../../src/ui/tokens';
+import { colors, radius, space, stroke, type } from '../../src/ui/tokens';
 
 const STEPS = [
   {
@@ -35,16 +33,12 @@ const HONESTY = [
   'Everything stays on this phone. No account, no upload.',
 ];
 
-function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
 /**
  * Setup 02 — what the app measures, and what it deliberately does not.
  *
- * Reached two ways. With a `name` param it is the last step of onboarding and
- * creates the profile; without one it is a read-only explainer opened from the
- * home screen.
+ * Reached two ways. With a `name` param it is the middle step of onboarding and
+ * hands the name on to the camera screen, which creates the profile; without
+ * one it is a read-only explainer opened from the home screen.
  */
 export default function HowItWorksScreen() {
   const router = useRouter();
@@ -54,27 +48,12 @@ export default function HowItWorksScreen() {
   const name = (Array.isArray(params.name) ? params.name[0] : params.name)?.trim() ?? '';
   const isOnboarding = name.length > 0;
 
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const onFinish = useCallback(async () => {
+  const onContinue = useCallback(() => {
     if (!isOnboarding) {
       router.back();
       return;
     }
-    setSaving(true);
-    setError(null);
-    try {
-      await createPlayer(name);
-      // Unwind setup before opening the camera. A plain replace would leave the
-      // name screen underneath, so Back from the camera would walk into setup
-      // again and offer to create a second profile.
-      router.dismissAll();
-      router.push('/capture');
-    } catch (e) {
-      setSaving(false);
-      setError(message(e));
-    }
+    router.push({ pathname: '/setup/camera', params: { name } });
   }, [isOnboarding, name, router]);
 
   return (
@@ -89,7 +68,7 @@ export default function HowItWorksScreen() {
           <Pressable onPress={() => router.back()} hitSlop={space.md}>
             <Text style={styles.headerAction}>Back</Text>
           </Pressable>
-          {isOnboarding ? <Text style={styles.headerStep}>2 OF 2</Text> : null}
+          {isOnboarding ? <Text style={styles.headerStep}>2 OF 3</Text> : null}
         </View>
 
         <Text style={styles.title}>How it works</Text>
@@ -120,21 +99,15 @@ export default function HowItWorksScreen() {
       <View
         style={[styles.footer, { paddingBottom: insets.bottom + space.lg }]}
       >
-        {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable
-          style={[styles.primaryButton, saving && styles.buttonOff]}
-          onPress={onFinish}
-          disabled={saving}
+          style={styles.primaryButton}
+          onPress={onContinue}
           accessibilityRole="button"
-          accessibilityLabel={isOnboarding ? 'Create profile and start' : 'Done'}
+          accessibilityLabel={isOnboarding ? 'Continue to where to stand' : 'Done'}
         >
-          {saving ? (
-            <ActivityIndicator color={colors.bg} />
-          ) : (
-            <Text style={styles.primaryButtonText}>
-              {isOnboarding ? `Start bowling as ${name}` : 'Got it'}
-            </Text>
-          )}
+          <Text style={styles.primaryButtonText}>
+            {isOnboarding ? 'Where to stand' : 'Got it'}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -188,7 +161,6 @@ const styles = StyleSheet.create({
     borderTopWidth: stroke.hairline,
     borderColor: colors.line,
   },
-  error: { ...type.caption, color: colors.danger, marginBottom: space.md },
   primaryButton: {
     backgroundColor: colors.accent,
     borderRadius: radius.pill,
@@ -197,5 +169,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
-  buttonOff: { opacity: opacity.disabled },
 });
