@@ -62,6 +62,13 @@ export default function CaptureScreen() {
 
   const capture = useCapture(videoOutput, { onFinished });
 
+  // Tearing the session down on navigation rejects any in-flight control write.
+  // That is expected; anything else is a real session error and stays loud.
+  const onCameraError = useCallback((e: Error) => {
+    if (/not active/i.test(e.message)) return;
+    console.error(e);
+  }, []);
+
   useEffect(() => {
     if (!hasPermission) requestPermission();
   }, [hasPermission, requestPermission]);
@@ -108,8 +115,10 @@ export default function CaptureScreen() {
         isActive={isFocused}
         outputs={[videoOutput]}
         constraints={[{ fps: CAPTURE_FPS }, { videoStabilizationMode: 'off' }]}
-        exposure={sessionReady ? CAPTURE_EXPOSURE : undefined}
+        exposure={isFocused && sessionReady ? CAPTURE_EXPOSURE : undefined}
         onStarted={() => setSessionReady(true)}
+        onStopped={() => setSessionReady(false)}
+        onError={onCameraError}
       />
 
       {isProcessing ? <View style={[StyleSheet.absoluteFill, styles.scrim]} /> : null}
