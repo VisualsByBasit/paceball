@@ -10,9 +10,14 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createPlayer, listPlayers, saveSession } from '../src/data';
+import {
+  CALIBRATION_SPECS,
+  formatMetres,
+  isCalibrationMethod,
+} from '../src/physics/calibration';
 import { computeSpeed, PITCH_LENGTH_M, type SpeedResult } from '../src/physics/computeSpeed';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import type { Point } from '../src/types';
+import type { CalibrationMethod, Point } from '../src/types';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -43,6 +48,13 @@ function parsePoint(value: string | string[] | undefined): Point | null {
   } catch {
     return null;
   }
+}
+
+function parseCalibrationMethod(
+  value: string | string[] | undefined
+): CalibrationMethod | null {
+  const raw = first(value);
+  return isCalibrationMethod(raw) ? raw : null;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -83,8 +95,14 @@ export default function ResultScreen() {
   const videoWidth = positiveNumber(params.width);
   const videoHeight = positiveNumber(params.height);
 
-  const calA = parsePoint(params.nearWicket);
-  const calB = parsePoint(params.farWicket);
+  // The scale reference the marks were placed against. There is no default
+  // worth falling back on — assuming a pitch would rescale the whole reading.
+  const calibrationMethod = parseCalibrationMethod(params.calibrationMethod);
+  const calRealMetres = positiveNumber(params.calRealMetres);
+  const spec = calibrationMethod ? CALIBRATION_SPECS[calibrationMethod] : null;
+
+  const calA = parsePoint(params.calA);
+  const calB = parsePoint(params.calB);
   const release = parsePoint(params.release);
   const bounce = parsePoint(params.bounce);
 
@@ -93,6 +111,9 @@ export default function ResultScreen() {
     if (!calA || !calB || !release || !bounce) {
       return { error: 'The four marked points did not survive the trip to this screen.' };
     }
+    if (!calibrationMethod || calRealMetres === null) {
+      return { error: 'The scale reference did not survive the trip to this screen.' };
+    }
     try {
       return {
         result: computeSpeed({
@@ -100,14 +121,14 @@ export default function ResultScreen() {
           calB,
           release,
           bounce,
-          calRealMetres: PITCH_LENGTH_M,
+          calRealMetres,
           fps,
         }),
       };
     } catch (e) {
       return { error: message(e) };
     }
-  }, [fps, calA, calB, release, bounce]);
+  }, [fps, calA, calB, release, bounce, calibrationMethod, calRealMetres]);
 
   /**
    * Points were marked on the extracted JPEGs, whose long edge the extractor
@@ -143,6 +164,8 @@ export default function ResultScreen() {
     fps !== null &&
     frameCount !== null &&
     exposureBias !== null &&
+    !!calibrationMethod &&
+    calRealMetres !== null &&
     !!calA &&
     !!calB &&
     !!release &&
@@ -156,6 +179,8 @@ export default function ResultScreen() {
       !fps ||
       !frameCount ||
       exposureBias === null ||
+      !calibrationMethod ||
+      calRealMetres === null ||
       !calA ||
       !calB ||
       !release ||
@@ -177,10 +202,10 @@ export default function ResultScreen() {
         width: saveGeometry.width,
         height: saveGeometry.height,
         exposureBias,
-        calibrationMethod: 'stumps',
+        calibrationMethod,
         calA: saveGeometry.scale(calA),
         calB: saveGeometry.scale(calB),
-        calRealMetres: PITCH_LENGTH_M,
+        calRealMetres,
         pixelsPerMetre: result.pixelsPerMetre,
         release: saveGeometry.scale(release),
         bounce: saveGeometry.scale(bounce),
@@ -206,6 +231,8 @@ export default function ResultScreen() {
     fps,
     frameCount,
     exposureBias,
+    calibrationMethod,
+    calRealMetres,
     calA,
     calB,
     release,
@@ -265,8 +292,8 @@ export default function ResultScreen() {
       {implausible ? (
         <Text style={styles.note}>
           The ball reads as travelling {result.travelMetres.toFixed(1)} m before bouncing,
-          which is the length of the whole pitch. Check the wicket marks are on both sets
-          of stumps and the ball marks are on the ball.
+          which is the length of the whole pitch. {spec!.checkHint}, and that the ball
+          marks are on the ball.
         </Text>
       ) : null}
 
@@ -289,11 +316,15 @@ export default function ResultScreen() {
           <Row label="Frame delta" value={`${result.frameDelta} frames`} />
           <Row label="fps used" value={fps!.toFixed(2)} />
           <Row label="Flight time" value={`${result.seconds.toFixed(4)} s`} />
+          <Row
+            label="Scale reference"
+            value={`${spec!.short} · ${formatMetres(calRealMetres!)}`}
+          />
           <Row label="Pixels per metre" value={result.pixelsPerMetre.toFixed(2)} />
           <Row label="Ball travelled" value={`${result.travelMetres.toFixed(2)} m`} />
           <Text style={styles.workingFootnote}>
-            Scaled against {PITCH_LENGTH_M} m between the stumps. The ball covers far less
-            than that before it pitches.
+            Scaled against {formatMetres(calRealMetres!)} — {spec!.detail.toLowerCase()} The
+            ball's own travel is measured with that scale, not assumed from it.
           </Text>
         </View>
       ) : null}

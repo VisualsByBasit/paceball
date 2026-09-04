@@ -7,9 +7,13 @@ Shipping to Google Play by 20 September 2026 for RevenueCat Shipaton.
 
 ## How the measurement works
 
-The pitch is the RULER, not the distance travelled.
+The scale reference is the RULER, not the distance travelled.
 
-1. Mark both sets of stumps → pixelsPerMetre (20.12 m apart)
+1. Mark two ends of a KNOWN real-world distance → pixelsPerMetre.
+   Four references, picked before marking: stumps (20.12 m, the
+   default), markers (a distance the user measures), ball (0.072 m),
+   bowler height (from the player profile). Never assume 20.12 —
+   calRealMetres comes from the chosen method.
 2. Mark release and bounce → pixel distance the ball travelled
 3. pixel distance / pixelsPerMetre → real metres (~11 m, NOT 20.12)
 4. frames between marks / fps → seconds

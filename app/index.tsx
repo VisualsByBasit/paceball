@@ -106,6 +106,13 @@ export default function Index() {
             <Text style={styles.footnote}>Bowling as {bowler}.</Text>
           </>
         )}
+
+        {/* THROWAWAY — goes with app/debug.tsx once History exists. */}
+        {__DEV__ ? (
+          <Pressable onPress={() => router.push('/debug')} hitSlop={space.sm}>
+            <Text style={styles.debugLink}>Debug · saved sessions</Text>
+          </Pressable>
+        ) : null}
       </View>
     </Screen>
   );
@@ -150,5 +157,12 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textAlign: 'center',
     marginTop: space.md,
+  },
+  debugLink: {
+    ...type.caption,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: space.md,
+    textDecorationLine: 'underline',
   },
 });

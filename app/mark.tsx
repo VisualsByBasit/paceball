@@ -12,10 +12,18 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { framesDirUri, useFrames } from '../src/capture/useFrames';
+import { listPlayers } from '../src/data';
+import {
+  CALIBRATION_SPECS,
+  formatMetres,
+  resolveCalibrationMetres,
+  type CalibrationSpec,
+} from '../src/physics/calibration';
+import { CalibrationStep } from '../src/ui/CalibrationStep';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import type { Point } from '../src/types';
+import type { CalibrationMethod, Point } from '../src/types';
 
-type StepKey = 'nearWicket' | 'farWicket' | 'release' | 'bounce';
+type StepKey = 'calA' | 'calB' | 'release' | 'bounce';
 
 type Step = {
   key: StepKey;
@@ -24,29 +32,26 @@ type Step = {
   hint: string;
   /** Ball points carry the measurement, so they get the accent. */
   ball: boolean;
+  /**
+   * Whether the point only exists on the frame it was placed on. A fixed
+   * landmark stays put and stays visible; anything that moves between frames
+   * would be drawn over the wrong pixels anywhere else.
+   */
+  pinned: boolean;
 };
 
-const STEPS: Step[] = [
-  {
-    key: 'nearWicket',
-    label: 'Near wicket',
-    short: 'Near',
-    hint: 'Tap the base of the stumps nearest the camera. Any frame.',
-    ball: false,
-  },
-  {
-    key: 'farWicket',
-    label: 'Far wicket',
-    short: 'Far',
-    hint: 'Tap the base of the stumps at the other end. Any frame.',
-    ball: false,
-  },
+/**
+ * The two ball taps never change. What the first two taps mean depends on the
+ * scale reference, so they are built from its spec rather than fixed here.
+ */
+const BALL_STEPS: Step[] = [
   {
     key: 'release',
     label: 'Ball at release',
     short: 'Release',
     hint: 'Scrub to the frame the ball leaves the hand, then tap the ball.',
     ball: true,
+    pinned: true,
   },
   {
     key: 'bounce',
@@ -54,14 +59,37 @@ const STEPS: Step[] = [
     short: 'Bounce',
     hint: 'Scrub to the frame the ball hits the pitch, then tap the ball.',
     ball: true,
+    pinned: true,
   },
 ];
+
+function stepsFor(spec: CalibrationSpec): Step[] {
+  return [
+    {
+      key: 'calA',
+      label: spec.a.label,
+      short: spec.a.short,
+      hint: spec.a.hint,
+      ball: false,
+      pinned: spec.sameFrame,
+    },
+    {
+      key: 'calB',
+      label: spec.b.label,
+      short: spec.b.short,
+      hint: spec.b.hint,
+      ball: false,
+      pinned: spec.sameFrame,
+    },
+    ...BALL_STEPS,
+  ];
+}
 
 type Points = Record<StepKey, Point | null>;
 
 const NO_POINTS: Points = {
-  nearWicket: null,
-  farWicket: null,
+  calA: null,
+  calB: null,
   release: null,
   bounce: null,
 };
@@ -102,12 +130,52 @@ export default function MarkScreen() {
   const [stage, setStage] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [trackWidth, setTrackWidth] = useState(0);
 
+  // The scale reference. Every reading is scaled by it, so it is chosen up
+  // front rather than assumed to be a full pitch.
+  const [method, setMethod] = useState<CalibrationMethod>('stumps');
+  const [customMetres, setCustomMetres] = useState('');
+  const [calibrating, setCalibrating] = useState(true);
+  const [heightCm, setHeightCm] = useState<number | null>(null);
+
+  // Height calibration is only offered if there is a height on file to use.
+  useEffect(() => {
+    let alive = true;
+    listPlayers()
+      .then((players) => {
+        if (alive) setHeightCm(players[0]?.heightCm ?? null);
+      })
+      .catch(() => {
+        if (alive) setHeightCm(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const spec = CALIBRATION_SPECS[method];
+  const calibration = resolveCalibrationMetres(method, customMetres, heightCm);
+  const calRealMetres = calibration.metres;
+  const steps = useMemo(() => stepsFor(spec), [spec]);
+
+  const selectMethod = useCallback(
+    (next: CalibrationMethod) => {
+      if (next === method) return;
+      setMethod(next);
+      // Two taps placed against a different reference no longer mean anything,
+      // and the history behind them would undo back to the old reading.
+      setPoints((p) => ({ ...p, calA: null, calB: null }));
+      setHistory([]);
+      setSelected(null);
+    },
+    [method]
+  );
+
   // The first point not yet placed, unless the user has picked one to redo.
   // Null once all four are down and nothing is selected, so a stray tap on the
   // frame cannot quietly drag the last point somewhere else.
   const activeKey: StepKey | null =
-    selected ?? STEPS.find((s) => points[s.key] === null)?.key ?? null;
-  const activeStep = activeKey ? STEPS.find((s) => s.key === activeKey)! : null;
+    selected ?? steps.find((s) => points[s.key] === null)?.key ?? null;
+  const activeStep = activeKey ? steps.find((s) => s.key === activeKey)! : null;
 
   // Frames fill left to right, so this is how far the scrubber can safely go.
   // Scrubbing past it would show one frame while recording another's number.
@@ -216,29 +284,36 @@ export default function MarkScreen() {
     setSelected(null);
   }, [history]);
 
-  const placedCount = STEPS.filter((s) => points[s.key] !== null).length;
+  const placedCount = steps.filter((s) => points[s.key] !== null).length;
 
   // The measurement is only meaningful if the ruler has length and the ball
   // moved forward in time. Both are checked before Next will do anything.
   const problem = useMemo(() => {
-    const { nearWicket, farWicket, release, bounce } = points;
-    if (nearWicket && farWicket) {
-      const dx = farWicket.x - nearWicket.x;
-      const dy = farWicket.y - nearWicket.y;
+    const { calA, calB, release, bounce } = points;
+    if (calA && calB) {
+      const dx = calB.x - calA.x;
+      const dy = calB.y - calA.y;
       if (Math.hypot(dx, dy) < 1) {
-        return 'The two wickets are on the same spot — the pitch has to have length on screen.';
+        return `${spec.a.label} and ${spec.b.label} are on the same spot — the scale reference has to have length on screen.`;
+      }
+      // Stumps and markers stay put between frames. A ball in the hand and a
+      // standing bowler do not, so measuring across two frames of those would
+      // measure the wrong thing.
+      if (spec.sameFrame && calA.frame !== calB.frame) {
+        return `${spec.a.label} and ${spec.b.label} have to be marked on the same frame — they are on ${calA.frame} and ${calB.frame}.`;
       }
     }
     if (release && bounce && bounce.frame <= release.frame) {
       return `Bounce is on frame ${bounce.frame}, which is not after release on frame ${release.frame}.`;
     }
     return null;
-  }, [points]);
+  }, [points, spec]);
 
-  const canContinue = placedCount === STEPS.length && problem === null;
+  const canContinue =
+    placedCount === steps.length && problem === null && calRealMetres !== null;
 
   const onNext = useCallback(() => {
-    if (!canContinue || !fps || !imageSize) return;
+    if (!canContinue || !fps || !imageSize || calRealMetres === null) return;
     router.push({
       pathname: '/result',
       params: {
@@ -255,13 +330,28 @@ export default function MarkScreen() {
         // necessarily the video's coded size. Pass the space along with them.
         imageWidth: String(imageSize.w),
         imageHeight: String(imageSize.h),
-        nearWicket: JSON.stringify(points.nearWicket),
-        farWicket: JSON.stringify(points.farWicket),
+        // The scale reference travels with the points. Without it the far end
+        // has no way to know what the two calibration taps span.
+        calibrationMethod: method,
+        calRealMetres: String(calRealMetres),
+        calA: JSON.stringify(points.calA),
+        calB: JSON.stringify(points.calB),
         release: JSON.stringify(points.release),
         bounce: JSON.stringify(points.bounce),
       },
     });
-  }, [canContinue, fps, imageSize, router, videoPath, params, total, points]);
+  }, [
+    canContinue,
+    fps,
+    imageSize,
+    router,
+    videoPath,
+    params,
+    total,
+    points,
+    method,
+    calRealMetres,
+  ]);
 
   const thumbCount = trackWidth > 0 ? Math.max(1, Math.floor(trackWidth / THUMB_WIDTH)) : 0;
   const thumbs = useMemo(() => {
@@ -300,6 +390,27 @@ export default function MarkScreen() {
     );
   }
 
+  // Frames keep decoding behind this, so picking a reference costs no time.
+  if (calibrating) {
+    return (
+      <CalibrationStep
+        topInset={insets.top}
+        bottomInset={insets.bottom}
+        method={method}
+        onSelectMethod={selectMethod}
+        customMetres={customMetres}
+        onChangeCustomMetres={setCustomMetres}
+        heightCm={heightCm}
+        metres={calRealMetres}
+        problem={calibration.problem}
+        onConfirm={() => {
+          if (calRealMetres !== null) setCalibrating(false);
+        }}
+        onBack={() => router.back()}
+      />
+    );
+  }
+
   const seconds = fps > 0 ? current / fps : 0;
   const playheadRatio = scrubMax > 0 ? current / scrubMax : 0;
 
@@ -309,8 +420,18 @@ export default function MarkScreen() {
         <Pressable onPress={() => router.back()} hitSlop={space.md}>
           <Text style={styles.headerAction}>Retake</Text>
         </Pressable>
+        <Pressable
+          onPress={() => setCalibrating(true)}
+          hitSlop={space.sm}
+          accessibilityRole="button"
+          accessibilityLabel="Change the scale reference"
+        >
+          <Text style={styles.headerScale}>
+            {spec.short} · {calRealMetres === null ? '—' : formatMetres(calRealMetres)}
+          </Text>
+        </Pressable>
         <Text style={styles.headerCount}>
-          {placedCount} of {STEPS.length}
+          {placedCount} of {steps.length}
         </Text>
       </View>
 
@@ -334,12 +455,12 @@ export default function MarkScreen() {
               fadeDuration={0}
             />
 
-            {STEPS.map((s) => {
+            {steps.map((s) => {
               const point = points[s.key];
               if (!point) return null;
-              // A ball point only exists on its own frame. A wicket is a fixed
+              // A pinned point only exists on its own frame. A wicket is a fixed
               // landmark, so it stays visible wherever you scrub.
-              if (s.ball && point.frame !== current) return null;
+              if (s.pinned && point.frame !== current) return null;
               return (
                 <Marker
                   key={s.key}
@@ -368,7 +489,7 @@ export default function MarkScreen() {
         </Text>
 
         <View style={styles.chips}>
-          {STEPS.map((s) => {
+          {steps.map((s) => {
             const placed = points[s.key] !== null;
             const isActive = s.key === activeKey;
             return (
@@ -399,7 +520,7 @@ export default function MarkScreen() {
                       isActive && (s.ball ? styles.chipTextActiveBall : styles.chipTextActive),
                     ]}
                   >
-                    {s.ball ? `f${points[s.key]!.frame}` : '✓'}
+                    {s.pinned ? `f${points[s.key]!.frame}` : '✓'}
                   </Text>
                 ) : null}
               </Pressable>
@@ -568,6 +689,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
   },
   headerAction: { ...type.caption, color: colors.muted },
+  headerScale: { ...type.caption, color: colors.text },
   headerCount: { ...type.label, color: colors.muted },
 
   stage: {
