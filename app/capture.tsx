@@ -9,13 +9,13 @@ import {
   useVideoOutput,
 } from 'react-native-vision-camera';
 import {
-  CAPTURE_EXPOSURE,
   CAPTURE_FPS,
   MIN_RECORDING_MS,
   useCapture,
   type CaptureResult,
 } from '../src/capture/useCapture';
 import { Screen } from '../src/ui/Screen';
+import { captureExposure } from '../src/capture/exposure';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
 const TIPS = [
@@ -35,6 +35,7 @@ export default function CaptureScreen() {
   const insets = useSafeAreaInsets();
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
+  const exposure = captureExposure(device);
   const [sessionReady, setSessionReady] = useState(false);
   const [showTips, setShowTips] = useState(true);
 
@@ -53,11 +54,11 @@ export default function CaptureScreen() {
           durationMs: String(info.durationMs),
           width: String(info.width),
           height: String(info.height),
-          exposureBias: String(CAPTURE_EXPOSURE),
+          exposureBias: String(exposure ?? 0),
         },
       });
     },
-    [router]
+    [router, exposure]
   );
 
   const capture = useCapture(videoOutput, { onFinished });
@@ -115,7 +116,7 @@ export default function CaptureScreen() {
         isActive={isFocused}
         outputs={[videoOutput]}
         constraints={[{ fps: CAPTURE_FPS }, { videoStabilizationMode: 'off' }]}
-        exposure={isFocused && sessionReady ? CAPTURE_EXPOSURE : undefined}
+        exposure={isFocused && sessionReady ? exposure : undefined}
         onStarted={() => setSessionReady(true)}
         onStopped={() => setSessionReady(false)}
         onError={onCameraError}
@@ -182,7 +183,7 @@ export default function CaptureScreen() {
 
           <Pressable
             onPress={isRecording ? capture.stop : capture.start}
-            disabled={isProcessing || (isRecording && !canStop)}
+            disabled={!sessionReady || isProcessing || (isRecording && !canStop)}
             accessibilityRole="button"
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
             style={styles.shutter}

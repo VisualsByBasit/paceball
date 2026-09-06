@@ -6,6 +6,13 @@
     "scheme": "paceball",
     "android": {
       "package": "com.paceball.app",
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+      ],
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
@@ -18,7 +25,14 @@
     },
     "owner": "visualsbybasit",
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-sharing",
+      ["expo-media-library", {
+        "photosPermission": false,
+        "savePhotosPermission": "Allow Paceball to save delivery images to your gallery.",
+        "granularPermissions": [],
+        "isAccessMediaLocationEnabled": false
+      }]
     ]
   }
 }

@@ -397,3 +397,53 @@ test('derives mock speed from its frame timing', () => {
 
   assert.equal(session.speedKmh, calculatedSpeed);
 });
+
+test('compares persisted deliveries, signed deltas, ties and nullable angles', async () => {
+  const inputA = sessionInput('player-a', 100);
+  inputA.releaseAngleDeg = null;
+  const a = await data.saveSession(inputA);
+  const b = await data.saveSession(sessionInput('player-a', 140));
+  const comparison = await data.getComparison(a.id, b.id);
+  assert.deepEqual(comparison.a, a);
+  assert.deepEqual(comparison.b, b);
+  assert.equal(comparison.diffs[0].delta, b.speedKmh - a.speedKmh);
+  assert.equal(comparison.diffs[0].better, 'b');
+  assert.equal(comparison.diffs.some((d) => d.label === 'Angle'), false);
+  const reversed = await data.getComparison(b.id, a.id);
+  assert.equal(reversed.diffs[0].delta, -comparison.diffs[0].delta);
+  assert.equal(reversed.diffs[0].better, 'a');
+  const same = await data.getComparison(b.id, b.id);
+  assert.ok(same.diffs.every((d) => d.delta === 0 && d.better === 'equal'));
+  assert.equal(same.diffs.find((d) => d.label === 'Angle').a, b.releaseAngleDeg);
+});
+
+test('comparison rejects missing and corrupt records instead of fabricating results', async () => {
+  const a = await data.saveSession(sessionInput('player-a'));
+  await assert.rejects(data.getComparison(a.id, 'missing'), /was not found/);
+  storageValues.set(`sessions:${a.id}`, '{broken');
+  await assert.rejects(data.getComparison(a.id, a.id), /invalid/);
+});
+
+test('export rejects an unknown delivery before loading the native renderer', async () => {
+  await assert.rejects(data.renderExport({ sessionId: 'missing', watermark: true }), /was not found/);
+});
+
+test('concurrent saves keep both deliveries indexed immediately', async () => {
+  const sessions = await Promise.all([
+    data.saveSession(sessionInput('player-a', 110)),
+    data.saveSession(sessionInput('player-a', 130)),
+  ]);
+  assert.deepEqual(new Set(JSON.parse(storageValues.get('sessions:index'))), new Set(sessions.map((s) => s.id)));
+});
+
+test('filters saved deliveries by player, inclusive dates and limit', async () => {
+  Date.now = () => 100;
+  await data.saveSession(sessionInput('player-a'));
+  Date.now = () => 200;
+  const middle = await data.saveSession(sessionInput('player-a'));
+  Date.now = () => 300;
+  await data.saveSession(sessionInput('player-b'));
+  assert.deepEqual(await data.listSessions({ playerId: 'player-a', from: 200, to: 200 }), [middle]);
+  assert.deepEqual(await data.listSessions({ playerId: 'player-a', limit: 1 }), [middle]);
+  assert.deepEqual(await data.listSessions({ limit: 0 }), []);
+});

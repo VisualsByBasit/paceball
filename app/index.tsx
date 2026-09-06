@@ -9,11 +9,11 @@ import { colors, radius, space, stroke, type } from '../src/ui/tokens';
 
 /**
  * Every number here is real: the pitch length the app calibrates against, the
- * typical error at 60 fps, and the number of times anything leaves the phone.
+ * frame timing and local processing.
  */
 const FACTS = [
   { value: String(PITCH_LENGTH_M), label: 'M PITCH\nAS RULER' },
-  { value: '±4', label: 'KM/H\nAT 60 FPS' },
+  { value: '±', label: 'ERROR RANGE\nPER READING' },
   { value: '0', label: 'UPLOADS\nEVER' },
 ];
 

@@ -310,7 +310,7 @@ export default function MarkScreen() {
   }, [points, spec]);
 
   const canContinue =
-    placedCount === steps.length && problem === null && calRealMetres !== null;
+    status === 'ready' && placedCount === steps.length && problem === null && calRealMetres !== null;
 
   const onNext = useCallback(() => {
     if (!canContinue || !fps || !imageSize || calRealMetres === null) return;

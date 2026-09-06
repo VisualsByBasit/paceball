@@ -1,7 +1,7 @@
 import { createMMKV } from 'react-native-mmkv';
 import type { Diff, Player, Session, Trend } from '../types';
 import { deleteSessionFiles, stageSessionFiles } from './files';
-import { createMockSession } from './mockData';
+import { compareSessions } from './comparison';
 import {
   PLAYER_INDEX_KEY,
   PLAYER_KEY_PREFIX,
@@ -174,7 +174,6 @@ const createId = (prefix: string) =>
 export async function saveSession(record: SaveSessionInput): Promise<Session> {
   const id = createId('session');
   const createdAt = Date.now();
-  const index = readSessionIndex();
   const candidate: Session = { ...record, id, createdAt };
   if (!isSession(candidate)) {
     throw new Error('Cannot save an invalid Paceball session.');
@@ -193,13 +192,17 @@ export async function saveSession(record: SaveSessionInput): Promise<Session> {
     framesDir: stagedFiles.framesDir,
   };
 
+  let index: string[] | undefined;
   try {
+    // File copying awaits native work. Read the index afterwards so concurrent
+    // saves cannot overwrite a delivery committed while this copy was running.
+    index = readSessionIndex();
     storage.set(sessionKey(session.id), JSON.stringify(session));
     writeIndex(SESSION_INDEX_KEY, [session.id, ...index]);
   } catch (error) {
     try {
       storage.remove(sessionKey(session.id));
-      writeIndex(SESSION_INDEX_KEY, index);
+      if (index !== undefined) writeIndex(SESSION_INDEX_KEY, index);
     } catch (recoveryError) {
       warnAboutStoredData('Could not roll back MMKV after a failed save.', recoveryError);
     }
@@ -307,38 +310,25 @@ export async function getComparison(
   idA: string,
   idB: string,
 ): Promise<{ a: Session; b: Session; diffs: Diff[] }> {
-  const a = createMockSession(idA, 119.2);
-  const b = createMockSession(idB, 128.4);
-  const diffs: Diff[] = [
-    {
-      label: 'Speed',
-      a: a.speedKmh,
-      b: b.speedKmh,
-      delta: b.speedKmh - a.speedKmh,
-      better: 'b',
-    },
-    {
-      label: 'Distance',
-      a: a.travelMetres,
-      b: b.travelMetres,
-      delta: b.travelMetres - a.travelMetres,
-      better: 'equal',
-    },
-  ];
+  const a = requireSession(idA);
+  const b = requireSession(idB);
+  return { a, b, diffs: compareSessions(a, b) };
+}
 
-  return { a, b, diffs };
+function requireSession(id: string): Session {
+  const session = readSession(id);
+  if (!session) throw new Error(`Saved delivery "${id}" was not found.`);
+  return session;
 }
 
 export async function renderExport(options: {
   sessionId: string;
   watermark: boolean;
 }): Promise<{ imagePath: string; videoPath: string | null }> {
-  const variant = options.watermark ? 'watermarked' : 'clean';
-
-  return {
-    imagePath: `file:///mock/${options.sessionId}-${variant}.png`,
-    videoPath: null,
-  };
+  const session = requireSession(options.sessionId);
+  // Keep native rendering out of startup and data-only consumers.
+  const { renderSessionImage } = await import('../export/renderSessionImage');
+  return renderSessionImage(session, options.watermark);
 }
 
 export async function listPlayers(): Promise<Player[]> {

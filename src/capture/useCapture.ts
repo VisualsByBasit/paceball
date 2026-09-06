@@ -7,9 +7,6 @@ import FrameExtractor, {
 /** Frame rate we ask the session for. fps is still read per-file, never assumed. */
 export const CAPTURE_FPS = 60;
 
-/** Under-expose to freeze the ball. Applied once the session is running. */
-export const CAPTURE_EXPOSURE = -4;
-
 /** Shorter clips give unreliable fps, so stop is locked until this has passed. */
 export const MIN_RECORDING_MS = 3000;
 
@@ -90,7 +87,6 @@ export function useCapture(
         VIDEO_INFO_TIMEOUT_MS,
         `timed out after ${VIDEO_INFO_TIMEOUT_MS / 1000}s`
       );
-      console.log('VIDEO INFO', info);
       setStatus('idle');
       onFinishedRef.current({ path, info });
     } catch (e) {

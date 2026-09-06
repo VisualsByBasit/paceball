@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Directory, File } from 'expo-file-system';
 import { listSessions } from '../src/data';
+import { SessionActions } from '../src/export/SessionActions';
 import { colors, radius, space, stroke, type } from '../src/ui/tokens';
 import type { Session } from '../src/types';
 
@@ -141,6 +142,7 @@ export default function DebugScreen() {
             const rows = checks[session.id];
             return (
               <View key={session.id} style={styles.card}>
+                <SessionActions sessionId={session.id} onDeleted={load} />
                 <Text style={styles.json} selectable>
                   {JSON.stringify(summarise(session), null, 2)}
                 </Text>

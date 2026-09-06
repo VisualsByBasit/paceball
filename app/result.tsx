@@ -1,15 +1,18 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createPlayer, listPlayers, saveSession } from '../src/data';
+import { SessionActions } from '../src/export/SessionActions';
+import { restoredGeometry } from '../src/data/geometry';
 import {
   CALIBRATION_SPECS,
   formatMetres,
@@ -57,10 +60,6 @@ function parseCalibrationMethod(
   return isCalibrationMethod(raw) ? raw : null;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -84,6 +83,17 @@ export default function ResultScreen() {
   const [showWorking, setShowWorking] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const savingRef = useRef(false);
+
+  useFocusEffect(useCallback(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (savingRef.current) return true;
+      if (savedId) { router.dismissAll(); return true; }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [savedId, router]));
 
   const videoPath = first(params.videoPath);
   const framesDir = first(params.framesDir);
@@ -137,19 +147,8 @@ export default function ResultScreen() {
    * is used, so this holds whether or not the decoder rotated the frames.
    */
   const saveGeometry = useMemo(() => {
-    if (!imageWidth || !imageHeight) return null;
-    const imageLongEdge = Math.max(imageWidth, imageHeight);
-    const videoLongEdge = Math.max(videoWidth ?? 0, videoHeight ?? 0);
-    const k = videoLongEdge > 0 ? videoLongEdge / imageLongEdge : 1;
-
-    const width = Math.ceil(imageWidth * k);
-    const height = Math.ceil(imageHeight * k);
-    const scale = (p: Point): Point => ({
-      x: clamp(p.x * k, 0, width - 1),
-      y: clamp(p.y * k, 0, height - 1),
-      frame: p.frame,
-    });
-    return { width, height, scale };
+    if (!imageWidth || !imageHeight || !videoWidth || !videoHeight) return null;
+    return restoredGeometry(imageWidth, imageHeight, videoWidth, videoHeight);
   }, [imageWidth, imageHeight, videoWidth, videoHeight]);
 
   const result = 'result' in reading ? reading.result : null;
@@ -173,6 +172,7 @@ export default function ResultScreen() {
 
   const onSave = useCallback(async () => {
     if (
+      savingRef.current ||
       !canSave ||
       !result ||
       !saveGeometry ||
@@ -189,11 +189,12 @@ export default function ResultScreen() {
       return;
     }
 
+    savingRef.current = true;
     setSaveStatus('saving');
     setSaveError(null);
     try {
       const playerId = await resolvePlayerId();
-      await saveSession({
+      const saved = await saveSession({
         playerId,
         videoPath,
         framesDir,
@@ -206,7 +207,7 @@ export default function ResultScreen() {
         calA: saveGeometry.scale(calA),
         calB: saveGeometry.scale(calB),
         calRealMetres,
-        pixelsPerMetre: result.pixelsPerMetre,
+        pixelsPerMetre: result.pixelsPerMetre * saveGeometry.factor,
         release: saveGeometry.scale(release),
         bounce: saveGeometry.scale(bounce),
         travelMetres: result.travelMetres,
@@ -217,10 +218,13 @@ export default function ResultScreen() {
         releaseSpeedKmh: null,
         releaseAngleDeg: null,
       });
+      setSavedId(saved.id);
       setSaveStatus('saved');
     } catch (e) {
       setSaveStatus('error');
       setSaveError(message(e));
+    } finally {
+      savingRef.current = false;
     }
   }, [
     canSave,
@@ -269,7 +273,7 @@ export default function ResultScreen() {
         {/* Saving moves the clip and its frames out of the cache, so going back
             to re-mark is no longer possible once it has been saved. */}
         {saveStatus === 'saved' ? null : (
-          <Pressable onPress={() => router.back()} hitSlop={space.md}>
+          <Pressable disabled={saveStatus === 'saving'} onPress={() => router.back()} hitSlop={space.md}>
             <Text style={styles.headerAction}>Back</Text>
           </Pressable>
         )}
@@ -330,6 +334,7 @@ export default function ResultScreen() {
       ) : null}
 
       <View style={styles.footer}>
+        {savedId ? <SessionActions sessionId={savedId} /> : null}
         {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
 
         <Pressable
@@ -360,7 +365,7 @@ export default function ResultScreen() {
         {saveStatus === 'saved' ? (
           <Pressable
             style={styles.secondaryButton}
-            onPress={() => router.replace('/')}
+            onPress={() => router.dismissAll()}
             accessibilityRole="button"
             accessibilityLabel="Finish"
           >
