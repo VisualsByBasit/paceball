@@ -12,7 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { framesDirUri, useFrames } from '../src/capture/useFrames';
-import { listPlayers } from '../src/data';
+import { getActivePlayer, getPlayer } from '../src/data';
 import {
   CALIBRATION_SPECS,
   formatMetres,
@@ -140,9 +140,10 @@ export default function MarkScreen() {
   // Height calibration is only offered if there is a height on file to use.
   useEffect(() => {
     let alive = true;
-    listPlayers()
-      .then((players) => {
-        if (alive) setHeightCm(players[0]?.heightCm ?? null);
+    const playerId = first(params.playerId);
+    (playerId ? getPlayer(playerId) : getActivePlayer())
+      .then((player) => {
+        if (alive) setHeightCm(player?.heightCm ?? null);
       })
       .catch(() => {
         if (alive) setHeightCm(null);
@@ -150,7 +151,7 @@ export default function MarkScreen() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [params.playerId]);
 
   const spec = CALIBRATION_SPECS[method];
   const calibration = resolveCalibrationMetres(method, customMetres, heightCm);
@@ -317,6 +318,7 @@ export default function MarkScreen() {
     router.push({
       pathname: '/result',
       params: {
+        playerId: first(params.playerId),
         videoPath,
         framesDir: framesDirUri(videoPath),
         fps: String(fps),

@@ -27,12 +27,16 @@
     "plugins": [
       "expo-router",
       "expo-sharing",
-      ["expo-media-library", {
-        "photosPermission": false,
-        "savePhotosPermission": "Allow Paceball to save delivery images to your gallery.",
-        "granularPermissions": [],
-        "isAccessMediaLocationEnabled": false
-      }]
+      [
+        "expo-media-library",
+        {
+          "photosPermission": false,
+          "savePhotosPermission": "Allow Paceball to save delivery images to your gallery.",
+          "granularPermissions": [],
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      "@sentry/react-native"
     ]
   }
 }

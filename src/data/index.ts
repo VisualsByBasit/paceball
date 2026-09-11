@@ -4,6 +4,7 @@ import { deleteSessionFiles, stageSessionFiles } from './files';
 import { compareSessions } from './comparison';
 import {
   PLAYER_INDEX_KEY,
+  ACTIVE_PLAYER_KEY,
   PLAYER_KEY_PREFIX,
   playerKey,
   SESSION_INDEX_KEY,
@@ -16,6 +17,15 @@ import { isPlayer, isSession } from './validation';
 
 const storage = createMMKV({ id: 'paceball-data' });
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Compare the stored bytes on every read: external writes/corruption and module
+// restarts remain observable. Only parsing and validation are cached, not truth.
+const sessionCache = new Map<string, { raw: string; session: Session }>();
+const MAX_CACHED_SESSIONS = 1024;
+const copySession = (s: Session): Session => ({
+  ...s, calA: { ...s.calA }, calB: { ...s.calB },
+  release: { ...s.release }, bounce: { ...s.bounce },
+});
 
 const warnAboutStoredData = (message: string, error?: unknown) => {
   console.warn(`[Paceball storage] ${message}`, error);
@@ -38,17 +48,26 @@ const parseStoredValue = (key: string): unknown => {
 };
 
 const readSession = (id: string): Session | undefined => {
-  const value = parseStoredValue(sessionKey(id));
-
-  if (value === undefined) {
+  const raw = storage.getString(sessionKey(id));
+  if (raw === undefined) {
+    sessionCache.delete(id);
     return undefined;
   }
-
+  const cached = sessionCache.get(id);
+  if (cached?.raw === raw) return copySession(cached.session);
+  sessionCache.delete(id);
+  let value: unknown;
+  try { value = JSON.parse(raw); }
+  catch (cause) { throw new Error(`Stored Paceball session "${id}" is invalid.`, { cause }); }
   if (!isSession(value) || value.id !== id) {
     throw new Error(`Stored Paceball session "${id}" is invalid.`);
   }
 
-  return value;
+  if (sessionCache.size >= MAX_CACHED_SESSIONS) {
+    sessionCache.delete(sessionCache.keys().next().value!);
+  }
+  sessionCache.set(id, { raw, session: value });
+  return copySession(value);
 };
 
 const readPlayer = (id: string): Player | undefined => {
@@ -221,6 +240,17 @@ export async function saveSession(record: SaveSessionInput): Promise<Session> {
 export async function listSessions(
   filter: SessionFilter = {},
 ): Promise<Session[]> {
+  for (const key of ['limit', 'offset'] as const) {
+    const value = filter[key];
+    if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
+      throw new Error(`${key} must be a non-negative integer.`);
+    }
+  }
+  for (const key of ['from', 'to'] as const) {
+    if (filter[key] !== undefined && !Number.isFinite(filter[key])) {
+      throw new Error(`${key} must be a finite timestamp.`);
+    }
+  }
   const index = readSessionIndex();
   const sessions: Session[] = [];
   const validIds: string[] = [];
@@ -250,7 +280,8 @@ export async function listSessions(
     writeIndex(SESSION_INDEX_KEY, validIds);
   }
 
-  let filteredSessions = sessions.sort((a, b) => b.createdAt - a.createdAt);
+  let filteredSessions = sessions.sort((a, b) =>
+    b.createdAt - a.createdAt || a.id.localeCompare(b.id));
   if (filter.playerId !== undefined) {
     filteredSessions = filteredSessions.filter(
       (session) => session.playerId === filter.playerId,
@@ -268,12 +299,9 @@ export async function listSessions(
       (session) => session.createdAt <= to,
     );
   }
-  if (filter.limit !== undefined) {
-    const limit = Math.max(0, Math.floor(filter.limit));
-    filteredSessions = filteredSessions.slice(0, limit);
-  }
-
-  return filteredSessions;
+  const start = filter.offset ?? 0;
+  return filteredSessions.slice(start,
+    filter.limit === undefined ? undefined : start + filter.limit);
 }
 
 export async function getTrend(
@@ -364,21 +392,86 @@ export async function listPlayers(): Promise<Player[]> {
   return players.sort((a, b) => a.createdAt - b.createdAt);
 }
 
-export async function createPlayer(name: string): Promise<Player> {
+type PlayerDetails = { heightCm?: number | null; shoeSizeEu?: number | null };
+
+function playerValues(name: string, details: PlayerDetails): Pick<Player, 'name' | 'heightCm' | 'shoeSizeEu'> {
   const trimmedName = name.trim();
-  if (trimmedName.length === 0) {
-    throw new Error('Player name cannot be empty.');
+  if (!trimmedName || trimmedName.length > 80) {
+    throw new Error('Player name cannot be empty or longer than 80 characters.');
   }
+  for (const [label, value, min, max] of [
+    ['Height', details.heightCm, 50, 250],
+    ['Shoe size', details.shoeSizeEu, 15, 60],
+  ] as const) {
+    if (value != null && (!Number.isFinite(value) || value < min || value > max)) {
+      throw new Error(`${label} must be between ${min} and ${max}.`);
+    }
+  }
+  return { name: trimmedName,
+    ...(details.heightCm == null ? {} : { heightCm: details.heightCm }),
+    ...(details.shoeSizeEu == null ? {} : { shoeSizeEu: details.shoeSizeEu }) };
+}
+
+export async function createPlayer(name: string, details: PlayerDetails = {}): Promise<Player> {
+  const values = playerValues(name, details);
 
   const player: Player = {
     id: createId('player'),
-    name: trimmedName,
+    ...values,
     createdAt: Date.now(),
   };
   const index = readPlayerIndex();
   storage.set(playerKey(player.id), JSON.stringify(player));
-  writeIndex(PLAYER_INDEX_KEY, [...index, player.id]);
+  try {
+    writeIndex(PLAYER_INDEX_KEY, [...index, player.id]);
+  } catch (error) {
+    storage.remove(playerKey(player.id));
+    throw error;
+  }
   return player;
+}
+
+export async function updatePlayer(id: string, changes: { name?: string } & PlayerDetails): Promise<Player> {
+  const current = readPlayer(id);
+  if (!current) throw new Error('Player was not found.');
+  const player: Player = { id: current.id, createdAt: current.createdAt, ...playerValues(changes.name ?? current.name, {
+    heightCm: changes.heightCm === undefined ? current.heightCm : changes.heightCm,
+    shoeSizeEu: changes.shoeSizeEu === undefined ? current.shoeSizeEu : changes.shoeSizeEu,
+  }) };
+  storage.set(playerKey(id), JSON.stringify(player));
+  return player;
+}
+
+export async function setActivePlayer(id: string): Promise<Player> {
+  const player = readPlayer(id);
+  if (!player) throw new Error('Select an existing player.');
+  storage.set(ACTIVE_PLAYER_KEY, id);
+  return player;
+}
+
+export async function getActivePlayer(): Promise<Player | null> {
+  const id = storage.getString(ACTIVE_PLAYER_KEY);
+  if (id) {
+    try {
+      const player = readPlayer(id);
+      if (player) return player;
+    } catch (error) { warnAboutStoredData('Active player needs recovery.', error); }
+  }
+  // Existing single-player installs keep the same oldest profile, with no
+  // session migration. Corrupt/deleted selections recover to a valid profile.
+  const fallback = (await listPlayers())[0] ?? null;
+  if (fallback) storage.set(ACTIVE_PLAYER_KEY, fallback.id);
+  else storage.remove(ACTIVE_PLAYER_KEY);
+  return fallback;
+}
+
+export async function getPlayer(id: string): Promise<Player | null> {
+  return readPlayer(id) ?? null;
+}
+
+export async function listActivePlayerSessions(filter: Omit<SessionFilter, 'playerId'> = {}): Promise<Session[]> {
+  const player = await getActivePlayer();
+  return player ? listSessions({ ...filter, playerId: player.id }) : [];
 }
 
 export async function deleteSession(id: string): Promise<void> {

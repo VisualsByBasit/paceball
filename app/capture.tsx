@@ -16,6 +16,8 @@ import {
 } from '../src/capture/useCapture';
 import { Screen } from '../src/ui/Screen';
 import { captureExposure } from '../src/capture/exposure';
+import { getActivePlayer } from '../src/data';
+import type { Player } from '../src/types';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
 const TIPS = [
@@ -38,6 +40,17 @@ export default function CaptureScreen() {
   const exposure = captureExposure(device);
   const [sessionReady, setSessionReady] = useState(false);
   const [showTips, setShowTips] = useState(true);
+  const [player, setPlayer] = useState<Player | null>(null);
+  const [playerError, setPlayerError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getActivePlayer().then((value) => {
+      if (!alive) return;
+      setPlayer(value);
+      if (!value) setPlayerError('Create a player before recording.');
+    }).catch(() => { if (alive) setPlayerError('Could not load your player. Return home and try again.'); });
+    return () => { alive = false; };
+  }, []);
 
   const videoOutput = useVideoOutput({ fileType: 'mp4' });
 
@@ -46,6 +59,7 @@ export default function CaptureScreen() {
       router.push({
         pathname: '/mark',
         params: {
+          playerId: player?.id ?? '',
           videoPath: path,
           // fps is read from the file, never assumed to be 60.
           fps: String(info.derivedFps),
@@ -58,7 +72,7 @@ export default function CaptureScreen() {
         },
       });
     },
-    [router, exposure]
+    [router, exposure, player]
   );
 
   const capture = useCapture(videoOutput, { onFinished });
@@ -79,8 +93,8 @@ export default function CaptureScreen() {
       <Screen style={styles.center}>
         <Text style={styles.h2}>Camera access needed</Text>
         <Text style={styles.body}>
-          Paceball measures from video recorded on this phone. Nothing leaves the
-          device.
+          Paceball processes your recordings on this phone. Camera access is used
+          to record deliveries for measurement.
         </Text>
         <Pressable style={styles.primaryButton} onPress={requestPermission}>
           <Text style={styles.primaryButtonText}>Grant access</Text>
@@ -163,6 +177,7 @@ export default function CaptureScreen() {
         </View>
 
         <View style={styles.bottom} pointerEvents="box-none">
+          {playerError ? <Text style={styles.errorText}>{playerError}</Text> : null}
           {error ? (
             <Pressable
               style={styles.errorCard}
@@ -183,7 +198,7 @@ export default function CaptureScreen() {
 
           <Pressable
             onPress={isRecording ? capture.stop : capture.start}
-            disabled={!sessionReady || isProcessing || (isRecording && !canStop)}
+            disabled={!player || !sessionReady || isProcessing || (isRecording && !canStop)}
             accessibilityRole="button"
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
             style={styles.shutter}

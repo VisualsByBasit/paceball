@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createPlayer, listPlayers, saveSession } from '../src/data';
+import { getActivePlayer, getPlayer, saveSession } from '../src/data';
 import { SessionActions } from '../src/export/SessionActions';
 import { restoredGeometry } from '../src/data/geometry';
 import {
@@ -64,15 +64,10 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/**
- * Setup creates the profile, so this normally just reads it back. The fallback
- * only fires if a reading somehow reaches this screen with no player on file,
- * where opening one beats losing the delivery.
- */
-async function resolvePlayerId(): Promise<string> {
-  const players = await listPlayers();
-  if (players.length > 0) return players[0].id;
-  return (await createPlayer('You')).id;
+async function resolvePlayerId(capturedId: string): Promise<string> {
+  const player = capturedId ? await getPlayer(capturedId) : await getActivePlayer();
+  if (!player) throw new Error('The player for this delivery is unavailable. Return home and select a player.');
+  return player.id;
 }
 
 export default function ResultScreen() {
@@ -96,6 +91,7 @@ export default function ResultScreen() {
   }, [savedId, router]));
 
   const videoPath = first(params.videoPath);
+  const capturedPlayerId = first(params.playerId);
   const framesDir = first(params.framesDir);
   const fps = positiveNumber(params.fps);
   const frameCount = positiveNumber(params.frameCount);
@@ -193,7 +189,7 @@ export default function ResultScreen() {
     setSaveStatus('saving');
     setSaveError(null);
     try {
-      const playerId = await resolvePlayerId();
+      const playerId = await resolvePlayerId(capturedPlayerId);
       const saved = await saveSession({
         playerId,
         videoPath,
@@ -235,6 +231,7 @@ export default function ResultScreen() {
     fps,
     frameCount,
     exposureBias,
+    capturedPlayerId,
     calibrationMethod,
     calRealMetres,
     calA,

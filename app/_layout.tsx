@@ -1,7 +1,8 @@
 import { Stack } from 'expo-router';
 import { colors } from '../src/ui/tokens';
+import { wrap } from '../src/diagnostics';
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <Stack
       screenOptions={{
@@ -11,3 +12,5 @@ export default function RootLayout() {
     />
   );
 }
+
+export default wrap(RootLayout);

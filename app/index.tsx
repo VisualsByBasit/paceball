@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { listPlayers } from '../src/data';
+import { getActivePlayer } from '../src/data';
 import { PITCH_LENGTH_M } from '../src/physics/computeSpeed';
 import { Screen } from '../src/ui/Screen';
 import { colors, radius, space, stroke, type } from '../src/ui/tokens';
@@ -14,7 +14,7 @@ import { colors, radius, space, stroke, type } from '../src/ui/tokens';
 const FACTS = [
   { value: String(PITCH_LENGTH_M), label: 'M PITCH\nAS RULER' },
   { value: '±', label: 'ERROR RANGE\nPER READING' },
-  { value: '0', label: 'UPLOADS\nEVER' },
+  { value: '✓', label: 'OFFLINE\nMEASUREMENT' },
 ];
 
 export default function Index() {
@@ -31,10 +31,10 @@ export default function Index() {
   useEffect(() => {
     if (!isFocused) return;
     let alive = true;
-    listPlayers()
-      .then((players) => {
+    getActivePlayer()
+      .then((player) => {
         if (!alive) return;
-        setBowler(players.length > 0 ? players[0].name : null);
+        setBowler(player?.name ?? null);
         setChecked(true);
       })
       .catch(() => {
@@ -103,10 +103,16 @@ export default function Index() {
             >
               <Text style={styles.secondaryButtonText}>How it works</Text>
             </Pressable>
+            <Pressable style={styles.secondaryButton} onPress={() => router.push('/players')} accessibilityRole="button">
+              <Text style={styles.secondaryButtonText}>Players and deliveries</Text>
+            </Pressable>
             <Text style={styles.footnote}>Bowling as {bowler}.</Text>
           </>
         )}
 
+        <Pressable onPress={() => router.push('/diagnostics')} hitSlop={space.sm} accessibilityRole="button">
+          <Text style={styles.debugLink}>Privacy and crash reports</Text>
+        </Pressable>
         {/* THROWAWAY — goes with app/debug.tsx once History exists. */}
         {__DEV__ ? (
           <Pressable onPress={() => router.push('/debug')} hitSlop={space.sm}>
