@@ -97,6 +97,14 @@ export default function Index() {
             </Pressable>
             <Pressable
               style={styles.secondaryButton}
+              onPress={() => router.push('/history')}
+              accessibilityRole="button"
+              accessibilityLabel="History"
+            >
+              <Text style={styles.secondaryButtonText}>History</Text>
+            </Pressable>
+            <Pressable
+              style={styles.secondaryButton}
               onPress={() => router.push('/setup/how-it-works')}
               accessibilityRole="button"
               accessibilityLabel="How it works"

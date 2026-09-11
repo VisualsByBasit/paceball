@@ -129,6 +129,16 @@ export default function DebugScreen() {
         </Pressable>
       </View>
 
+      {/* THROWAWAY — goes with app/practice.tsx. */}
+      <Pressable
+        onPress={() => router.push('/practice')}
+        style={styles.practiceLink}
+        accessibilityRole="button"
+        accessibilityLabel="Open the Reanimated practice screen"
+      >
+        <Text style={styles.practiceLinkText}>Reanimated practice →</Text>
+      </Pressable>
+
       {error ? <Text style={styles.error}>listSessions() threw: {error}</Text> : null}
 
       {sessions === null ? (
@@ -187,6 +197,16 @@ const styles = StyleSheet.create({
   },
   headerAction: { ...type.caption, color: colors.muted },
   headerTitle: { ...type.label, color: colors.muted },
+
+  practiceLink: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    paddingVertical: space.sm,
+    alignItems: 'center',
+    marginBottom: space.md,
+  },
+  practiceLinkText: { ...type.caption, color: colors.text },
 
   loading: { marginTop: space.xl },
   empty: { ...type.body, color: colors.muted, marginTop: space.xl },

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
-  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -20,6 +19,8 @@ import {
   type CalibrationSpec,
 } from '../src/physics/calibration';
 import { CalibrationStep } from '../src/ui/CalibrationStep';
+import { FrameMarker } from '../src/ui/FrameMarker';
+import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import type { CalibrationMethod, Point } from '../src/types';
 
@@ -94,11 +95,6 @@ const NO_POINTS: Points = {
   bounce: null,
 };
 
-const STRIP_HEIGHT = 56;
-const THUMB_WIDTH = 40;
-const MARKER_SIZE = 28;
-const CROSSHAIR = 1;
-
 function first(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
 }
@@ -128,7 +124,6 @@ export default function MarkScreen() {
   const [selected, setSelected] = useState<StepKey | null>(null);
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null);
   const [stage, setStage] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-  const [trackWidth, setTrackWidth] = useState(0);
 
   // The scale reference. Every reading is scaled by it, so it is chosen up
   // front rather than assumed to be a full pitch.
@@ -188,13 +183,9 @@ export default function MarkScreen() {
   const scrubMax = status === 'ready' ? Math.max(0, total - 1) : lastReady;
 
   const scrubMaxRef = useRef(scrubMax);
-  const trackWidthRef = useRef(0);
   useEffect(() => {
     scrubMaxRef.current = scrubMax;
   }, [scrubMax]);
-  useEffect(() => {
-    trackWidthRef.current = trackWidth;
-  }, [trackWidth]);
 
   useEffect(() => {
     setCurrent((c) => Math.min(c, scrubMax));
@@ -229,30 +220,6 @@ export default function MarkScreen() {
   }, [imageSize, stage]);
 
   const currentUri = frames[current] ?? null;
-
-  const seekToX = useCallback((x: number) => {
-    const width = trackWidthRef.current;
-    const max = scrubMaxRef.current;
-    if (width <= 0 || max <= 0) return;
-    const ratio = Math.min(1, Math.max(0, x / width));
-    setCurrent(Math.round(ratio * max));
-  }, []);
-
-  const scrubber = useMemo(() => {
-    let originX = 0;
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e: GestureResponderEvent) => {
-        originX = e.nativeEvent.locationX;
-        seekToX(originX);
-      },
-      // Tracked as an offset from where the finger landed. locationX drifts once
-      // the drag leaves the track; the grant point plus dx does not.
-      onPanResponderMove: (_e, gesture) => seekToX(originX + gesture.dx),
-    });
-  }, [seekToX]);
 
   const step = useCallback(
     (delta: number) => {
@@ -353,16 +320,6 @@ export default function MarkScreen() {
     calRealMetres,
   ]);
 
-  const thumbCount = trackWidth > 0 ? Math.max(1, Math.floor(trackWidth / THUMB_WIDTH)) : 0;
-  const thumbs = useMemo(() => {
-    if (thumbCount === 0 || total <= 0) return [];
-    return Array.from({ length: thumbCount }, (_, i) => {
-      const index =
-        thumbCount === 1 ? 0 : Math.round((i / (thumbCount - 1)) * Math.max(0, total - 1));
-      return { index, uri: frames[index] ?? null };
-    });
-  }, [thumbCount, total, frames]);
-
   if (!videoPath || !fps || !frameCount) {
     return (
       <Fallback
@@ -412,7 +369,6 @@ export default function MarkScreen() {
   }
 
   const seconds = fps > 0 ? current / fps : 0;
-  const playheadRatio = scrubMax > 0 ? current / scrubMax : 0;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -462,9 +418,10 @@ export default function MarkScreen() {
               // landmark, so it stays visible wherever you scrub.
               if (s.pinned && point.frame !== current) return null;
               return (
-                <Marker
+                <FrameMarker
                   key={s.key}
-                  step={s}
+                  label={s.short}
+                  ball={s.ball}
                   left={point.x * fit.scale}
                   top={point.y * fit.scale}
                   active={s.key === activeKey}
@@ -528,34 +485,14 @@ export default function MarkScreen() {
           })}
         </View>
 
-        <View style={styles.strip} onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}>
-          <View style={styles.stripThumbs} pointerEvents="none">
-            {thumbs.map((t, i) => (
-              <View key={`${t.index}-${i}`} style={styles.thumb}>
-                {t.uri ? (
-                  <Image
-                    source={{ uri: t.uri }}
-                    style={styles.thumbImage}
-                    resizeMode="cover"
-                    // Downsamples during decode, so the strip does not hold a
-                    // dozen full-size bitmaps in memory.
-                    resizeMethod="resize"
-                    fadeDuration={0}
-                  />
-                ) : null}
-              </View>
-            ))}
-          </View>
-
-          {scrubMax > 0 ? (
-            <View
-              style={[styles.playhead, { left: playheadRatio * Math.max(0, trackWidth - CROSSHAIR) }]}
-              pointerEvents="none"
-            />
-          ) : null}
-
-          <View style={StyleSheet.absoluteFill} {...scrubber.panHandlers} />
-        </View>
+        <FrameScrubber
+          frames={frames}
+          total={total}
+          max={scrubMax}
+          current={current}
+          onSeek={setCurrent}
+          style={styles.scrubber}
+        />
 
         <View style={styles.stepRow}>
           <Pressable
@@ -624,31 +561,6 @@ export default function MarkScreen() {
   );
 }
 
-function Marker({
-  step,
-  left,
-  top,
-  active,
-}: {
-  step: Step;
-  left: number;
-  top: number;
-  active: boolean;
-}) {
-  const tint = step.ball ? colors.accent : colors.text;
-  return (
-    <View
-      pointerEvents="none"
-      style={[styles.marker, { left: left - MARKER_SIZE / 2, top: top - MARKER_SIZE / 2 }]}
-    >
-      <View style={[styles.markerRing, { borderColor: tint }, active && styles.markerRingActive]} />
-      <View style={[styles.markerTickV, { backgroundColor: tint }]} />
-      <View style={[styles.markerTickH, { backgroundColor: tint }]} />
-      <Text style={[styles.markerLabel, { color: tint }]}>{step.short}</Text>
-    </View>
-  );
-}
-
 function Fallback({
   insets,
   title,
@@ -702,35 +614,6 @@ const styles = StyleSheet.create({
   frameBox: { position: 'relative', overflow: 'hidden' },
   muted: { ...type.caption, color: colors.muted },
 
-  marker: {
-    position: 'absolute',
-    width: MARKER_SIZE,
-    height: MARKER_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerRing: {
-    position: 'absolute',
-    width: MARKER_SIZE,
-    height: MARKER_SIZE,
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    opacity: opacity.inactive,
-  },
-  markerRingActive: { borderWidth: stroke.medium, opacity: opacity.full },
-  markerTickV: { position: 'absolute', width: CROSSHAIR, height: MARKER_SIZE },
-  markerTickH: { position: 'absolute', height: CROSSHAIR, width: MARKER_SIZE },
-  markerLabel: {
-    ...type.label,
-    position: 'absolute',
-    top: MARKER_SIZE,
-    // Wider than the marker and centred on it, so the caption is not clipped
-    // by the marker's own bounds.
-    left: -MARKER_SIZE,
-    width: MARKER_SIZE * 3,
-    textAlign: 'center',
-  },
-
   controls: { paddingHorizontal: space.lg, paddingTop: space.md },
   hint: { ...type.caption, color: colors.text, minHeight: space.xl },
 
@@ -759,25 +642,7 @@ const styles = StyleSheet.create({
     marginLeft: space.xs,
   },
 
-  strip: {
-    height: STRIP_HEIGHT,
-    marginTop: space.md,
-    borderRadius: radius.sm,
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-  },
-  stripThumbs: { flexDirection: 'row', height: '100%' },
-  thumb: { flex: 1, height: '100%', backgroundColor: colors.line },
-  thumbImage: { width: '100%', height: '100%' },
-  playhead: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: CROSSHAIR,
-    backgroundColor: colors.accent,
-  },
+  scrubber: { marginTop: space.md },
 
   stepRow: {
     flexDirection: 'row',

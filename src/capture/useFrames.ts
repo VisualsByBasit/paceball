@@ -73,22 +73,47 @@ export function framesDirUri(videoPath: string): string {
 
 const FRAME_NAME = /^frame_(\d+)\.jpg$/;
 
-/** Frames left over from an earlier visit, so an interrupted run is not repeated. */
-function readCached(dir: Directory): Map<number, string> {
+/** The name the extractor writes a frame under — `frame_%05d.jpg` in the Kotlin module. */
+export function frameFileName(index: number): string {
+  return `frame_${String(index).padStart(5, '0')}.jpg`;
+}
+
+/** Where frame `index` of a frames directory lives, whether or not it is there. */
+export function frameUri(dirUri: string, index: number): string {
+  return new File(new Directory(dirUri), frameFileName(index)).uri;
+}
+
+/** Decoded frames in a directory, by index. Throws if the directory cannot be read. */
+function scanFrames(dir: Directory): Map<number, string> {
   const found = new Map<number, string>();
-  try {
-    if (!dir.exists) return found;
-    for (const entry of dir.list()) {
-      if (!(entry instanceof File)) continue;
-      const match = FRAME_NAME.exec(entry.name);
-      if (!match) continue;
-      if (entry.size <= 0) continue;
-      found.set(Number(match[1]), entry.uri);
-    }
-  } catch {
-    // An unreadable cache is not a failure — we just decode everything again.
+  if (!dir.exists) return found;
+  for (const entry of dir.list()) {
+    if (!(entry instanceof File)) continue;
+    const match = FRAME_NAME.exec(entry.name);
+    if (!match) continue;
+    if (entry.size <= 0) continue;
+    found.set(Number(match[1]), entry.uri);
   }
   return found;
+}
+
+/** Frames left over from an earlier visit, so an interrupted run is not repeated. */
+function readCached(dir: Directory): Map<number, string> {
+  try {
+    return scanFrames(dir);
+  } catch {
+    // An unreadable cache is not a failure — we just decode everything again.
+    return new Map();
+  }
+}
+
+/**
+ * The frames a saved session kept, by index. Read off the disk rather than
+ * assumed from the frame count, so a gap shows as a gap. Unlike the cache
+ * read, an unreadable directory throws — for a saved delivery that is a fault.
+ */
+export function listFrames(dirUri: string): Map<number, string> {
+  return scanFrames(new Directory(dirUri));
 }
 
 /**
