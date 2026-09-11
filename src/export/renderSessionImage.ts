@@ -1,9 +1,10 @@
 import { Directory, File, Paths } from 'expo-file-system';
-import { ImageFormat, matchFont, Skia, type SkFont } from '@shopify/react-native-skia';
+import { ImageFormat, Skia, type SkFont } from '@shopify/react-native-skia';
 import type { Session } from '../types';
 import { colors } from '../ui/tokens';
 import { isSession } from '../data/validation';
 import { drawCard } from './drawCard';
+import { createExportFont } from './font';
 import { EXPORT_HEIGHT, EXPORT_WIDTH, frameFileName } from './layout';
 
 export async function renderSessionImage(session: Session, watermark: boolean) {
@@ -26,7 +27,7 @@ export async function renderSessionImage(session: Session, watermark: boolean) {
   const fonts = new Map<number, SkFont>();
   const font = (size: number) => {
     let value = fonts.get(size);
-    if (!value) { value = matchFont({ fontFamily: 'sans-serif', fontSize: size }); fonts.set(size, value); }
+    if (!value) { value = createExportFont(size); fonts.set(size, value); }
     return value;
   };
   let output: File | undefined;

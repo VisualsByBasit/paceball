@@ -7,7 +7,7 @@ const { createMockSession } = require('../src/data/mockData.ts');
 const files = new Map();
 const directories = new Set();
 let pngFixture, skia, typeface;
-let permission, saved, shares, requests, shareAvailable, failWrite;
+let permission, saved, shares, requests, shareAvailable, failWrite, fontFailure, disposedBrokenFonts;
 const load = Module._load;
 const join = (...parts) => parts.slice(1).reduce(
   (uri, part) => `${uri.replace(/\/$/, '')}/${String(part).replace(/^\//, '')}`,
@@ -35,7 +35,15 @@ Module._load = function(request, parent, main) {
     isAbsolute: (value) => value.startsWith('/') || value.includes('://'),
   } };
   if (request === '@shopify/react-native-skia') return {
-    Skia: skia, ImageFormat: { PNG: 4 }, matchFont: ({ fontSize }) => skia.Font(typeface, fontSize),
+    Skia: skia, ImageFormat: { PNG: 4 }, matchFont: ({ fontFamily, fontSize }) => {
+      assert.equal(fontFamily, 'sans-serif');
+      if (fontFailure) return {
+        getGlyphIDs: (text) => [...text].map(() => 0),
+        getGlyphWidths: () => [0],
+        dispose: () => { disposedBrokenFonts++; },
+      };
+      return skia.Font(typeface, fontSize);
+    },
   };
   if (request === '../ui/tokens') return { colors: {
     bg: '#0A0B0D', surface: '#14161A', text: '#FFFFFF', muted: '#8A9099', accent: '#D4FF3F',
@@ -75,6 +83,7 @@ beforeEach(() => {
   files.clear(); directories.clear();
   permission = { granted: true, canAskAgain: true };
   saved = []; shares = []; requests = []; shareAvailable = true; failWrite = false;
+  fontFailure = false; disposedBrokenFonts = 0;
 });
 after(() => { Module._load = load; typeface?.dispose(); });
 function input() {
@@ -92,6 +101,14 @@ test('production renderer writes a real PNG and gallery saving requests write-on
   await actions.saveExportToGallery(output.imagePath);
   assert.deepEqual(requests, [[true, []]]);
   assert.deepEqual(saved, [output.imagePath]);
+});
+
+test('unusable font fails before writing a blank PNG, disposes it and preserves source media', async () => {
+  const session = input(); fontFailure = true;
+  await assert.rejects(renderSessionImage(session, true), /font cannot render/);
+  assert.equal(disposedBrokenFonts, 1);
+  assert.deepEqual([...files.keys()], [`${session.framesDir}/frame_00042.jpg`]);
+  assert.deepEqual(saved, []);
 });
 test('missing, corrupt, remote and wrongly oriented source frames fail explicitly', async () => {
   const session = input();
