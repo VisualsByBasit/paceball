@@ -398,6 +398,133 @@ test('derives mock speed from its frame timing', () => {
   assert.equal(session.speedKmh, calculatedSpeed);
 });
 
+test('active player migrates from the oldest profile and switching survives restart', async () => {
+  Date.now = () => 100;
+  const a = await data.createPlayer('Same name', { heightCm: 180 });
+  Date.now = () => 200;
+  const b = await data.createPlayer('Same name', { heightCm: 170 });
+  assert.notEqual(a.id, b.id);
+  assert.deepEqual(await data.getActivePlayer(), a);
+  await data.setActivePlayer(b.id);
+  delete require.cache[dataModulePath];
+  const restarted = require(dataModulePath);
+  assert.deepEqual(await restarted.getActivePlayer(), b);
+  assert.equal((await restarted.getPlayer(a.id)).heightCm, 180);
+  await assert.rejects(data.setActivePlayer('missing'));
+  assert.equal((await data.getActivePlayer()).id, b.id);
+});
+
+test('corrupt or missing selected players recover without changing deliveries', async () => {
+  const a = await data.createPlayer('A');
+  const b = await data.createPlayer('B');
+  const saved = await data.saveSession(sessionInput(b.id));
+  await data.setActivePlayer(b.id);
+  storageValues.set(`players:${b.id}`, '{bad');
+  assert.equal((await data.getActivePlayer()).id, a.id);
+  assert.deepEqual(await data.listSessions({ playerId: b.id }), [saved]);
+  storageValues.delete(`players:${a.id}`);
+  assert.equal(await data.getActivePlayer(), null);
+  assert.deepEqual(await data.listActivePlayerSessions(), []);
+});
+
+test('profile edits validate optional calibration dimensions and preserve identity', async () => {
+  const player = await data.createPlayer(' A ', { heightCm: 180, shoeSizeEu: 42 });
+  const updated = await data.updatePlayer(player.id, { name: ' B ', heightCm: 175 });
+  assert.equal(updated.id, player.id);
+  assert.equal(updated.createdAt, player.createdAt);
+  assert.equal(updated.shoeSizeEu, 42);
+  assert.equal(updated.name, 'B');
+  await assert.rejects(data.updatePlayer(player.id, { heightCm: Infinity }));
+  await assert.rejects(data.createPlayer('A', { heightCm: 0 }));
+  await assert.rejects(data.createPlayer('x'.repeat(81)));
+  await assert.rejects(data.updatePlayer('missing', { name: 'B' }));
+  assert.equal((await data.getPlayer(player.id)).heightCm, 175);
+  await data.updatePlayer(player.id, { heightCm: null });
+  assert.equal((await data.getPlayer(player.id)).heightCm, undefined);
+});
+
+test('failed player index writes do not leave phantom profiles', async () => {
+  await data.createPlayer('Existing');
+  failNextStorageSetKey = 'players:index';
+  await assert.rejects(data.createPlayer('Uncommitted'));
+  assert.deepEqual((await data.listPlayers()).map(p => p.name), ['Existing']);
+});
+
+test('paged history separates players and breaks timestamp ties consistently', async () => {
+  const a = await data.createPlayer('A');
+  const b = await data.createPlayer('B');
+  Date.now = () => 12345;
+  for (let i = 0; i < 60; i++) await data.saveSession(sessionInput(i % 2 ? a.id : b.id));
+  await data.setActivePlayer(a.id);
+  const first = await data.listActivePlayerSessions({ limit: 25 });
+  const last = await data.listActivePlayerSessions({ offset: 25, limit: 25 });
+  assert.equal(first.length, 25); assert.equal(last.length, 5);
+  assert.equal(new Set([...first, ...last].map(s => s.id)).size, 30);
+  assert.ok([...first, ...last].every(s => s.playerId === a.id));
+  await data.setActivePlayer(b.id);
+  assert.ok((await data.listActivePlayerSessions()).every(s => s.playerId === b.id));
+  for (const bad of [{ limit: NaN }, { offset: -1 }, { offset: 0.5 }, { from: Infinity }]) {
+    await assert.rejects(data.listSessions(bad));
+  }
+});
+
+test('cached sessions stay isolated from caller edits and detect changed or corrupt storage', async () => {
+  const saved = await data.saveSession(sessionInput('player-a'));
+  const first = (await data.listSessions())[0];
+  first.release.x = 999;
+  first.speedKmh = 999;
+  assert.deepEqual((await data.listSessions())[0], saved);
+  const changed = { ...saved, speedKmh: 125 };
+  storageValues.set(`sessions:${saved.id}`, JSON.stringify(changed));
+  assert.equal((await data.listSessions())[0].speedKmh, 125);
+  storageValues.set(`sessions:${saved.id}`, '{broken');
+  assert.deepEqual(await data.listSessions(), []);
+});
+
+test('200 and 1000 session queries avoid reparsing warm records and retain recovery', async () => {
+  const { performance } = require('node:perf_hooks');
+  const { isSession } = require('../src/data/validation.ts');
+  for (const count of [200, 1000]) {
+    storageValues.clear();
+    const ids = [];
+    for (let i = 0; i < count; i++) {
+      const session = { ...createMockSession(`bench-${count}-${i}`, 120), playerId: `player-${i % 4}`, createdAt: i };
+      ids.push(session.id);
+      storageValues.set(`sessions:${session.id}`, JSON.stringify(session));
+    }
+    storageValues.set('sessions:index', JSON.stringify(ids));
+    const coldStart = performance.now();
+    await data.listSessions();
+    const coldMs = performance.now() - coldStart;
+    const originalParse = JSON.parse;
+    let parsedRecords = 0;
+    JSON.parse = (raw, ...args) => {
+      if (typeof raw === 'string' && raw.includes('"frameCount"')) parsedRecords++;
+      return originalParse(raw, ...args);
+    };
+    const start = performance.now();
+    try {
+      for (let run = 0; run < 20; run++) {
+        const page = await data.listSessions({ playerId: 'player-0', limit: 25 });
+        assert.equal(page.length, 25);
+        const trend = await data.getTrend('player-0', 'all');
+        assert.equal(trend.count, count / 4);
+      }
+    } finally { JSON.parse = originalParse; }
+    const warmPairMs = (performance.now() - start) / 20;
+    assert.equal(parsedRecords, 0, 'Warm queries do not reparse session JSON');
+    const baselineStart = performance.now();
+    for (let run = 0; run < 40; run++) {
+      ids.map(id => originalParse(storageValues.get(`sessions:${id}`)))
+        .filter(isSession).sort((a, b) => b.createdAt - a.createdAt).filter(s => s.playerId === 'player-0');
+    }
+    const baselineMs = (performance.now() - baselineStart) / 40;
+    console.log(`PERF ${count} sessions: cold=${coldMs.toFixed(2)}ms, warm history+trend=${warmPairMs.toFixed(2)}ms, uncached single query=${baselineMs.toFixed(2)}ms, warm record parses=${parsedRecords}`);
+    storageValues.set('sessions:orphan', JSON.stringify({ ...createMockSession('orphan', 120), playerId: 'player-0' }));
+    assert.equal((await data.listSessions()).length, count + 1);
+  }
+});
+
 test('compares persisted deliveries, signed deltas, ties and nullable angles', async () => {
   const inputA = sessionInput('player-a', 100);
   inputA.releaseAngleDeg = null;

@@ -7,7 +7,10 @@ export type SessionFilter = {
   from?: number;
   to?: number;
   limit?: number;
+  offset?: number;
 };
+
+export const ACTIVE_PLAYER_KEY = 'preferences:active-player';
 
 export const SESSION_INDEX_KEY = 'sessions:index';
 export const SESSION_KEY_PREFIX = 'sessions:';
