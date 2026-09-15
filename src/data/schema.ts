@@ -1,6 +1,9 @@
 import type { Session } from '../types';
 
-export type SaveSessionInput = Omit<Session, 'id' | 'createdAt'>;
+// Existing AB capture/result callers still produce timing-only readings.
+export type SaveSessionInput = Omit<Session, 'id' | 'createdAt' | 'uncertaintyModelVersion'> & {
+  uncertaintyModelVersion?: Session['uncertaintyModelVersion'];
+};
 
 export type SessionFilter = {
   playerId?: string;

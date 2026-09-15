@@ -59,6 +59,11 @@ const readSession = (id: string): Session | undefined => {
   let value: unknown;
   try { value = JSON.parse(raw); }
   catch (cause) { throw new Error(`Stored Paceball session "${id}" is invalid.`, { cause }); }
+  // Legacy records predate versioning. Normalize the returned value only;
+  // keep its original error until AB supplies the combined uncertainty helper.
+  if (typeof value === 'object' && value !== null && !('uncertaintyModelVersion' in value)) {
+    value = { ...value, uncertaintyModelVersion: 1 };
+  }
   if (!isSession(value) || value.id !== id) {
     throw new Error(`Stored Paceball session "${id}" is invalid.`);
   }
@@ -193,7 +198,8 @@ const createId = (prefix: string) =>
 export async function saveSession(record: SaveSessionInput): Promise<Session> {
   const id = createId('session');
   const createdAt = Date.now();
-  const candidate: Session = { ...record, id, createdAt };
+  const candidate: Session = { ...record, id, createdAt,
+    uncertaintyModelVersion: record.uncertaintyModelVersion === undefined ? 1 : record.uncertaintyModelVersion };
   if (!isSession(candidate)) {
     throw new Error('Cannot save an invalid Paceball session.');
   }
@@ -204,7 +210,7 @@ export async function saveSession(record: SaveSessionInput): Promise<Session> {
     record.framesDir,
   );
   const session: Session = {
-    ...record,
+    ...candidate,
     id,
     createdAt,
     videoPath: stagedFiles.videoPath,
@@ -314,11 +320,11 @@ export async function getTrend(
     from: days === undefined ? undefined : Date.now() - days * DAY_MS,
   });
   const points = sessions
-    .sort((a, b) => a.createdAt - b.createdAt)
-    .map(({ createdAt: t, speedKmh }) => ({ t, speedKmh }));
+    .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+    .map(({ id, createdAt: t, speedKmh, errorKmh }) => ({ id, t, speedKmh, errorKmh }));
 
   if (points.length === 0) {
-    return { points: [], best: 0, avg: 0, count: 0 };
+    return { points: [], best: null, avg: null, count: 0 };
   }
 
   return {
@@ -332,6 +338,11 @@ export async function getTrend(
       ) / 10,
     count: points.length,
   };
+}
+
+/** Missing is normal after deletion; corruption remains a visible storage fault. */
+export async function getSession(id: string): Promise<Session | null> {
+  return readSession(id) ?? null;
 }
 
 export async function getComparison(
@@ -392,9 +403,9 @@ export async function listPlayers(): Promise<Player[]> {
   return players.sort((a, b) => a.createdAt - b.createdAt);
 }
 
-type PlayerDetails = { heightCm?: number | null; shoeSizeEu?: number | null };
+type PlayerDetails = { heightCm?: number | null; shoeSizeEu?: number | null; shoeLengthCm?: number | null };
 
-function playerValues(name: string, details: PlayerDetails): Pick<Player, 'name' | 'heightCm' | 'shoeSizeEu'> {
+function playerValues(name: string, details: PlayerDetails): Pick<Player, 'name' | 'heightCm' | 'shoeSizeEu' | 'shoeLengthCm'> {
   const trimmedName = name.trim();
   if (!trimmedName || trimmedName.length > 80) {
     throw new Error('Player name cannot be empty or longer than 80 characters.');
@@ -407,7 +418,11 @@ function playerValues(name: string, details: PlayerDetails): Pick<Player, 'name'
       throw new Error(`${label} must be between ${min} and ${max}.`);
     }
   }
+  if (details.shoeLengthCm != null && (!Number.isFinite(details.shoeLengthCm) || details.shoeLengthCm <= 0)) {
+    throw new Error('Measured shoe length must be a positive number of centimetres.');
+  }
   return { name: trimmedName,
+    ...(details.shoeLengthCm == null ? {} : { shoeLengthCm: details.shoeLengthCm }),
     ...(details.heightCm == null ? {} : { heightCm: details.heightCm }),
     ...(details.shoeSizeEu == null ? {} : { shoeSizeEu: details.shoeSizeEu }) };
 }
@@ -437,6 +452,7 @@ export async function updatePlayer(id: string, changes: { name?: string } & Play
   const player: Player = { id: current.id, createdAt: current.createdAt, ...playerValues(changes.name ?? current.name, {
     heightCm: changes.heightCm === undefined ? current.heightCm : changes.heightCm,
     shoeSizeEu: changes.shoeSizeEu === undefined ? current.shoeSizeEu : changes.shoeSizeEu,
+    shoeLengthCm: changes.shoeLengthCm === undefined ? current.shoeLengthCm : changes.shoeLengthCm,
   }) };
   storage.set(playerKey(id), JSON.stringify(player));
   return player;

@@ -54,6 +54,13 @@ export const isSession = (value: unknown): value is Session => {
   }
 
   const session = value as Record<string, unknown>;
+  const markerSources = ['measured', 'paced-measured-shoe', 'paced-shoe-size'];
+  if ((session.uncertaintyModelVersion !== 1 && session.uncertaintyModelVersion !== 2) ||
+      (session.markerSource !== undefined &&
+        (session.calibrationMethod !== 'markers' || !markerSources.includes(session.markerSource as string))) ||
+      (session.paceCount !== undefined &&
+        (session.calibrationMethod !== 'markers' || session.markerSource === 'measured' ||
+          !isPositiveNumber(session.paceCount)))) return false;
   if (
     typeof session.id !== 'string' ||
     session.id.length === 0 ||
@@ -113,6 +120,7 @@ export const isPlayer = (value: unknown): value is Player => {
     player.name.trim().length > 0 &&
     isFiniteNumber(player.createdAt) &&
     (player.heightCm === undefined || isPositiveNumber(player.heightCm)) &&
-    (player.shoeSizeEu === undefined || isPositiveNumber(player.shoeSizeEu))
+    (player.shoeSizeEu === undefined || isPositiveNumber(player.shoeSizeEu)) &&
+    (player.shoeLengthCm === undefined || isPositiveNumber(player.shoeLengthCm))
   );
 };

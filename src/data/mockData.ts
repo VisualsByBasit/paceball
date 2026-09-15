@@ -58,6 +58,7 @@ export const createMockSession = (
     travelMetres,
     speedKmh,
     errorKmh: 4,
+    uncertaintyModelVersion: 1,
     releaseSpeedKmh: Math.round(speedKmh * 1.06 * 10) / 10,
     releaseAngleDeg: 20,
   };

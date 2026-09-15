@@ -168,6 +168,89 @@ after(() => {
   Module._load = originalLoad;
 });
 
+test('direct session reads isolate copies, observe changes, and distinguish missing from corrupt', async () => {
+  assert.equal(await data.getSession('missing'), null);
+  const saved = await data.saveSession(sessionInput('player-a'));
+  const copy = await data.getSession(saved.id);
+  copy.release.x = 0; copy.errorKmh = 999;
+  assert.deepEqual(await data.getSession(saved.id), saved);
+  storageValues.set(`sessions:${saved.id}`, JSON.stringify({ ...saved, errorKmh: 17 }));
+  assert.equal((await data.getSession(saved.id)).errorKmh, 17);
+  storageValues.set(`sessions:${saved.id}`, '{broken');
+  await assert.rejects(data.getSession(saved.id), /invalid/);
+  storageValues.set(`sessions:${saved.id}`, JSON.stringify({ ...saved, id: 'wrong' }));
+  await assert.rejects(data.getSession(saved.id), /invalid/);
+  storageValues.delete(`sessions:${saved.id}`);
+  assert.equal(await data.getSession(saved.id), null);
+});
+
+test('legacy version defaults on read without rewriting storage or claiming combined uncertainty', async () => {
+  const saved = await data.saveSession(sessionInput('player-a'));
+  const legacy = { ...saved }; delete legacy.uncertaintyModelVersion;
+  storageValues.set(`sessions:${saved.id}`, JSON.stringify(legacy));
+  const before = [...storageValues];
+  const read = await data.getSession(saved.id);
+  assert.equal(read.uncertaintyModelVersion, 1);
+  assert.equal(read.errorKmh, saved.errorKmh);
+  assert.deepEqual(await data.listSessions(), [read]);
+  assert.equal((await data.getTrend('player-a', 'all')).points[0].errorKmh, read.errorKmh);
+  assert.equal((await data.getComparison(saved.id, saved.id)).a.errorKmh, read.errorKmh);
+  assert.deepEqual([...storageValues], before);
+});
+
+test('session metadata survives saving and invalid versions or marker metadata are rejected', async () => {
+  for (const markerSource of ['measured', 'paced-measured-shoe', 'paced-shoe-size']) {
+    const input = { ...sessionInput('player-a'), calibrationMethod: 'markers', markerSource,
+      uncertaintyModelVersion: 2, errorKmh: 23,
+      ...(markerSource === 'measured' ? {} : { paceCount: 12.5 }) };
+    const saved = await data.saveSession(input);
+    assert.equal((await data.getSession(saved.id)).markerSource, markerSource);
+    assert.equal((await data.getSession(saved.id)).errorKmh, 23);
+    assert.equal((await data.getSession(saved.id)).uncertaintyModelVersion, 2);
+    assert.equal((await data.getSession(saved.id)).paceCount, input.paceCount);
+  }
+  const originalCaller = sessionInput('player-a'); delete originalCaller.uncertaintyModelVersion;
+  assert.equal((await data.saveSession(originalCaller)).uncertaintyModelVersion, 1);
+  for (const change of [{ uncertaintyModelVersion: null }, { uncertaintyModelVersion: 3 },
+    { markerSource: 'measured' }, { calibrationMethod: 'markers', markerSource: 'unknown' },
+    { calibrationMethod: 'markers', paceCount: -1 },
+    { calibrationMethod: 'markers', markerSource: 'measured', paceCount: 10 }]) {
+    await assert.rejects(data.saveSession({ ...sessionInput('player-a'), ...change }), /invalid/);
+  }
+});
+
+test('trends include stable IDs and saved errors for ties and inclusive time windows', async () => {
+  const now = 2_000_000_000_000;
+  const rows = [
+    { ...createMockSession('b', 120, now), playerId: 'p', errorKmh: 12 },
+    { ...createMockSession('a', 120, now), playerId: 'p', errorKmh: 7 },
+    { ...createMockSession('edge', 100, now - 7 * DAY_MS), playerId: 'p' },
+    { ...createMockSession('outside', 90, now - 7 * DAY_MS - 1), playerId: 'p' },
+    { ...createMockSession('other', 150, now), playerId: 'q' },
+  ];
+  for (const row of rows) storageValues.set(`sessions:${row.id}`, JSON.stringify(row));
+  storageValues.set('sessions:index', JSON.stringify(rows.map(s => s.id)));
+  Date.now = () => now;
+  const trend = await data.getTrend('p', 'week');
+  assert.deepEqual(trend.points.map(p => p.id), ['edge', 'a', 'b']);
+  assert.deepEqual(trend.points.map(p => p.errorKmh), [rows[2].errorKmh, 7, 12]);
+  assert.equal(trend.count, 3);
+  assert.equal(trend.best, Math.max(...rows.slice(0, 3).map(s => s.speedKmh)));
+  assert.equal(trend.avg, Math.round(rows.slice(0, 3).reduce((sum, s) => sum + s.speedKmh, 0) / 3 * 10) / 10);
+  assert.equal((await data.getTrend('p', 'month')).count, 4);
+  Date.now = () => now + 31 * DAY_MS;
+  assert.deepEqual(await data.getTrend('p', 'month'), { points: [], best: null, avg: null, count: 0 });
+});
+
+test('measured shoe length survives profile edits and can be cleared explicitly', async () => {
+  const player = await data.createPlayer('A', { shoeLengthCm: 28, shoeSizeEu: 42 });
+  assert.equal((await data.updatePlayer(player.id, { name: 'B' })).shoeLengthCm, 28);
+  assert.equal((await data.getPlayer(player.id)).shoeLengthCm, 28);
+  await assert.rejects(data.updatePlayer(player.id, { shoeLengthCm: NaN }), /shoe length/);
+  await assert.rejects(data.updatePlayer(player.id, { shoeLengthCm: 0 }), /shoe length/);
+  assert.equal((await data.updatePlayer(player.id, { shoeLengthCm: null })).shoeLengthCm, undefined);
+});
+
 test('rebuilds a corrupt session index from valid stored sessions', async () => {
   Date.now = () => 1_000;
   const first = await data.saveSession(sessionInput('player-a'));
@@ -372,15 +455,15 @@ test('builds weekly trends from real sessions for one player', async () => {
   Date.now = () => now;
 
   assert.deepEqual(await data.getTrend('player-a', 'week'), {
-    points: [{ t: recent.createdAt, speedKmh: recent.speedKmh }],
+    points: [{ id: recent.id, t: recent.createdAt, speedKmh: recent.speedKmh, errorKmh: recent.errorKmh }],
     best: recent.speedKmh,
     avg: recent.speedKmh,
     count: 1,
   });
   assert.deepEqual(await data.getTrend('missing-player', 'all'), {
     points: [],
-    best: 0,
-    avg: 0,
+    best: null,
+    avg: null,
     count: 0,
   });
 });
