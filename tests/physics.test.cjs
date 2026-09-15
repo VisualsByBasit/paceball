@@ -7,7 +7,12 @@ const {
   MAX_PLAUSIBLE_TRAVEL_M,
   PITCH_LENGTH_M,
 } = require('../src/physics/computeSpeed.ts');
-const { travelWarning } = require('../src/physics/calibration.ts');
+const {
+  travelWarning,
+  resolveCalibrationMetres,
+  shoeLengthCmFrom,
+} = require('../src/physics/calibration.ts');
+const { outerShoeCmFromEu } = require('../src/types/index.ts');
 
 /**
  * A delivery marked against both sets of stumps 1000 px apart: ~11 m of travel
@@ -116,6 +121,79 @@ test('pixel uncertainty scales with the space the points are given in', () => {
 
   assert.equal(inVideoSpace.errorKmh, computeSpeed(marked).errorKmh);
   assert.throws(() => computeSpeed(stumpsDelivery({ pixelSigma: 0 })), /positive/);
+});
+
+test('recording how a markers distance was measured narrows the reading', () => {
+  const markers = (over) =>
+    computeSpeed({
+      ...stumpsDelivery(),
+      calRealMetres: 20,
+      calibrationMethod: 'markers',
+      ...over,
+    });
+
+  const unrecorded = markers({});
+  const taped = markers({ markerSource: 'measured' });
+  const pacedBySize = markers({ markerSource: 'paced-shoe-size' });
+
+  // The delivery is identical; only how well its ruler is known has changed.
+  assert.equal(unrecorded.speedKmh, taped.speedKmh, 'the speed itself does not move');
+  assert.ok(
+    taped.errorKmh < unrecorded.errorKmh,
+    `a taped distance should beat an unrecorded one, got ${taped.errorKmh} vs ${unrecorded.errorKmh}`,
+  );
+  // Nothing recorded has to assume the worst of the three.
+  assert.equal(pacedBySize.errorKmh, unrecorded.errorKmh);
+});
+
+test('a paced markers distance is the pace count times the outer shoe', () => {
+  // Pacing heel to toe measures the shoe with its sole, not the foot.
+  assert.ok(Math.abs(outerShoeCmFromEu(41) - 28.547) < 0.001);
+
+  const paced = (paces, shoeLengthCm) =>
+    resolveCalibrationMetres(
+      'markers',
+      { source: 'paced-shoe-size', metres: '', paces },
+      null,
+      shoeLengthCm,
+    );
+
+  // The live sanity check the calibration screen shows: 15 paces at EU 41.
+  const fifteen = paced('15', outerShoeCmFromEu(41));
+  assert.ok(Math.abs(fifteen.metres - 4.28) < 0.01, `expected ~4.28 m, got ${fifteen.metres}`);
+  assert.equal(fifteen.paceCount, 15);
+  assert.equal(fifteen.problem, null);
+
+  // Nothing typed yet is not an error; a nonsense count is.
+  assert.deepEqual(paced('', 28.5), { metres: null, problem: null, paceCount: null });
+  assert.ok(paced('0', 28.5).problem);
+  assert.ok(paced('abc', 28.5).problem);
+  // With no shoe on file there is no scale, and it says which is missing.
+  assert.match(paced('15', null).problem, /shoe/);
+  assert.equal(paced('15', null).metres, null);
+});
+
+test('shoe length comes from a measurement first and a size conversion second', () => {
+  const shoe = { lengthCm: 27, sizeEu: 41 };
+  assert.equal(shoeLengthCmFrom('paced-measured-shoe', shoe), 27, 'a measured shoe wins');
+  assert.equal(shoeLengthCmFrom('paced-shoe-size', shoe), outerShoeCmFromEu(41));
+  assert.equal(shoeLengthCmFrom('measured', shoe), null, 'a taped distance needs no shoe');
+
+  // Each source can only use what the profile actually holds.
+  assert.equal(shoeLengthCmFrom('paced-measured-shoe', { lengthCm: null, sizeEu: 41 }), null);
+  assert.equal(shoeLengthCmFrom('paced-shoe-size', { lengthCm: 27, sizeEu: null }), null);
+});
+
+test('a taped markers distance is taken as typed', () => {
+  const taped = (metres) =>
+    resolveCalibrationMetres('markers', { source: 'measured', metres, paces: '' }, null, null);
+
+  assert.equal(taped('4.5').metres, 4.5);
+  assert.equal(taped('4,5').metres, 4.5, 'comma decimals are what many keyboards offer');
+  assert.equal(taped('4.5').paceCount, null, 'nothing was paced');
+  assert.equal(taped('').problem, null, 'an empty field is not yet wrong');
+  assert.ok(taped('nonsense').problem);
+  assert.ok(taped('500').problem, 'outside the sane bounds for a marker gap');
 });
 
 test('travel warns against the chosen ruler and against what a delivery can do', () => {

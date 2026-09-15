@@ -1,5 +1,5 @@
 import { MAX_PLAUSIBLE_TRAVEL_M, PITCH_LENGTH_M } from './computeSpeed';
-import type { CalibrationMethod } from '../types';
+import { outerShoeCmFromEu, type CalibrationMethod, type MarkerSource } from '../types';
 
 /**
  * A regulation ball measures 224-229 mm around, so a shade over 72 mm across.
@@ -16,6 +16,17 @@ export const MAX_CUSTOM_METRES = 100;
  * marks are suspect. Only meaningful for a ruler laid along the pitch.
  */
 const RULER_WARN_FRACTION = 0.8;
+
+/** A4 is 297 mm on the long edge — the ruler nearly everyone already owns. */
+export const A4_LONG_EDGE_MM = 297;
+
+/** Sanity bounds for an outer shoe length, in centimetres. */
+export const MIN_SHOE_CM = 15;
+export const MAX_SHOE_CM = 40;
+
+/** Sanity bounds for an EU shoe size. Matches what the data layer accepts. */
+export const MIN_SHOE_EU = 15;
+export const MAX_SHOE_EU = 60;
 
 export type CalibrationTap = {
   label: string;
@@ -212,52 +223,170 @@ export function travelWarning(
   return null;
 }
 
+export type MarkerSourceSpec = {
+  source: MarkerSource;
+  /** Full name, for the picker. */
+  title: string;
+  /** Two or three words, for a chip or a working row. */
+  short: string;
+  /** One line saying what the number entered means. */
+  detail: string;
+  /** How well a distance established this way is known. */
+  accuracy: string;
+  /** Whether the distance is counted in paces rather than typed in metres. */
+  paced: boolean;
+};
+
+/** Best first — a taped distance is ten times better than a shoe-size guess. */
+export const MARKER_SOURCE_ORDER: MarkerSource[] = [
+  'measured',
+  'paced-measured-shoe',
+  'paced-shoe-size',
+];
+
+export const MARKER_SOURCE_SPECS: Record<MarkerSource, MarkerSourceSpec> = {
+  measured: {
+    source: 'measured',
+    title: 'Tape or rule',
+    short: 'Taped',
+    detail: 'You measured the gap and typed it in.',
+    accuracy: '± 0.5%',
+    paced: false,
+  },
+  'paced-measured-shoe': {
+    source: 'paced-measured-shoe',
+    title: 'Paced, shoe measured',
+    short: 'Paced, measured shoe',
+    detail: 'Heel-to-toe paces, scaled by a shoe you measured once.',
+    accuracy: '± 1%',
+    paced: true,
+  },
+  'paced-shoe-size': {
+    source: 'paced-shoe-size',
+    title: 'Paced, shoe size',
+    short: 'Paced, shoe size',
+    detail: 'Heel-to-toe paces, scaled from your EU shoe size.',
+    accuracy: '± 5%',
+    paced: true,
+  },
+};
+
+/**
+ * The outer shoe length a pace count is scaled by, in centimetres.
+ *
+ * Pacing heel to toe measures the SHOE, sole included, not the foot. A measured
+ * length is used as it is; a size is converted with the Paris-point rule. Null
+ * when the profile cannot supply what the chosen source needs.
+ */
+export function shoeLengthCmFrom(
+  source: MarkerSource,
+  shoe: { lengthCm: number | null; sizeEu: number | null }
+): number | null {
+  if (source === 'paced-measured-shoe') return shoe.lengthCm;
+  if (source === 'paced-shoe-size') {
+    return shoe.sizeEu === null ? null : outerShoeCmFromEu(shoe.sizeEu);
+  }
+  return null;
+}
+
+/** What the user has typed for a markers distance, and how they established it. */
+export type MarkersDraft = {
+  source: MarkerSource;
+  /** Raw metres text, for a taped distance. */
+  metres: string;
+  /** Raw pace count text, for the two paced sources. */
+  paces: string;
+};
+
 export type CalibrationDistance = {
   /** The distance to scale by, or null while it cannot be established. */
   metres: number | null;
   /** Why there is no distance yet. Null while the user has not said enough. */
   problem: string | null;
+  /** Heel-to-toe paces behind the distance, when it was paced. */
+  paceCount: number | null;
 };
+
+const NO_DISTANCE: CalibrationDistance = { metres: null, problem: null, paceCount: null };
+
+/** Comma decimals are what a lot of keyboards offer first. */
+function parseTyped(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  const parsed = Number(trimmed.replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function outOfBounds(metres: number): string | null {
+  return metres < MIN_CUSTOM_METRES || metres > MAX_CUSTOM_METRES
+    ? `A measured distance has to be between ${MIN_CUSTOM_METRES} m and ${MAX_CUSTOM_METRES} m.`
+    : null;
+}
 
 /**
  * Resolves the chosen method to a real-world distance. The typed value is only
  * complained about once there is something to complain about, so the field does
  * not turn red before it has been filled in.
+ *
+ * A paced distance is the pace count times the outer shoe length. That is why
+ * the source is recorded rather than inferred: the same gap paced from a shoe
+ * size is ten times less certain than one taped, and the error range has to
+ * say so.
  */
 export function resolveCalibrationMetres(
   method: CalibrationMethod,
-  customMetres: string,
-  heightCm: number | null
+  markers: MarkersDraft,
+  heightCm: number | null,
+  shoeLengthCm: number | null = null
 ): CalibrationDistance {
   const spec = CALIBRATION_SPECS[method];
 
   if (spec.source === 'fixed') {
-    return { metres: spec.metres, problem: null };
+    return { metres: spec.metres, problem: null, paceCount: null };
   }
 
   if (spec.source === 'profile') {
     if (heightCm === null) {
       return {
-        metres: null,
+        ...NO_DISTANCE,
         problem: 'There is no height on the player profile to measure against.',
       };
     }
-    return { metres: heightCm / 100, problem: null };
+    return { metres: heightCm / 100, problem: null, paceCount: null };
   }
 
-  const trimmed = customMetres.trim();
-  if (trimmed.length === 0) return { metres: null, problem: null };
+  if (MARKER_SOURCE_SPECS[markers.source].paced) {
+    const paceCount = parseTyped(markers.paces);
+    if (paceCount === null) {
+      return markers.paces.trim().length === 0
+        ? NO_DISTANCE
+        : { ...NO_DISTANCE, problem: 'Enter how many heel-to-toe paces you counted.' };
+    }
+    if (paceCount <= 0) {
+      return { ...NO_DISTANCE, problem: 'Enter how many heel-to-toe paces you counted.' };
+    }
+    if (shoeLengthCm === null) {
+      return {
+        ...NO_DISTANCE,
+        problem: 'Add your shoe length or size below, so the paces have a scale.',
+      };
+    }
+    const metres = (paceCount * shoeLengthCm) / 100;
+    const problem = outOfBounds(metres);
+    return problem === null ? { metres, problem: null, paceCount } : { ...NO_DISTANCE, problem };
+  }
 
-  // Comma decimals are what a lot of keyboards offer first.
-  const parsed = Number(trimmed.replace(',', '.'));
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return { metres: null, problem: 'Enter the distance in metres, like 4.5.' };
+  const typed = parseTyped(markers.metres);
+  if (typed === null) {
+    return markers.metres.trim().length === 0
+      ? NO_DISTANCE
+      : { ...NO_DISTANCE, problem: 'Enter the distance in metres, like 4.5.' };
   }
-  if (parsed < MIN_CUSTOM_METRES || parsed > MAX_CUSTOM_METRES) {
-    return {
-      metres: null,
-      problem: `A measured distance has to be between ${MIN_CUSTOM_METRES} m and ${MAX_CUSTOM_METRES} m.`,
-    };
+  if (typed <= 0) {
+    return { ...NO_DISTANCE, problem: 'Enter the distance in metres, like 4.5.' };
   }
-  return { metres: parsed, problem: null };
+  const problem = outOfBounds(typed);
+  return problem === null
+    ? { metres: typed, problem: null, paceCount: null }
+    : { ...NO_DISTANCE, problem };
 }

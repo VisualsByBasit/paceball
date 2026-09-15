@@ -15,13 +15,14 @@ import { SessionActions } from '../src/export/SessionActions';
 import { restoredGeometry } from '../src/data/geometry';
 import {
   CALIBRATION_SPECS,
+  MARKER_SOURCE_SPECS,
   formatMetres,
   isCalibrationMethod,
   travelWarning,
 } from '../src/physics/calibration';
 import { computeSpeed, type SpeedResult } from '../src/physics/computeSpeed';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import type { CalibrationMethod, MarkConfidence, Point } from '../src/types';
+import type { CalibrationMethod, MarkConfidence, MarkerSource, Point } from '../src/types';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -66,6 +67,15 @@ function parseMarkConfidence(
 ): MarkConfidence | null {
   const raw = first(value);
   return raw === 'seen' || raw === 'uncertain' || raw === 'guessed' ? raw : null;
+}
+
+function parseMarkerSource(
+  value: string | string[] | undefined
+): MarkerSource | null {
+  const raw = first(value);
+  return raw === 'measured' || raw === 'paced-measured-shoe' || raw === 'paced-shoe-size'
+    ? raw
+    : null;
 }
 
 function message(e: unknown): string {
@@ -128,6 +138,11 @@ export default function ResultScreen() {
   // ball was visible is exactly the claim this field exists to stop.
   const markConfidence = parseMarkConfidence(params.markConfidence);
 
+  // How a markers distance was established, and the paces behind it. Absent for
+  // every other method, and absent on a taped distance.
+  const markerSource = parseMarkerSource(params.markerSource);
+  const paceCount = positiveNumber(params.paceCount);
+
   const reading = useMemo((): { result: SpeedResult } | { error: string } => {
     if (!fps) return { error: 'The clip did not report a usable frame rate.' };
     if (!calA || !calB || !release || !bounce) {
@@ -149,6 +164,9 @@ export default function ResultScreen() {
           calRealMetres,
           fps,
           calibrationMethod,
+          // Narrows the reference term from the pessimistic 5% a markers
+          // reading falls back to when nothing recorded how it was measured.
+          markerSource: markerSource ?? undefined,
           markConfidence,
           // The points are still in the extracted JPEG's pixel space here, so
           // the default sigma is already in the right space.
@@ -165,6 +183,7 @@ export default function ResultScreen() {
     bounce,
     calibrationMethod,
     calRealMetres,
+    markerSource,
     markConfidence,
   ]);
 
@@ -234,6 +253,15 @@ export default function ResultScreen() {
         height: saveGeometry.height,
         exposureBias,
         calibrationMethod,
+        // Only meaningful for markers, and a pace count only for a paced one.
+        // The data layer rejects either anywhere else.
+        ...(calibrationMethod === 'markers' && markerSource ? { markerSource } : {}),
+        ...(calibrationMethod === 'markers' &&
+        markerSource !== null &&
+        markerSource !== 'measured' &&
+        paceCount !== null
+          ? { paceCount }
+          : {}),
         calA: saveGeometry.scale(calA),
         calB: saveGeometry.scale(calB),
         calRealMetres,
@@ -272,6 +300,8 @@ export default function ResultScreen() {
     exposureBias,
     calibrationMethod,
     calRealMetres,
+    markerSource,
+    paceCount,
     markConfidence,
     calA,
     calB,
@@ -388,6 +418,16 @@ export default function ResultScreen() {
             label="Scale reference"
             value={`${spec!.short} · ${formatMetres(calRealMetres!)}`}
           />
+          {markerSource ? (
+            <Row
+              label="Distance from"
+              value={
+                paceCount === null
+                  ? MARKER_SOURCE_SPECS[markerSource].short
+                  : `${paceCount} paces · ${MARKER_SOURCE_SPECS[markerSource].short}`
+              }
+            />
+          ) : null}
           <Row label="Pixels per metre" value={result.pixelsPerMetre.toFixed(2)} />
           {measured ? (
             <Row label="Ball travelled" value={`${result.travelMetres.toFixed(2)} m`} />

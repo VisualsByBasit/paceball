@@ -11,18 +11,20 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { framesDirUri, useFrames } from '../src/capture/useFrames';
-import { listPlayers } from '../src/data';
+import { listPlayers, updatePlayer } from '../src/data';
 import {
   CALIBRATION_SPECS,
   formatMetres,
   resolveCalibrationMetres,
+  shoeLengthCmFrom,
   type CalibrationSpec,
+  type MarkersDraft,
 } from '../src/physics/calibration';
 import { CalibrationStep } from '../src/ui/CalibrationStep';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import type { CalibrationMethod, MarkConfidence, Point } from '../src/types';
+import type { CalibrationMethod, MarkConfidence, Player, Point } from '../src/types';
 
 type StepKey = 'calA' | 'calB' | 'release' | 'bounce';
 
@@ -153,27 +155,66 @@ export default function MarkScreen() {
   // The scale reference. Every reading is scaled by it, so it is chosen up
   // front rather than assumed to be a full pitch.
   const [method, setMethod] = useState<CalibrationMethod>('stumps');
-  const [customMetres, setCustomMetres] = useState('');
+  const [markers, setMarkers] = useState<MarkersDraft>({
+    source: 'measured',
+    metres: '',
+    paces: '',
+  });
   const [calibrating, setCalibrating] = useState(true);
-  const [heightCm, setHeightCm] = useState<number | null>(null);
+  const [player, setPlayer] = useState<Player | null>(null);
+  /**
+   * A shoe measurement entered here scales this reading whether or not it can
+   * be written back to the profile, so a storage failure never costs the user
+   * the delivery they are in the middle of.
+   */
+  const [shoeDraft, setShoeDraft] = useState<{ shoeLengthCm?: number; shoeSizeEu?: number }>({});
+  const [shoeProblem, setShoeProblem] = useState<string | null>(null);
 
-  // Height calibration is only offered if there is a height on file to use.
+  // The profile supplies height for that calibration, and shoe length for a
+  // paced markers distance.
   useEffect(() => {
     let alive = true;
     listPlayers()
       .then((players) => {
-        if (alive) setHeightCm(players[0]?.heightCm ?? null);
+        if (alive) setPlayer(players[0] ?? null);
       })
       .catch(() => {
-        if (alive) setHeightCm(null);
+        if (alive) setPlayer(null);
       });
     return () => {
       alive = false;
     };
   }, []);
 
+  const heightCm = player?.heightCm ?? null;
+  const shoe = {
+    lengthCm: shoeDraft.shoeLengthCm ?? player?.shoeLengthCm ?? null,
+    sizeEu: shoeDraft.shoeSizeEu ?? player?.shoeSizeEu ?? null,
+  };
+
+  const saveShoe = useCallback(
+    (patch: { shoeLengthCm?: number; shoeSizeEu?: number }) => {
+      setShoeProblem(null);
+      setShoeDraft((draft) => ({ ...draft, ...patch }));
+      const id = player?.id;
+      if (!id) return;
+      updatePlayer(id, patch)
+        .then(setPlayer)
+        .catch((e: unknown) => {
+          setShoeProblem(
+            `Used for this delivery, but could not be saved to your profile: ${
+              e instanceof Error ? e.message : String(e)
+            }`
+          );
+        });
+    },
+    [player]
+  );
+
   const spec = CALIBRATION_SPECS[method];
-  const calibration = resolveCalibrationMetres(method, customMetres, heightCm);
+  // Measured length wins over a converted size; both come off the profile.
+  const shoeLengthCm = shoeLengthCmFrom(markers.source, shoe);
+  const calibration = resolveCalibrationMetres(method, markers, heightCm, shoeLengthCm);
   const calRealMetres = calibration.metres;
   const steps = useMemo(() => stepsFor(spec), [spec]);
 
@@ -326,6 +367,12 @@ export default function MarkScreen() {
         // has no way to know what the two calibration taps span.
         calibrationMethod: method,
         calRealMetres: String(calRealMetres),
+        // How a markers distance was established, and the paces behind it when
+        // it was paced. The reference uncertainty is read off both.
+        ...(method === 'markers' ? { markerSource: markers.source } : {}),
+        ...(calibration.paceCount === null
+          ? {}
+          : { paceCount: String(calibration.paceCount) }),
         calA: JSON.stringify(points.calA),
         calB: JSON.stringify(points.calB),
         release: JSON.stringify(points.release),
@@ -345,7 +392,9 @@ export default function MarkScreen() {
     total,
     points,
     method,
+    markers,
     calRealMetres,
+    calibration.paceCount,
     markConfidence,
   ]);
 
@@ -384,10 +433,15 @@ export default function MarkScreen() {
         bottomInset={insets.bottom}
         method={method}
         onSelectMethod={selectMethod}
-        customMetres={customMetres}
-        onChangeCustomMetres={setCustomMetres}
+        markers={markers}
+        onChangeMarkers={(patch) => setMarkers((m) => ({ ...m, ...patch }))}
+        shoeLengthCm={shoeLengthCm}
+        shoe={shoe}
+        onSaveShoe={saveShoe}
+        shoeProblem={shoeProblem}
         heightCm={heightCm}
         metres={calRealMetres}
+        paceCount={calibration.paceCount}
         problem={calibration.problem}
         onConfirm={() => {
           if (calRealMetres !== null) setCalibrating(false);
