@@ -275,6 +275,10 @@ function Replay({
   const frameDelta = bounce.frame - release.frame;
   const currentUri = frames[current] ?? null;
   const sinceRelease = (current - release.frame) / fps;
+  // Travel, frame delta and flight time are all read off the bounce mark, so a
+  // guessed bounce leaves them worth exactly what the speed is worth.
+  const measured = session.speedKmh !== null;
+
   // The same guard as Result, against the ruler this delivery actually used.
   const warning = travelWarning(
     session.travelMetres,
@@ -298,27 +302,41 @@ function Replay({
         <View style={styles.statRow}>
           <Stat
             label="SPEED"
-            value={session.speedKmh === null ? '—' : session.speedKmh.toFixed(1)}
-            unit={session.speedKmh === null ? 'not measured' : 'km/h'}
+            value={measured ? session.speedKmh!.toFixed(1) : '—'}
+            unit={measured ? 'km/h' : 'not measured'}
             hero
           />
           <Stat
             label="ERROR"
-            value={session.errorKmh === null ? '—' : `± ${session.errorKmh}`}
-            unit={session.errorKmh === null ? '' : 'km/h'}
+            value={measured ? `± ${session.errorKmh}` : '—'}
+            unit={measured ? 'km/h' : ''}
           />
-          <Stat label="TRAVEL" value={session.travelMetres.toFixed(2)} unit="m" />
+          <Stat
+            label="TRAVEL"
+            value={measured ? session.travelMetres.toFixed(2) : '—'}
+            unit={measured ? 'm' : 'not measured'}
+          />
+          {/* The clip's own frame rate is a property of the recording, not of
+              the marks, so it stands whatever the bounce was worth. */}
           <Stat label="FPS" value={fps.toFixed(2)} unit="read from file" />
-          <Stat label="FRAME Δ" value={String(frameDelta)} unit="frames" />
+          <Stat
+            label="FRAME Δ"
+            value={measured ? String(frameDelta) : '—'}
+            unit={measured ? 'frames' : ''}
+          />
         </View>
-        {session.speedKmh === null ? (
+        {measured ? null : (
           <Text style={styles.note}>
             The bounce was marked without the ball being visible in that frame, so
-            this delivery carries no speed. The clip and the marks are kept; the
-            number is not invented, and it stays out of your trend.
+            this delivery carries no speed — and no flight time, frame delta or
+            distance travelled either, since all of them are measured from that
+            mark. The clip and the marks are kept, and everything stays saved;
+            none of it is invented, and the delivery stays out of your trend.
           </Text>
-        ) : null}
-        {warning ? <Text style={styles.note}>{warning.message}</Text> : null}
+        )}
+        {/* The warning quotes the travel figure, so it would leak a number this
+            screen is deliberately withholding. */}
+        {warning && measured ? <Text style={styles.note}>{warning.message}</Text> : null}
       </View>
 
       <View

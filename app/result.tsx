@@ -293,6 +293,10 @@ export default function ResultScreen() {
     );
   }
 
+  // Everything downstream of the bounce mark — the flight time, the frame
+  // delta and the distance travelled — is only worth as much as that mark.
+  const measured = result.speedKmh !== null;
+
   // Measured against the ruler that was actually chosen. Warning on the pitch
   // length alone never fired for markers, ball or height.
   const warning = travelWarning(result.travelMetres, calRealMetres!, calibrationMethod!);
@@ -353,7 +357,9 @@ export default function ResultScreen() {
         </View>
       )}
 
-      {warning ? <Text style={styles.note}>{warning.message}</Text> : null}
+      {/* The warning quotes the travel figure, so on a guessed bounce it would
+          leak the very number the rest of the screen is withholding. */}
+      {warning && measured ? <Text style={styles.note}>{warning.message}</Text> : null}
 
       <Pressable
         style={styles.workingToggle}
@@ -371,15 +377,28 @@ export default function ResultScreen() {
             label="Marked frames"
             value={`${release!.frame} → ${bounce!.frame}`}
           />
-          <Row label="Frame delta" value={`${result.frameDelta} frames`} />
+          {measured ? (
+            <Row label="Frame delta" value={`${result.frameDelta} frames`} />
+          ) : null}
           <Row label="fps used" value={fps!.toFixed(2)} />
-          <Row label="Flight time" value={`${result.seconds.toFixed(4)} s`} />
+          {measured ? (
+            <Row label="Flight time" value={`${result.seconds.toFixed(4)} s`} />
+          ) : null}
           <Row
             label="Scale reference"
             value={`${spec!.short} · ${formatMetres(calRealMetres!)}`}
           />
           <Row label="Pixels per metre" value={result.pixelsPerMetre.toFixed(2)} />
-          <Row label="Ball travelled" value={`${result.travelMetres.toFixed(2)} m`} />
+          {measured ? (
+            <Row label="Ball travelled" value={`${result.travelMetres.toFixed(2)} m`} />
+          ) : (
+            <Text style={styles.workingFootnote}>
+              Frame delta, flight time and distance travelled are not shown. Each
+              is measured from the bounce mark, and that frame was guessed — they
+              would be as invented as the speed. All three are still saved with
+              the delivery.
+            </Text>
+          )}
           <Text style={styles.workingFootnote}>
             Scaled against {formatMetres(calRealMetres!)} — {spec!.detail.toLowerCase()} The
             ball's own travel is measured with that scale, not assumed from it.
