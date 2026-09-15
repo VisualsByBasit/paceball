@@ -1,7 +1,7 @@
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const base = '6048ba7';
+const base = 'fe78d20';
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
 const changed = new Set([
   ...git('diff', '--name-only', base, '--').split('\n'),
