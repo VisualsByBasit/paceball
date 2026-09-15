@@ -15,7 +15,7 @@ import { frameUri } from '../src/capture/useFrames';
 import { getTrend, listPlayers, listSessions } from '../src/data';
 import { CALIBRATION_SPECS } from '../src/physics/calibration';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import type { Session, Trend } from '../src/types';
+import type { Session, Trend, TrendPoint } from '../src/types';
 
 type Range = 'week' | 'month' | 'all';
 
@@ -39,14 +39,10 @@ type Loaded =
   | { status: 'error'; message: string }
   | { status: 'ready'; playerId: string | null; sessions: Session[] };
 
-/** A trend point paired with the session it came from, so it can carry its error range. */
-type TrendPoint = { t: number; speedKmh: number; session: Session };
-
 type TrendState =
   | { status: 'loading' }
   | { status: 'threw'; message: string }
-  | { status: 'mismatch'; message: string }
-  | { status: 'ready'; trend: Trend; points: TrendPoint[] };
+  | { status: 'ready'; trend: Trend };
 
 /** The message and every cause under it — the data layer wraps its errors. */
 function describe(e: unknown): string {
@@ -60,66 +56,17 @@ function describe(e: unknown): string {
 }
 
 /**
- * getTrend has had no consumer before this screen, so what it returns is
- * checked against the sessions it was built from rather than trusted. Each
- * point is paired with its session — the chart needs the error range, which
- * Trend does not carry — and anything that does not add up is reported.
+ * Every point carries its own session id and error range, so the chart reads
+ * them straight off the trend rather than re-deriving them from the list.
  */
-function matchTrend(
-  trend: Trend,
-  sessions: Session[],
-  range: Range
-): { points: TrendPoint[] } | { problem: string } {
-  if (trend.count !== trend.points.length) {
-    return { problem: `count is ${trend.count}, but there are ${trend.points.length} points.` };
-  }
-  if (range === 'all' && trend.count !== sessions.length) {
-    return {
-      problem: `the all-time trend has ${trend.count} points for ${sessions.length} saved deliveries.`,
-    };
-  }
-
-  const unclaimed = [...sessions];
-  const points: TrendPoint[] = [];
-  for (let i = 0; i < trend.points.length; i += 1) {
-    const p = trend.points[i];
-    if (i > 0 && p.t < trend.points[i - 1].t) {
-      return { problem: 'the points are not in time order.' };
-    }
-    const at = unclaimed.findIndex((s) => s.createdAt === p.t && s.speedKmh === p.speedKmh);
-    if (at < 0) {
-      return {
-        problem: `the point at ${new Date(p.t).toISOString()} (${p.speedKmh} km/h) matches no saved delivery.`,
-      };
-    }
-    const [session] = unclaimed.splice(at, 1);
-    points.push({ t: p.t, speedKmh: p.speedKmh, session });
-  }
-
-  if (points.length > 0) {
-    const fastest = Math.max(...points.map((p) => p.speedKmh));
-    if (trend.best !== fastest) {
-      return { problem: `best is ${trend.best}, but the fastest point is ${fastest}.` };
-    }
-  }
-  return { points };
-}
-
-async function loadTrend(playerId: string, range: Range, sessions: Session[]): Promise<TrendState> {
-  let trend: Trend;
+async function loadTrend(playerId: string, range: Range): Promise<TrendState> {
   try {
-    trend = await getTrend(playerId, range);
+    return { status: 'ready', trend: await getTrend(playerId, range) };
   } catch (e) {
     // Surfaced, not swallowed — on screen and in the log.
     console.error(`[History] getTrend('${range}') threw`, e);
     return { status: 'threw', message: describe(e) };
   }
-  const matched = matchTrend(trend, sessions, range);
-  if ('problem' in matched) {
-    console.error(`[History] getTrend('${range}') disagrees with the saved deliveries: ${matched.problem}`);
-    return { status: 'mismatch', message: matched.problem };
-  }
-  return { status: 'ready', trend, points: matched.points };
 }
 
 function formatDay(t: number): string {
@@ -181,7 +128,7 @@ export default function HistoryScreen() {
   useEffect(() => {
     if (!playerId || !sessions || sessions.length === 0) return;
     let alive = true;
-    loadTrend(playerId, 'all', sessions).then((state) => {
+    loadTrend(playerId, 'all').then((state) => {
       if (alive) setAllTime(state);
     });
     return () => {
@@ -192,7 +139,7 @@ export default function HistoryScreen() {
   useEffect(() => {
     if (range === 'all' || !playerId || !sessions || sessions.length === 0) return;
     let alive = true;
-    loadTrend(playerId, range, sessions).then((state) => {
+    loadTrend(playerId, range).then((state) => {
       if (alive) setRanged({ range, state });
     });
     return () => {
@@ -207,11 +154,21 @@ export default function HistoryScreen() {
         ? ranged.state
         : { status: 'loading' };
 
-  // The fastest delivery, and of equals the most recent.
+  // The fastest delivery, and of equals the most recent — points are in time
+  // order. A trend with no best has nothing to show, which is not a zero.
   const best = useMemo(() => {
-    if (allTime.status !== 'ready' || allTime.points.length === 0) return null;
-    return allTime.points.reduce((b, p) => (p.speedKmh >= b.speedKmh ? p : b)).session;
+    if (allTime.status !== 'ready' || allTime.trend.best === null) return null;
+    const { points } = allTime.trend;
+    if (points.length === 0) return null;
+    return points.reduce((b, p) => (p.speedKmh >= b.speedKmh ? p : b));
   }, [allTime]);
+
+  // The trend carries no travel distance, so the best block reads that one
+  // field off the delivery the point already names.
+  const bestSession = useMemo(
+    () => (best && sessions ? (sessions.find((s) => s.id === best.id) ?? null) : null),
+    [best, sessions]
+  );
 
   const open = useCallback(
     (id: string) => router.push({ pathname: '/analysis', params: { id } }),
@@ -303,7 +260,7 @@ export default function HistoryScreen() {
       ListHeaderComponent={
         <>
           {header}
-          <BestBlock state={allTime} best={best} onOpen={open} />
+          <BestBlock state={allTime} best={best} session={bestSession} onOpen={open} />
 
           <View style={styles.ranges}>
             {RANGES.map((r) => {
@@ -341,14 +298,10 @@ export default function HistoryScreen() {
 }
 
 function TrendFailure({ range, state }: { range: Range; state: TrendState }) {
-  if (state.status !== 'threw' && state.status !== 'mismatch') return null;
+  if (state.status !== 'threw') return null;
   return (
     <View style={styles.failure}>
-      <Text style={styles.failureTitle}>
-        {state.status === 'threw'
-          ? `getTrend('${range}') threw`
-          : `getTrend('${range}') disagrees with the saved deliveries`}
-      </Text>
+      <Text style={styles.failureTitle}>{`getTrend('${range}') threw`}</Text>
       <Text style={styles.failureBody} selectable>
         {state.message}
       </Text>
@@ -359,13 +312,15 @@ function TrendFailure({ range, state }: { range: Range; state: TrendState }) {
 function BestBlock({
   state,
   best,
+  session,
   onOpen,
 }: {
   state: TrendState;
-  best: Session | null;
+  best: TrendPoint | null;
+  session: Session | null;
   onOpen: (id: string) => void;
 }) {
-  if (state.status === 'threw' || state.status === 'mismatch') {
+  if (state.status === 'threw') {
     return (
       <View style={styles.best}>
         <Text style={styles.bestLabel}>PERSONAL BEST</Text>
@@ -373,10 +328,22 @@ function BestBlock({
       </View>
     );
   }
-  if (state.status === 'loading' || !best) {
+  if (state.status === 'loading') {
     return (
       <View style={styles.best}>
         <ActivityIndicator color={colors.muted} />
+      </View>
+    );
+  }
+  // The trend is in and holds no best. Saying so is the honest reading; a
+  // personal best of 0.0 km/h would not be.
+  if (best === null) {
+    return (
+      <View style={styles.best}>
+        <Text style={styles.bestLabel}>PERSONAL BEST</Text>
+        <Text style={styles.bestEmpty}>
+          Nothing measured yet. The fastest saved delivery shows here.
+        </Text>
       </View>
     );
   }
@@ -398,7 +365,8 @@ function BestBlock({
       </Text>
       <Text style={styles.bestError}>± {best.errorKmh} km/h</Text>
       <Text style={styles.bestMeta}>
-        {formatWhen(best.createdAt)} · {best.travelMetres.toFixed(2)} m travelled
+        {formatWhen(best.t)}
+        {session === null ? '' : ` · ${session.travelMetres.toFixed(2)} m travelled`}
       </Text>
     </Pressable>
   );
@@ -418,14 +386,14 @@ function TrendCard({
   const [selected, setSelected] = useState<number | null>(null);
 
   let body: React.ReactNode;
-  if (state.status === 'threw' || state.status === 'mismatch') {
+  if (state.status === 'threw') {
     body = <TrendFailure range={range} state={state} />;
   } else if (state.status === 'loading') {
     body = <ActivityIndicator color={colors.muted} style={styles.chartLoading} />;
-  } else if (state.points.length === 0) {
+  } else if (state.trend.points.length === 0) {
     body = <Text style={styles.chartEmpty}>{empty}</Text>;
   } else {
-    const points = state.points;
+    const points = state.trend.points;
     // Nothing tapped yet means the newest.
     const sel = selected !== null && selected < points.length ? selected : points.length - 1;
     const p = points[sel];
@@ -433,13 +401,13 @@ function TrendCard({
       <>
         <Pressable
           style={styles.readout}
-          onPress={() => onOpen(p.session.id)}
+          onPress={() => onOpen(p.id)}
           accessibilityRole="button"
           accessibilityLabel={`Open the delivery from ${formatWhen(p.t)}`}
         >
           <Text style={styles.readoutSpeed}>
             {p.speedKmh.toFixed(1)}
-            <Text style={styles.readoutError}> ± {p.session.errorKmh} km/h</Text>
+            <Text style={styles.readoutError}> ± {p.errorKmh} km/h</Text>
           </Text>
           <Text style={styles.readoutMeta}>{formatWhen(p.t)} · Open ›</Text>
         </Pressable>
@@ -465,8 +433,8 @@ function yScale(points: TrendPoint[]) {
   let lo = Infinity;
   let hi = -Infinity;
   for (const p of points) {
-    lo = Math.min(lo, p.speedKmh - p.session.errorKmh);
-    hi = Math.max(hi, p.speedKmh + p.session.errorKmh);
+    lo = Math.min(lo, p.speedKmh - p.errorKmh);
+    hi = Math.max(hi, p.speedKmh + p.errorKmh);
   }
   lo = Math.max(0, lo);
   const span = Math.max(hi - lo, 1);
@@ -530,11 +498,11 @@ function TrendPlot({
           />
 
           {points.map((p, i) => {
-            const top = yOf(p.speedKmh + p.session.errorKmh);
-            const bottom = yOf(Math.max(scale.lo, p.speedKmh - p.session.errorKmh));
+            const top = yOf(p.speedKmh + p.errorKmh);
+            const bottom = yOf(Math.max(scale.lo, p.speedKmh - p.errorKmh));
             const on = i === selected;
             return (
-              <View key={p.session.id} pointerEvents="none">
+              <View key={p.id} pointerEvents="none">
                 <View
                   style={[
                     styles.whisker,
@@ -656,6 +624,7 @@ const styles = StyleSheet.create({
   bestNumber: { ...type.hero, ...type.mono, color: colors.accent },
   bestError: { ...type.h2, ...type.mono, color: colors.text, marginTop: space.xs },
   bestMeta: { ...type.caption, color: colors.muted, marginTop: space.sm },
+  bestEmpty: { ...type.body, color: colors.muted, textAlign: 'center' },
 
   ranges: { flexDirection: 'row', marginBottom: space.sm },
   range: {

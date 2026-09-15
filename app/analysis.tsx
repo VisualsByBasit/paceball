@@ -11,7 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listFrames } from '../src/capture/useFrames';
-import { listSessions } from '../src/data';
+import { getSession } from '../src/data';
 import { CALIBRATION_SPECS, formatMetres } from '../src/physics/calibration';
 import { PITCH_LENGTH_M } from '../src/physics/computeSpeed';
 import { FrameMarker } from '../src/ui/FrameMarker';
@@ -60,18 +60,24 @@ export default function AnalysisScreen() {
     }
     let alive = true;
     (async () => {
-      let session: Session | undefined;
+      let session: Session | null;
       try {
-        // The data layer has no single-session read, so it is found in the list.
-        session = (await listSessions()).find((s) => s.id === id);
+        session = await getSession(id);
       } catch (e) {
+        // getSession throws only for a record it found and could not read. That
+        // is corrupt storage, not a deleted delivery, so it is reported as the
+        // fault it is rather than as a missing one.
         if (alive) {
-          setLoaded({ status: 'error', title: 'Could not read saved deliveries', body: message(e) });
+          setLoaded({
+            status: 'error',
+            title: 'This delivery could not be read',
+            body: `Its saved record is corrupt: ${message(e)}`,
+          });
         }
         return;
       }
       if (!alive) return;
-      if (!session) {
+      if (session === null) {
         setLoaded({
           status: 'error',
           title: 'Delivery not found',
