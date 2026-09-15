@@ -7,6 +7,16 @@ import type { Point } from '../types';
 export const PITCH_LENGTH_M = 20.12;
 
 /**
+ * The longest ground a real delivery can cover between release and bounce.
+ *
+ * The ball is released about 2 m past the crease and pitches short of the far
+ * stumps, so real travel runs about 8-14 m and cannot reach the pitch length.
+ * Past this the marks are wrong, whatever the ruler was — this bound is
+ * physical, so it holds for every calibration method.
+ */
+export const MAX_PLAUSIBLE_TRAVEL_M = 18;
+
+/**
  * One frame of uncertainty at each end of the measurement. Neither release nor
  * bounce can be pinned inside a frame's exposure, so the frame delta is only
  * good to ±1 at each end.

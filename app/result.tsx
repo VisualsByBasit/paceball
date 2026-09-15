@@ -17,8 +17,9 @@ import {
   CALIBRATION_SPECS,
   formatMetres,
   isCalibrationMethod,
+  travelWarning,
 } from '../src/physics/calibration';
-import { computeSpeed, PITCH_LENGTH_M, type SpeedResult } from '../src/physics/computeSpeed';
+import { computeSpeed, type SpeedResult } from '../src/physics/computeSpeed';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import type { CalibrationMethod, Point } from '../src/types';
 
@@ -257,9 +258,9 @@ export default function ResultScreen() {
     );
   }
 
-  // The ball is released past the crease and pitches short of the far stumps,
-  // so a travel anywhere near the pitch length means the marks are wrong.
-  const implausible = result.travelMetres >= PITCH_LENGTH_M;
+  // Measured against the ruler that was actually chosen. Warning on the pitch
+  // length alone never fired for markers, ball or height.
+  const warning = travelWarning(result.travelMetres, calRealMetres!, calibrationMethod!);
 
   return (
     <ScrollView
@@ -293,13 +294,7 @@ export default function ResultScreen() {
         <Text style={styles.heroError}>± {result.errorKmh} km/h</Text>
       </View>
 
-      {implausible ? (
-        <Text style={styles.note}>
-          The ball reads as travelling {result.travelMetres.toFixed(1)} m before bouncing,
-          which is the length of the whole pitch. {spec!.checkHint}, and that the ball
-          marks are on the ball.
-        </Text>
-      ) : null}
+      {warning ? <Text style={styles.note}>{warning.message}</Text> : null}
 
       <Pressable
         style={styles.workingToggle}

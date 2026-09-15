@@ -12,8 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listFrames } from '../src/capture/useFrames';
 import { getSession } from '../src/data';
-import { CALIBRATION_SPECS, formatMetres } from '../src/physics/calibration';
-import { PITCH_LENGTH_M } from '../src/physics/computeSpeed';
+import { CALIBRATION_SPECS, formatMetres, travelWarning } from '../src/physics/calibration';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
@@ -238,9 +237,12 @@ function Replay({
   const frameDelta = bounce.frame - release.frame;
   const currentUri = frames[current] ?? null;
   const sinceRelease = (current - release.frame) / fps;
-  // Same check as Result: a ball that travelled the whole pitch was not marked
-  // at release and bounce.
-  const implausible = session.travelMetres >= PITCH_LENGTH_M;
+  // The same guard as Result, against the ruler this delivery actually used.
+  const warning = travelWarning(
+    session.travelMetres,
+    session.calRealMetres,
+    session.calibrationMethod
+  );
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -262,13 +264,7 @@ function Replay({
           <Stat label="FPS" value={fps.toFixed(2)} unit="read from file" />
           <Stat label="FRAME Δ" value={String(frameDelta)} unit="frames" />
         </View>
-        {implausible ? (
-          <Text style={styles.note}>
-            The ball reads as travelling {session.travelMetres.toFixed(1)} m before bouncing,
-            which is the length of the whole pitch. {spec.checkHint}, and that the ball marks
-            are on the ball.
-          </Text>
-        ) : null}
+        {warning ? <Text style={styles.note}>{warning.message}</Text> : null}
       </View>
 
       <View

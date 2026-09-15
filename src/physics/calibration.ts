@@ -1,4 +1,4 @@
-import { PITCH_LENGTH_M } from './computeSpeed';
+import { MAX_PLAUSIBLE_TRAVEL_M, PITCH_LENGTH_M } from './computeSpeed';
 import type { CalibrationMethod } from '../types';
 
 /**
@@ -10,6 +10,12 @@ export const BALL_DIAMETER_M = 0.072;
 /** Sanity bounds for a distance the user measures themselves, in metres. */
 export const MIN_CUSTOM_METRES = 0.1;
 export const MAX_CUSTOM_METRES = 100;
+
+/**
+ * How close the ball's travel may come to the calibration distance before the
+ * marks are suspect. Only meaningful for a ruler laid along the pitch.
+ */
+const RULER_WARN_FRACTION = 0.8;
 
 export type CalibrationTap = {
   label: string;
@@ -39,6 +45,13 @@ export type CalibrationSpec = {
    * not move between frames; a ball in the hand and a standing bowler do.
    */
   sameFrame: boolean;
+  /**
+   * Whether the ruler is laid along the pitch, so the ball's travel approaching
+   * it means the marks are wrong. A ball is 0.072 m and a standing bowler under
+   * 2 m — every real delivery travels many times either, so travel past those
+   * says nothing and must not warn.
+   */
+  rulerBoundsTravel: boolean;
   /** What to re-check when a reading comes back implausible. */
   checkHint: string;
   a: CalibrationTap;
@@ -62,6 +75,7 @@ export const CALIBRATION_SPECS: Record<CalibrationMethod, CalibrationSpec> = {
     source: 'fixed',
     metres: PITCH_LENGTH_M,
     sameFrame: false,
+    rulerBoundsTravel: true,
     checkHint: 'Check both wicket marks are on the base of the stumps',
     a: {
       label: 'Near wicket',
@@ -82,6 +96,7 @@ export const CALIBRATION_SPECS: Record<CalibrationMethod, CalibrationSpec> = {
     source: 'entered',
     metres: null,
     sameFrame: false,
+    rulerBoundsTravel: true,
     checkHint: 'Check the distance you entered matches the gap between the markers',
     a: {
       label: 'Point A',
@@ -102,6 +117,7 @@ export const CALIBRATION_SPECS: Record<CalibrationMethod, CalibrationSpec> = {
     source: 'fixed',
     metres: BALL_DIAMETER_M,
     sameFrame: true,
+    rulerBoundsTravel: false,
     checkHint: 'Check the two marks span the ball itself, not the hand around it',
     a: {
       label: 'Left edge',
@@ -122,6 +138,7 @@ export const CALIBRATION_SPECS: Record<CalibrationMethod, CalibrationSpec> = {
     source: 'profile',
     metres: null,
     sameFrame: true,
+    rulerBoundsTravel: false,
     checkHint: 'Check the head and feet marks are on the bowler standing upright',
     a: {
       label: 'Head',
@@ -145,6 +162,54 @@ export function formatMetres(metres: number): string {
   const fixed = metres < 1 ? metres.toFixed(3) : metres.toFixed(2);
   const trimmed = fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed;
   return `${trimmed} m`;
+}
+
+export type TravelWarning = {
+  /** 'impossible' wins over 'ruler' — it is the stronger claim about the same marks. */
+  kind: 'impossible' | 'ruler';
+  message: string;
+};
+
+/**
+ * Whether the ball's travel says the marks are wrong, and what to say about it.
+ *
+ * Two independent guards. The physical one holds for every method: no delivery
+ * covers more than MAX_PLAUSIBLE_TRAVEL_M between release and bounce, whatever
+ * it was scaled against. The ruler one applies only where the reference is laid
+ * along the pitch — travel approaching a 0.072 m ball or a standing bowler is
+ * normal and says nothing, which is why warning on the pitch length alone left
+ * markers, ball and height unguarded.
+ *
+ * There is deliberately no lower bound: a short indoor throw measured off
+ * markers can legitimately be 3 m.
+ */
+export function travelWarning(
+  travelMetres: number,
+  calRealMetres: number,
+  method: CalibrationMethod
+): TravelWarning | null {
+  const spec = CALIBRATION_SPECS[method];
+  const check = `${spec.checkHint}, and that the ball marks are on the ball.`;
+
+  if (travelMetres > MAX_PLAUSIBLE_TRAVEL_M) {
+    return {
+      kind: 'impossible',
+      message:
+        `The ball reads as travelling ${travelMetres.toFixed(1)} m before bouncing, which is ` +
+        `further than a cricket delivery can carry. ${check}`,
+    };
+  }
+
+  if (spec.rulerBoundsTravel && travelMetres >= calRealMetres * RULER_WARN_FRACTION) {
+    return {
+      kind: 'ruler',
+      message:
+        `The ball reads as travelling ${travelMetres.toFixed(1)} m before bouncing, nearly the ` +
+        `whole ${formatMetres(calRealMetres)} it was scaled against. ${check}`,
+    };
+  }
+
+  return null;
 }
 
 export type CalibrationDistance = {
