@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -8,7 +8,9 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
+import { useEventListener } from 'expo';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listFrames } from '../src/capture/useFrames';
 import { getSession } from '../src/data';
@@ -154,13 +156,28 @@ function Replay({
   const [current, setCurrent] = useState(release.frame);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(RATES[0].rate);
+  const [playbackProblem, setPlaybackProblem] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });
 
-  const currentRef = useRef(current);
-  useEffect(() => {
-    currentRef.current = current;
-  }, [current]);
+  /**
+   * The clip plays itself. Swapping an <Image> uri per frame decoded a 1280 px
+   * JPEG on every tick, which is what made playback flicker and drop to black.
+   * The extracted frames stay for stepping, jumping and the marker overlays,
+   * where a decode is paid once per action rather than sixty times a second.
+   */
+  const player = useVideoPlayer(session.videoPath, (p) => {
+    // A delivery is watched, not listened to, and the clip carries field noise.
+    p.muted = true;
+    p.playbackRate = RATES[0].rate;
+    // Enough to carry the playhead without churning state through playback.
+    p.timeUpdateEventInterval = 0.25;
+  });
+
+  const clamp = useCallback(
+    (frame: number) => Math.min(max, Math.max(0, frame)),
+    [max]
+  );
 
   // Sized off a real frame, as on Mark — the JPEGs are capped on the long
   // edge, so they are not the video's own resolution.
@@ -188,34 +205,55 @@ function Replay({
     return { w: imageSize.w * scale, h: imageSize.h * scale };
   }, [imageSize, stage]);
 
-  // Playback reads the frame off elapsed time rather than counting ticks, so
-  // a dropped frame on screen does not slow the clip down. Timed against the
-  // clip's own fps, never an assumed 60.
-  useEffect(() => {
-    if (!playing) return;
-    const from = currentRef.current >= max ? 0 : currentRef.current;
-    let start: number | null = null;
-    let raf = 0;
-    const tick = (now: number) => {
-      if (start === null) start = now;
-      const frame = Math.min(max, from + Math.floor(((now - start) / 1000) * fps * rate));
-      setCurrent(frame);
-      if (frame >= max) {
-        setPlaying(false);
-        return;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, rate, max, fps]);
+  useEventListener(player, 'playingChange', ({ isPlaying }) => {
+    setPlaying(isPlaying);
+    // Stopping hands the frame view back the frame nearest where the video
+    // actually reached, so stepping carries on from what was just on screen.
+    // Converted with the clip's own fps, never an assumed 60.
+    if (!isPlaying) setCurrent(clamp(Math.round(player.currentTime * fps)));
+  });
+
+  // Carries the scrubber playhead during playback. The frame <Image> is not
+  // mounted while the video is, so this costs no decode.
+  useEventListener(player, 'timeUpdate', ({ currentTime }) => {
+    setCurrent(clamp(Math.round(currentTime * fps)));
+  });
+
+  useEventListener(player, 'statusChange', ({ status, error }) => {
+    setPlaybackProblem(
+      status === 'error'
+        ? `This delivery's video could not be played: ${error?.message ?? 'unknown error'}.`
+        : null
+    );
+  });
 
   const seek = useCallback(
     (frame: number) => {
-      setPlaying(false);
-      setCurrent(Math.min(max, Math.max(0, frame)));
+      player.pause();
+      setCurrent(clamp(frame));
     },
-    [max]
+    [player, clamp]
+  );
+
+  const togglePlay = useCallback(() => {
+    if (playing) {
+      player.pause();
+      return;
+    }
+    // Picks up from the frame on screen, and starts over if it is already at
+    // the end. Setting currentTime seeks the player.
+    player.currentTime = (current >= max ? 0 : current) / fps;
+    player.play();
+  }, [playing, player, current, max, fps]);
+
+  const changeRate = useCallback(
+    (next: number) => {
+      setRate(next);
+      // Set on the player, so the clip itself slows down natively rather than
+      // the screen trying to pace it.
+      player.playbackRate = next;
+    },
+    [player]
   );
 
   const spec = CALIBRATION_SPECS[session.calibrationMethod];
@@ -290,7 +328,15 @@ function Replay({
           setStage({ w: width, h: height });
         }}
       >
-        {fit && currentUri ? (
+        {playing ? (
+          <VideoView
+            player={player}
+            style={fit ? { width: fit.w, height: fit.h } : styles.videoFill}
+            nativeControls={false}
+            contentFit="contain"
+            accessibilityLabel="Delivery playback"
+          />
+        ) : fit && currentUri ? (
           <View style={{ width: fit.w, height: fit.h }}>
             <Image
               source={{ uri: currentUri }}
@@ -324,6 +370,14 @@ function Replay({
       </View>
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + space.md }]}>
+        {/* The frames are decoded separately, so stepping survives a clip that
+            will not play. */}
+        {playbackProblem ? (
+          <Text style={styles.playbackProblem}>
+            {playbackProblem} Stepping through the frames still works.
+          </Text>
+        ) : null}
+
         <FrameScrubber
           frames={frames}
           total={frames.length}
@@ -367,9 +421,9 @@ function Replay({
             <Text style={styles.stepButtonText}>−</Text>
           </Pressable>
           <Pressable
-            style={[styles.play, !sample && styles.off]}
-            disabled={!sample}
-            onPress={() => setPlaying((p) => !p)}
+            style={[styles.play, playbackProblem !== null && styles.off]}
+            disabled={playbackProblem !== null}
+            onPress={togglePlay}
             accessibilityRole="button"
             accessibilityLabel={playing ? 'Pause' : 'Play'}
           >
@@ -401,7 +455,7 @@ function Replay({
             return (
               <Pressable
                 key={r.rate}
-                onPress={() => setRate(r.rate)}
+                onPress={() => changeRate(r.rate)}
                 style={[styles.rate, on && styles.rateOn]}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
@@ -486,6 +540,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   stageNote: { ...type.caption, color: colors.muted, textAlign: 'center', padding: space.lg },
+  // Only used before a frame has been measured, so the video still has a box.
+  videoFill: { width: '100%', height: '100%' },
+  playbackProblem: { ...type.caption, color: colors.warn, marginBottom: space.sm },
 
   controls: { paddingHorizontal: space.lg, paddingTop: space.md },
 
