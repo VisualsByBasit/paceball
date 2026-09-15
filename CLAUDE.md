@@ -66,10 +66,19 @@ corrupt one.
   frame being marked. Three answers, defaulting to seen. 'uncertain'
   raises σ to 10 px and kTiming to 4 for that reading. 'guessed' produces
   NO speed at all — computeSpeed returns null rather than a number, and
-  a null speed is never displayed, exported or counted into a trend. The
-  delivery can still be saved, keeping the clip and the marks, carrying
-  no reading. Validation rejects a guessed bounce stored with a number,
-  and a seen bounce stored without one.
+  a null speed is never displayed, exported or counted into a trend.
+
+  Nothing else read off that mark is shown either. The flight time, the
+  frame delta and the distance travelled are withheld with the speed, and
+  the travel warning is suppressed along with them, because it quotes the
+  distance in its own sentence. All of them stay stored on the session:
+  it is the display and the export that withhold them, not the record.
+  The fps, the marked frame numbers, the scale reference and
+  pixels-per-metre still show, because none of those come off the bounce.
+
+  The delivery can still be saved, keeping the clip and the marks,
+  carrying no reading. Validation rejects a guessed bounce stored with a
+  number, and a seen bounce stored without one.
 - Label it "avg speed to bounce", not "ball speed". Release speed is
   5–8% higher due to drag.
 - Warn on implausible travel, on two independent bounds. The ruler bound
