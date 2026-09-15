@@ -14,6 +14,16 @@ export type MarkerSource =
   | 'paced-measured-shoe'  // shoe length measured once against A4, ~1%
   | 'paced-shoe-size';     // derived from EU size, ~5%
 
+/**
+ * Whether the ball was actually visible in the frame the bounce was marked on.
+ *
+ * 'seen'      - visible; the reading stands on a mark that was looked at.
+ * 'uncertain' - smeared or part-hidden; the mark widens the error range.
+ * 'guessed'   - not visible at all. The frame came from context, not from the
+ *               ball, so NO speed is derived from it. A number would be invented.
+ */
+export type MarkConfidence = 'seen' | 'uncertain' | 'guessed';
+
 /** Outer shoe length from EU size. Paris points are 2/3 cm; +1.2 for the sole. */
 export const outerShoeCmFromEu = (eu: number) => eu * 0.667 + 1.2;
 
@@ -49,11 +59,21 @@ export type Session = {
   // measurement — the ball
   release: Point;
   bounce: Point;
+  /**
+   * How well the bounce frame was seen. Absent on records saved before this was
+   * asked, which are read as 'seen'.
+   */
+  markConfidence?: MarkConfidence;
   travelMetres: number;     // derived, NOT the pitch length
 
   // results
-  speedKmh: number;         // avg speed to bounce
-  errorKmh: number;
+  /**
+   * Average speed to the bounce, or null when markConfidence is 'guessed'. A
+   * guessed bounce frame gives a guessed flight time, so there is no measured
+   * speed to record — and null is never displayed, exported or put in a trend.
+   */
+  speedKmh: number | null;
+  errorKmh: number | null;
   /** 1 = frame timing only. 2 = timing, reference and pixel marking combined. */
   uncertaintyModelVersion: 1 | 2;
   releaseSpeedKmh: number | null;

@@ -22,7 +22,7 @@ import { CalibrationStep } from '../src/ui/CalibrationStep';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import type { CalibrationMethod, Point } from '../src/types';
+import type { CalibrationMethod, MarkConfidence, Point } from '../src/types';
 
 type StepKey = 'calA' | 'calB' | 'release' | 'bounce';
 
@@ -86,6 +86,30 @@ function stepsFor(spec: CalibrationSpec): Step[] {
   ];
 }
 
+/**
+ * What the bounce mark is actually worth. Asked rather than assumed: in low
+ * light the ball smears, and a bounce taken from the batsman's reaction is a
+ * guess. 'seen' is the default because it is the normal case, not because it
+ * is the safe one — the other two are what stop an invented reading.
+ */
+const BOUNCE_CONFIDENCE: { key: MarkConfidence; label: string; hint: string }[] = [
+  {
+    key: 'seen',
+    label: 'Yes',
+    hint: 'The ball is visible in that frame.',
+  },
+  {
+    key: 'uncertain',
+    label: 'Roughly',
+    hint: 'Smeared or part-hidden. The reading still stands, with a wider error range.',
+  },
+  {
+    key: 'guessed',
+    label: 'No',
+    hint: 'Not visible — the frame came from context. No speed will be measured.',
+  },
+];
+
 type Points = Record<StepKey, Point | null>;
 
 const NO_POINTS: Points = {
@@ -122,6 +146,7 @@ export default function MarkScreen() {
   const [points, setPoints] = useState<Points>(NO_POINTS);
   const [history, setHistory] = useState<Points[]>([]);
   const [selected, setSelected] = useState<StepKey | null>(null);
+  const [markConfidence, setMarkConfidence] = useState<MarkConfidence>('seen');
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null);
   const [stage, setStage] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
@@ -305,6 +330,9 @@ export default function MarkScreen() {
         calB: JSON.stringify(points.calB),
         release: JSON.stringify(points.release),
         bounce: JSON.stringify(points.bounce),
+        // What the bounce mark is worth travels with it. Without this the far
+        // end cannot tell a seen bounce from a guessed one.
+        markConfidence,
       },
     });
   }, [
@@ -318,6 +346,7 @@ export default function MarkScreen() {
     points,
     method,
     calRealMetres,
+    markConfidence,
   ]);
 
   if (!videoPath || !fps || !frameCount) {
@@ -485,6 +514,43 @@ export default function MarkScreen() {
           })}
         </View>
 
+        {activeKey === 'bounce' || points.bounce !== null ? (
+          <View style={styles.confidence}>
+            <Text style={styles.confidenceLabel}>
+              COULD YOU SEE THE BALL IN THE BOUNCE FRAME?
+            </Text>
+            <View style={styles.confidenceOptions}>
+              {BOUNCE_CONFIDENCE.map((option) => {
+                const on = option.key === markConfidence;
+                return (
+                  <Pressable
+                    key={option.key}
+                    onPress={() => setMarkConfidence(option.key)}
+                    style={[styles.confidenceOption, on && styles.confidenceOptionOn]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                    accessibilityLabel={`${option.label}. ${option.hint}`}
+                  >
+                    <Text
+                      style={[styles.confidenceText, on && styles.confidenceTextOn]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text
+              style={[
+                styles.confidenceHint,
+                markConfidence === 'guessed' && styles.confidenceHintWarn,
+              ]}
+            >
+              {BOUNCE_CONFIDENCE.find((o) => o.key === markConfidence)!.hint}
+            </Text>
+          </View>
+        ) : null}
+
         <FrameScrubber
           frames={frames}
           total={total}
@@ -643,6 +709,24 @@ const styles = StyleSheet.create({
   },
 
   scrubber: { marginTop: space.md },
+
+  confidence: { marginTop: space.md },
+  confidenceLabel: { ...type.label, color: colors.muted },
+  confidenceOptions: { flexDirection: 'row', marginTop: space.sm },
+  confidenceOption: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    marginRight: space.sm,
+  },
+  confidenceOptionOn: { borderColor: colors.text, backgroundColor: colors.text },
+  confidenceText: { ...type.caption, color: colors.muted },
+  confidenceTextOn: { color: colors.bg, fontWeight: '800' },
+  confidenceHint: { ...type.caption, color: colors.muted, marginTop: space.xs },
+  confidenceHintWarn: { color: colors.warn },
 
   stepRow: {
     flexDirection: 'row',

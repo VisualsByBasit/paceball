@@ -37,8 +37,15 @@ function demoReading() {
     bounce: { x: px(travelMetres), y: px(1), frame: frameDelta },
     calRealMetres: PITCH_LENGTH_M,
     fps: DEMO_FPS,
+    calibrationMethod: 'stumps',
+    markConfidence: 'seen',
   });
-  return result;
+  // A 'seen' mark always yields a reading; this narrows the type rather than
+  // papering over a null with a zero.
+  if (result.speedKmh === null || result.errorKmh === null) {
+    throw new Error('The demo reading produced no speed.');
+  }
+  return { ...result, speedKmh: result.speedKmh, errorKmh: result.errorKmh };
 }
 
 export default function PracticeScreen() {

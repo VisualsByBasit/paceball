@@ -9,6 +9,12 @@ export function drawCard(
   skia: typeof Skia, canvas: SkCanvas, photo: SkImage, session: Session,
   watermark: boolean, font: (size: number) => SkFont, colors: Palette,
 ) {
+  // A guessed bounce produces no speed, so there is nothing honest to put on a
+  // card. Refusing beats rendering a blank or an invented number.
+  const { speedKmh, errorKmh } = session;
+  if (speedKmh === null || errorKmh === null) {
+    throw new Error('This delivery has no measured speed to export.');
+  }
   const geometry = exportGeometry(session, photo.width(), photo.height());
   const paint = skia.Paint();
   try {
@@ -18,8 +24,8 @@ export function drawCard(
       canvas.drawText(value, x, y, fill(color), font(size));
     canvas.drawRect(skia.XYWHRect(0, 0, EXPORT_WIDTH, EXPORT_HEIGHT), fill(colors.bg));
     text('AVG SPEED TO BOUNCE', 48, 65, 25, colors.muted);
-    text(`${session.speedKmh.toFixed(1)} km/h`, 48, 154, 72, colors.accent);
-    text(`± ${session.errorKmh} km/h`, 720, 148, 32);
+    text(`${speedKmh.toFixed(1)} km/h`, 48, 154, 72, colors.accent);
+    text(`± ${errorKmh} km/h`, 720, 148, 32);
     canvas.drawRect(PHOTO, fill(colors.surface));
     canvas.drawImageRect(photo, skia.XYWHRect(0, 0, photo.width(), photo.height()), geometry.rect, paint);
     const { release, bounce } = geometry;

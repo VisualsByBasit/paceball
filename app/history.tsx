@@ -555,13 +555,23 @@ function SessionRow({
       style={styles.row}
       onPress={() => onOpen(session.id)}
       accessibilityRole="button"
-      accessibilityLabel={`${formatWhen(session.createdAt)}, ${session.speedKmh.toFixed(1)} kilometres per hour, plus or minus ${session.errorKmh}${isBest ? ', personal best' : ''}`}
+      accessibilityLabel={
+        session.speedKmh === null
+          ? `${formatWhen(session.createdAt)}, no speed — the bounce was not seen`
+          : `${formatWhen(session.createdAt)}, ${session.speedKmh.toFixed(1)} kilometres per hour, plus or minus ${session.errorKmh}${isBest ? ', personal best' : ''}`
+      }
     >
       <Thumb uri={uri} />
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
-          <Text style={styles.rowSpeed}>{session.speedKmh.toFixed(1)}</Text>
-          <Text style={styles.rowError}> ± {session.errorKmh} km/h</Text>
+          {session.speedKmh === null ? (
+            <Text style={styles.rowNoSpeed}>No speed · bounce not seen</Text>
+          ) : (
+            <>
+              <Text style={styles.rowSpeed}>{session.speedKmh.toFixed(1)}</Text>
+              <Text style={styles.rowError}> ± {session.errorKmh} km/h</Text>
+            </>
+          )}
           {isBest ? <Text style={styles.rowBest}>PB</Text> : null}
         </View>
         <Text style={styles.rowMeta} numberOfLines={1}>
@@ -739,6 +749,7 @@ const styles = StyleSheet.create({
   rowTop: { flexDirection: 'row', alignItems: 'baseline' },
   rowSpeed: { ...type.h2, ...type.mono, color: colors.text },
   rowError: { ...type.caption, ...type.mono, color: colors.muted },
+  rowNoSpeed: { ...type.body, color: colors.warn },
   rowBest: { ...type.label, color: colors.accent, marginLeft: 'auto' },
   rowMeta: { ...type.caption, color: colors.muted, marginTop: space.xs },
 

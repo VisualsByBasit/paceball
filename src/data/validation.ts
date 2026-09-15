@@ -55,6 +55,24 @@ export const isSession = (value: unknown): value is Session => {
 
   const session = value as Record<string, unknown>;
   const markerSources = ['measured', 'paced-measured-shoe', 'paced-shoe-size'];
+  // A guessed bounce yields no speed at all, and a speed only exists where one
+  // was measured. Anything else stores a number that would read as measured.
+  // markConfidence is absent on records saved before it was asked for.
+  if (
+    session.markConfidence !== undefined &&
+    !['seen', 'uncertain', 'guessed'].includes(session.markConfidence as string)
+  ) {
+    return false;
+  }
+  if (session.markConfidence === 'guessed') {
+    if (session.speedKmh !== null || session.errorKmh !== null) return false;
+  } else if (
+    !isPositiveNumber(session.speedKmh) ||
+    !isFiniteNumber(session.errorKmh) ||
+    (session.errorKmh as number) < 0
+  ) {
+    return false;
+  }
   if ((session.uncertaintyModelVersion !== 1 && session.uncertaintyModelVersion !== 2) ||
       (session.markerSource !== undefined &&
         (session.calibrationMethod !== 'markers' || !markerSources.includes(session.markerSource as string))) ||
@@ -83,9 +101,6 @@ export const isSession = (value: unknown): value is Session => {
     !isPositiveNumber(session.calRealMetres) ||
     !isPositiveNumber(session.pixelsPerMetre) ||
     !isPositiveNumber(session.travelMetres) ||
-    !isPositiveNumber(session.speedKmh) ||
-    !isFiniteNumber(session.errorKmh) ||
-    session.errorKmh < 0 ||
     !isNullablePositiveNumber(session.releaseSpeedKmh) ||
     !isNullableNumber(session.releaseAngleDeg)
   ) {

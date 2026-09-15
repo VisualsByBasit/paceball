@@ -320,6 +320,12 @@ export async function getTrend(
     from: days === undefined ? undefined : Date.now() - days * DAY_MS,
   });
   const points = sessions
+    // A delivery whose bounce was guessed carries no speed, so there is nothing
+    // to plot for it and nothing to average it into.
+    .filter(
+      (session): session is Session & { speedKmh: number; errorKmh: number } =>
+        session.speedKmh !== null && session.errorKmh !== null,
+    )
     .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
     .map(({ id, createdAt: t, speedKmh, errorKmh }) => ({ id, t, speedKmh, errorKmh }));
 

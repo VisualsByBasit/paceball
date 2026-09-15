@@ -258,12 +258,28 @@ function Replay({
       <View style={styles.stats}>
         <Text style={styles.statsLabel}>AVG SPEED TO BOUNCE</Text>
         <View style={styles.statRow}>
-          <Stat label="SPEED" value={session.speedKmh.toFixed(1)} unit="km/h" hero />
-          <Stat label="ERROR" value={`± ${session.errorKmh}`} unit="km/h" />
+          <Stat
+            label="SPEED"
+            value={session.speedKmh === null ? '—' : session.speedKmh.toFixed(1)}
+            unit={session.speedKmh === null ? 'not measured' : 'km/h'}
+            hero
+          />
+          <Stat
+            label="ERROR"
+            value={session.errorKmh === null ? '—' : `± ${session.errorKmh}`}
+            unit={session.errorKmh === null ? '' : 'km/h'}
+          />
           <Stat label="TRAVEL" value={session.travelMetres.toFixed(2)} unit="m" />
           <Stat label="FPS" value={fps.toFixed(2)} unit="read from file" />
           <Stat label="FRAME Δ" value={String(frameDelta)} unit="frames" />
         </View>
+        {session.speedKmh === null ? (
+          <Text style={styles.note}>
+            The bounce was marked without the ball being visible in that frame, so
+            this delivery carries no speed. The clip and the marks are kept; the
+            number is not invented, and it stays out of your trend.
+          </Text>
+        ) : null}
         {warning ? <Text style={styles.note}>{warning.message}</Text> : null}
       </View>
 

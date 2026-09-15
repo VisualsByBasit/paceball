@@ -21,7 +21,7 @@ import {
 } from '../src/physics/calibration';
 import { computeSpeed, type SpeedResult } from '../src/physics/computeSpeed';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import type { CalibrationMethod, Point } from '../src/types';
+import type { CalibrationMethod, MarkConfidence, Point } from '../src/types';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -59,6 +59,13 @@ function parseCalibrationMethod(
 ): CalibrationMethod | null {
   const raw = first(value);
   return isCalibrationMethod(raw) ? raw : null;
+}
+
+function parseMarkConfidence(
+  value: string | string[] | undefined
+): MarkConfidence | null {
+  const raw = first(value);
+  return raw === 'seen' || raw === 'uncertain' || raw === 'guessed' ? raw : null;
 }
 
 function message(e: unknown): string {
@@ -117,6 +124,10 @@ export default function ResultScreen() {
   const release = parsePoint(params.release);
   const bounce = parsePoint(params.bounce);
 
+  // What the bounce mark was worth. Never defaulted to 'seen' — assuming the
+  // ball was visible is exactly the claim this field exists to stop.
+  const markConfidence = parseMarkConfidence(params.markConfidence);
+
   const reading = useMemo((): { result: SpeedResult } | { error: string } => {
     if (!fps) return { error: 'The clip did not report a usable frame rate.' };
     if (!calA || !calB || !release || !bounce) {
@@ -124,6 +135,9 @@ export default function ResultScreen() {
     }
     if (!calibrationMethod || calRealMetres === null) {
       return { error: 'The scale reference did not survive the trip to this screen.' };
+    }
+    if (markConfidence === null) {
+      return { error: 'The bounce mark did not say how well it was seen.' };
     }
     try {
       return {
@@ -134,12 +148,25 @@ export default function ResultScreen() {
           bounce,
           calRealMetres,
           fps,
+          calibrationMethod,
+          markConfidence,
+          // The points are still in the extracted JPEG's pixel space here, so
+          // the default sigma is already in the right space.
         }),
       };
     } catch (e) {
       return { error: message(e) };
     }
-  }, [fps, calA, calB, release, bounce, calibrationMethod, calRealMetres]);
+  }, [
+    fps,
+    calA,
+    calB,
+    release,
+    bounce,
+    calibrationMethod,
+    calRealMetres,
+    markConfidence,
+  ]);
 
   /**
    * Points were marked on the extracted JPEGs, whose long edge the extractor
@@ -166,6 +193,7 @@ export default function ResultScreen() {
     exposureBias !== null &&
     !!calibrationMethod &&
     calRealMetres !== null &&
+    markConfidence !== null &&
     !!calA &&
     !!calB &&
     !!release &&
@@ -182,6 +210,7 @@ export default function ResultScreen() {
       exposureBias === null ||
       !calibrationMethod ||
       calRealMetres === null ||
+      markConfidence === null ||
       !calA ||
       !calB ||
       !release ||
@@ -211,9 +240,14 @@ export default function ResultScreen() {
         pixelsPerMetre: result.pixelsPerMetre * saveGeometry.factor,
         release: saveGeometry.scale(release),
         bounce: saveGeometry.scale(bounce),
+        markConfidence,
         travelMetres: result.travelMetres,
+        // Both null when the bounce was guessed. The delivery is still kept —
+        // the clip, the marks and the scale — it just carries no reading.
         speedKmh: result.speedKmh,
         errorKmh: result.errorKmh,
+        // Timing, reference length and both pixel markings, combined.
+        uncertaintyModelVersion: 2,
         // Release speed and launch angle are modelled, not measured, so they
         // stay empty rather than being presented as readings.
         releaseSpeedKmh: null,
@@ -238,6 +272,7 @@ export default function ResultScreen() {
     exposureBias,
     calibrationMethod,
     calRealMetres,
+    markConfidence,
     calA,
     calB,
     release,
@@ -280,19 +315,43 @@ export default function ResultScreen() {
         )}
       </View>
 
-      <View style={styles.hero}>
-        <Text style={styles.heroLabel}>AVG SPEED TO BOUNCE</Text>
-        <Text
-          style={styles.heroNumber}
-          allowFontScaling={false}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-        >
-          {result.speedKmh.toFixed(1)}
-        </Text>
-        <Text style={styles.heroUnit}>km / h</Text>
-        <Text style={styles.heroError}>± {result.errorKmh} km/h</Text>
-      </View>
+      {result.speedKmh === null || result.errorKmh === null ? (
+        <View style={styles.unmeasured}>
+          <Text style={styles.unmeasuredTitle}>This delivery cannot be measured</Text>
+          <Text style={styles.unmeasuredBody}>
+            You marked the bounce without being able to see the ball in that frame.
+            The flight time is read from that frame, so any speed taken from it
+            would be invented rather than measured. Paceball will not show one.
+          </Text>
+          <Text style={styles.unmeasuredBody}>
+            Go back and re-mark it if you can find the frame the ball lands on. You
+            can still save the delivery to keep the clip and the marks — it will
+            carry no speed, and it stays out of your trend.
+          </Text>
+          <Pressable
+            style={styles.remarkButton}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back and re-mark the bounce"
+          >
+            <Text style={styles.remarkButtonText}>Re-mark the bounce</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.hero}>
+          <Text style={styles.heroLabel}>AVG SPEED TO BOUNCE</Text>
+          <Text
+            style={styles.heroNumber}
+            allowFontScaling={false}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {result.speedKmh.toFixed(1)}
+          </Text>
+          <Text style={styles.heroUnit}>km / h</Text>
+          <Text style={styles.heroError}>± {result.errorKmh} km/h</Text>
+        </View>
+      )}
 
       {warning ? <Text style={styles.note}>{warning.message}</Text> : null}
 
@@ -329,7 +388,8 @@ export default function ResultScreen() {
       ) : null}
 
       <View style={styles.footer}>
-        {savedId ? <SessionActions sessionId={savedId} /> : null}
+        {/* Nothing to put on a share card without a measured speed. */}
+        {savedId && result.speedKmh !== null ? <SessionActions sessionId={savedId} /> : null}
         {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
 
         <Pressable
@@ -402,6 +462,26 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: space.md,
   },
+
+  unmeasured: {
+    borderWidth: stroke.hairline,
+    borderColor: colors.warn,
+    borderRadius: radius.md,
+    padding: space.md,
+    marginTop: space.xl,
+    marginBottom: space.md,
+  },
+  unmeasuredTitle: { ...type.h2, color: colors.warn, marginBottom: space.sm },
+  unmeasuredBody: { ...type.body, color: colors.text, marginBottom: space.sm },
+  remarkButton: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.text,
+    paddingVertical: space.sm,
+    alignItems: 'center',
+    marginTop: space.xs,
+  },
+  remarkButtonText: { ...type.body, color: colors.text, fontWeight: '800' },
 
   note: {
     ...type.caption,
