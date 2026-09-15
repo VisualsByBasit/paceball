@@ -28,17 +28,58 @@ Points are marked in the extracted JPEG's pixel space, which is capped
 at 1280 on the long edge. They are scaled up to video dimensions before
 saving, and pixelsPerMetre must be scaled by the same factor.
 
+Session carries uncertaintyModelVersion (1 = frame timing only,
+2 = timing plus reference and pixel marking combined). Sessions using
+markers calibration also carry markerSource and, when paced, paceCount.
+Session also carries markConfidence for the bounce mark, absent on
+records saved before it was asked for, which are read as seen.
+getSession(id) returns null for a deleted session and throws for a
+corrupt one.
+
 ## Non-negotiable rules
 
 - NEVER display a metric that can't be measured. No spin rate, no RPM,
   no spin type. They cannot be derived from 60fps video.
-- ALWAYS show the error range alongside the speed, computed per reading
-  from the frame delta. Never a fixed figure — the uncertainty depends
-  on distance and frame rate.
+- ALWAYS show the error range alongside the speed, computed per reading.
+  Never a fixed figure. Four independent relative terms, combined in
+  quadrature:
+
+    relative² = (kTiming/frameDelta)²   the frame the marks landed on
+              + refUncertainty²          the reference length itself
+              + (2σ/calPixelDist)²       marking the calibration
+              + (2σ/travelPixelDist)²    marking release and bounce
+
+  σ is 3 px in the space the points are marked in; a caller working in
+  video pixels scales it by the same factor it scaled the points up by.
+  kTiming is 2. Reference uncertainty is per method — stumps 0.005, ball
+  0.01, height 0.02 — and for markers per markerSource: measured 0.005,
+  paced with a measured shoe 0.01, paced from shoe size 0.05. Markers
+  with no recorded source take the widest of those three, because stored
+  data cannot say which it was. Round the result up. Readings computed
+  this way record uncertaintyModelVersion 2.
+
+  The pixel terms matter more than the reference values. ±3 px across
+  stumps 1000 px apart is 0.6%; the same ±3 px across a ball 12 px wide
+  is 50%. Ball calibration must report itself as that wide.
+
+- ALWAYS ask, on the bounce step, whether the ball was visible in the
+  frame being marked. Three answers, defaulting to seen. 'uncertain'
+  raises σ to 10 px and kTiming to 4 for that reading. 'guessed' produces
+  NO speed at all — computeSpeed returns null rather than a number, and
+  a null speed is never displayed, exported or counted into a trend. The
+  delivery can still be saved, keeping the clip and the marks, carrying
+  no reading. Validation rejects a guessed bounce stored with a number,
+  and a seen bounce stored without one.
 - Label it "avg speed to bounce", not "ball speed". Release speed is
   5–8% higher due to drag.
-- Warn when travel distance approaches the calibration distance. That
-  means the marks are probably wrong.
+- Warn on implausible travel, on two independent bounds. The ruler bound
+  applies only where the reference is laid along the pitch (stumps,
+  markers): travel reaching 80% of calRealMetres means the marks are
+  probably wrong. The physical bound applies to every method: nothing
+  covers more than 18 m between release and bounce, whatever it was
+  scaled against. A ball is 0.072 m and a bowler under 2 m, so travel
+  past those is normal and must not warn. No lower bound — a short
+  indoor throw off markers can legitimately be 3 m.
 - fps is a float read per-file (59.8–60.05). Never hardcode 60.
 - Minimum 3-second recordings. Shorter clips give unreliable fps.
 - Live capture only. No video import.
@@ -49,7 +90,7 @@ saving, and pixelsPerMetre must be scaled by the same factor.
 
 - AB owns: app/, src/ui/, src/capture/, src/physics/, src/types/,
   modules/frame-extractor/
-- MU owns: src/data/, src/export/
+- MU owns: src/data/, src/export/, src/diagnostics/
 
 Stay in your half. If a change genuinely requires touching the other
 side — wiring a feature into a screen, fixing an integration bug —
@@ -59,8 +100,8 @@ that's fine, but say so explicitly and explain why.
 
 Expo SDK 57 · expo-router · react-native-vision-camera v5 (Nitro API)
 · react-native-mmkv · expo-file-system · @shopify/react-native-skia
-· expo-media-library · expo-sharing · RevenueCat · Reanimated
-· local Kotlin module for frame extraction
+· expo-media-library · expo-sharing · expo-video · RevenueCat
+· Reanimated · local Kotlin module for frame extraction
 
 Use `npx expo install`, never plain `npm install`, for native packages.
 
@@ -90,7 +131,7 @@ glassmorphism.
 ## Screens
 
 Built: index (home) · setup/player · setup/how-it-works · setup/camera
-· capture · mark · result · debug (throwaway)
+· capture · mark · result · analysis · history · practice (throwaway)
+· debug (throwaway)
 
-Not built: analysis · history · export screen · paywall · settings
-· pre-flight check · compare (droppable)
+Not built: paywall · settings · pre-flight check · compare (droppable)
