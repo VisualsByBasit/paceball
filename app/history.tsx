@@ -12,7 +12,7 @@ import {
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frameUri } from '../src/capture/useFrames';
-import { getTrend, listPlayers, listSessions } from '../src/data';
+import { getActivePlayer, getTrend, listSessions } from '../src/data';
 import { CALIBRATION_SPECS } from '../src/physics/calibration';
 import { measurementState, type MeasurementState } from '../src/physics/measurementState';
 import { useSettings, type SpeedUnit } from '../src/settings';
@@ -141,8 +141,8 @@ export default function HistoryScreen() {
     let alive = true;
     (async () => {
       try {
-        const players = await listPlayers();
-        const playerId = players[0]?.id ?? null;
+        // The active player's deliveries, not whichever profile is first on file.
+        const playerId = (await getActivePlayer())?.id ?? null;
         const sessions = playerId === null ? [] : await listSessions({ playerId });
         if (alive) setLoaded({ status: 'ready', playerId, sessions });
       } catch (e) {

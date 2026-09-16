@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createPlayer, listPlayers, saveSession } from '../src/data';
+import { createPlayer, getActivePlayer, saveSession } from '../src/data';
 import { SessionActions } from '../src/export/SessionActions';
 import { restoredGeometry } from '../src/data/geometry';
 import {
@@ -90,13 +90,15 @@ function message(e: unknown): string {
 }
 
 /**
- * Setup creates the profile, so this normally just reads it back. The fallback
- * only fires if a reading somehow reaches this screen with no player on file,
- * where opening one beats losing the delivery.
+ * The delivery belongs to the active player — with more than one profile, the
+ * first on file is not necessarily the one bowling. Setup creates the profile,
+ * so this normally just reads it back. The fallback only fires if a reading
+ * somehow reaches this screen with no player on file at all, where opening one
+ * beats losing the delivery.
  */
 async function resolvePlayerId(): Promise<string> {
-  const players = await listPlayers();
-  if (players.length > 0) return players[0].id;
+  const active = await getActivePlayer();
+  if (active) return active.id;
   return (await createPlayer('You')).id;
 }
 

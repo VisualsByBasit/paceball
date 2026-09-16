@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { listPlayers } from '../src/data';
+import { getActivePlayer } from '../src/data';
 import { PITCH_LENGTH_M } from '../src/physics/computeSpeed';
 import { Screen } from '../src/ui/Screen';
 import { colors, radius, space, stroke, type } from '../src/ui/tokens';
@@ -31,10 +31,11 @@ export default function Index() {
   useEffect(() => {
     if (!isFocused) return;
     let alive = true;
-    listPlayers()
-      .then((players) => {
+    // The active player, so the name shown is the one deliveries are saved to.
+    getActivePlayer()
+      .then((player) => {
         if (!alive) return;
-        setBowler(players.length > 0 ? players[0].name : null);
+        setBowler(player?.name ?? null);
         setChecked(true);
       })
       .catch(() => {

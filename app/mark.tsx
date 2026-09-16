@@ -11,7 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { framesDirUri, useFrames } from '../src/capture/useFrames';
-import { listPlayers, updatePlayer } from '../src/data';
+import { getActivePlayer, updatePlayer } from '../src/data';
 import {
   CALIBRATION_SPECS,
   formatMetres,
@@ -172,13 +172,13 @@ export default function MarkScreen() {
   const [shoeDraft, setShoeDraft] = useState<{ shoeLengthCm?: number; shoeSizeEu?: number }>({});
   const [shoeProblem, setShoeProblem] = useState<string | null>(null);
 
-  // The profile supplies height for that calibration, and shoe length for a
-  // paced markers distance.
+  // The active player's profile supplies height for that calibration, and shoe
+  // length for a paced markers distance — the same player Result saves against.
   useEffect(() => {
     let alive = true;
-    listPlayers()
-      .then((players) => {
-        if (alive) setPlayer(players[0] ?? null);
+    getActivePlayer()
+      .then((active) => {
+        if (alive) setPlayer(active);
       })
       .catch(() => {
         if (alive) setPlayer(null);
