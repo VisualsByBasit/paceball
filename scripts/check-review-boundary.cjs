@@ -1,8 +1,10 @@
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const base = 'fe78d20';
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+// Compare only this branch's work with current main. A fixed historical commit
+// eventually treats Basit's already-merged changes as Mustafa's changes.
+const base = git('merge-base', 'HEAD', 'origin/main');
 const changed = new Set([
   ...git('diff', '--name-only', base, '--').split('\n'),
   ...git('ls-files', '--others', '--exclude-standard').split('\n'),
