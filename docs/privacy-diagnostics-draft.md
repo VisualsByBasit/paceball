@@ -31,7 +31,32 @@ Sentry processing region, retention/deletion settings and contact process using
 verified account settings. Audit the final APK's permissions. The existing
 RECORD_AUDIO declaration and Android backup behavior remain review items.
 
-Implementation status: the review branch keeps Sentry initialization and its
-screen as inactive integration templates. This wording describes the proposed
-opt-in feature AFTER Basit integrates and verifies it, not current runtime
-behaviour. Native crash reporting remains disabled and is not complete.
+Implementation status (updated 16 September 2026): Sentry is integrated on
+main, no longer an inactive template.
+
+- `@sentry/react-native ~7.11.0` is a dependency, with its config plugin in
+  app.json. `index.js` is the entry point and initialises diagnostics before
+  Expo Router loads; `metro.config.js` wraps Expo's config with
+  `getSentryExpoConfig`; the root layout is wrapped with Sentry's `wrap`.
+- `src/diagnostics/index.ts` and the Privacy and crash reports screen
+  (`app/diagnostics.tsx`, linked from Settings) are Mustafa's reviewed
+  templates, moved into place unchanged. Events still pass through
+  `scrubDiagnosticEvent` before sending.
+- Off by default. The SDK initialises only when `EXPO_PUBLIC_SENTRY_DSN` is set
+  in the build AND the user has switched reports on; the consent is persisted
+  and starts unset.
+- No DSN is configured yet, so the current build sends nothing: the switch is
+  disabled and the screen says crash reporting is not available in this build.
+- JavaScript errors only. Native crash handling and the native SDK stay
+  disabled and are not complete.
+- `SENTRY_DISABLE_AUTO_UPLOAD` is set for every EAS build profile, so no source
+  maps are uploaded. Clear it once a Sentry project and build-only auth token
+  exist.
+
+Not yet verified: a device build with a real DSN, a test event received and
+checked in the Sentry dashboard, and opt-out stopping further events. Those
+checks, and the publisher and retention details above, are still required
+before this wording is published.
+
+Purchases are not covered by this draft. Buying or restoring goes through
+Google Play and RevenueCat, which the published policy will also need to name.
