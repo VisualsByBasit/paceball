@@ -149,7 +149,11 @@ glassmorphism.
 ## Screens
 
 Built: index (home) · setup/player · setup/how-it-works · setup/camera
-· capture · mark · result · analysis · history · practice (throwaway)
-· debug (throwaway)
+· capture · mark · result · analysis · history · settings · diagnostics
+· paywall · practice (throwaway) · debug (throwaway)
 
-Not built: paywall · settings · pre-flight check · compare (droppable)
+Paywall renders a mocked offering and purchasing is not connected;
+restore is real. Nothing routes to it yet — its triggers wait on the
+watermark-free export in SessionActions and on the analysis limit.
+
+Not built: pre-flight check · compare (droppable)
