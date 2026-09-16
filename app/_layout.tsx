@@ -1,7 +1,8 @@
 import { Stack } from 'expo-router';
+import { wrap } from '../src/diagnostics';
 import { colors } from '../src/ui/tokens';
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <Stack
       screenOptions={{
@@ -11,3 +12,6 @@ export default function RootLayout() {
     />
   );
 }
+
+// Sends nothing until crash reports are configured in this build and opted in to.
+export default wrap(RootLayout);

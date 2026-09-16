@@ -36,7 +36,8 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
-      "expo-video"
+      "expo-video",
+      "@sentry/react-native"
     ]
   }
 }

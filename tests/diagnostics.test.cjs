@@ -45,10 +45,9 @@ test('Sentry requires DSN and opt-in, scrubs attachments, and respects revocatio
     if (request === 'react-native-mmkv') return { createMMKV: () => ({ getString: key => values.get(key), set: (key, val) => values.set(key, val) }) };
     return originalLoad.call(this, request, parent, isMain);
   };
-  // Exercise the proposed adapter without enabling it in the application or
-  // pretending Sentry is a declared dependency on main.
+  // Exercise the adapter the app actually ships, with the SDK mocked.
   const filename = path.resolve(__dirname, '../src/diagnostics/index.ts');
-  const template = fs.readFileSync(path.resolve(__dirname, '../docs/integration/diagnostics-index.ts.txt'), 'utf8');
+  const template = fs.readFileSync(filename, 'utf8');
   function loadAdapter() {
     const adapter = new Module(filename, module);
     adapter.filename = filename;
