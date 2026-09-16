@@ -98,7 +98,7 @@ corrupt one.
 ## Ownership
 
 - AB owns: app/, src/ui/, src/capture/, src/physics/, src/types/,
-  modules/frame-extractor/
+  src/settings/, src/purchases/, modules/frame-extractor/
 - MU owns: src/data/, src/export/, src/diagnostics/
 
 Stay in your half. If a change genuinely requires touching the other
