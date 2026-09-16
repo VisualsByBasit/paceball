@@ -1,4 +1,4 @@
-import type { CalibrationMethod, MarkConfidence, MarkerSource, Point } from '../types';
+import type { CalibrationMethod, MarkConfidence, MarkerSource, Point, Session } from '../types';
 
 /**
  * Stumps to stumps on a full-size cricket pitch. This is the ruler for
@@ -18,6 +18,14 @@ export const MAX_PLAUSIBLE_TRAVEL_M = 18;
 
 /** A confidence that still yields a reading. 'guessed' yields none at all. */
 type MeasuredConfidence = Exclude<MarkConfidence, 'guessed'>;
+
+/**
+ * The long edge, in pixels, of the frames the four points are marked on. The
+ * extractor caps every frame here, so a tap on a 4K clip is still a tap in a
+ * 1280 px image — and that is the space MARK_SIGMA_PX is quoted in. Capture
+ * takes its cap from this, so the two cannot drift apart.
+ */
+export const MARKING_LONG_EDGE_PX = 1280;
 
 /**
  * Timing uncertainty, in frames — k in the model below. Neither release nor
@@ -222,4 +230,71 @@ export function computeSpeed({
   const errorKmh = Math.ceil(speedKmh * relative);
 
   return { speedKmh, errorKmh, travelMetres, pixelsPerMetre, frameDelta, seconds };
+}
+
+/**
+ * How far a stored session's points were scaled up on the way to disk.
+ *
+ * Points are marked on the extracted JPEG and saved in the video's own pixels,
+ * so a saved mark sits this many times further from its neighbour than the tap
+ * that made it. The pixel terms are ratios, so they only come out right if σ is
+ * scaled by the same factor — otherwise a 4K clip's reading would claim three
+ * times the precision anyone actually marked.
+ */
+function markingScale(width: number, height: number): number {
+  const longEdge = Math.max(width, height);
+  if (!Number.isFinite(longEdge) || longEdge <= 0) return 1;
+  return longEdge / Math.min(MARKING_LONG_EDGE_PX, longEdge);
+}
+
+/**
+ * The full v2 error range for a delivery already on disk, in whole km/h.
+ *
+ * Version 1 records carry a range built from frame timing alone, which treats
+ * the ruler as exact and both markings as perfect. Side by side with a v2
+ * reading their ± means a different thing, so the stored range is recomputed on
+ * read rather than shown as it was written.
+ *
+ * Every term the full model needs is already in the record — the four marks,
+ * the reference and how it was established, the frame rate, the dimensions the
+ * points live in. So this is the same arithmetic computeSpeed did, run again on
+ * what was saved: exact, not an estimate of what the range would have been. The
+ * speed itself is untouched; only the range widens.
+ *
+ * Legacy records take the defaults defined above. A markers session with no
+ * recorded source takes the widest of the three, because nothing stored can say
+ * whether the gap was taped or paced; an absent markConfidence reads as seen.
+ *
+ * Returns null where there is no range to return: a guessed bounce has no
+ * reading for one to sit either side of. Returns null too, rather than
+ * throwing, for a record whose marks cannot produce one — this runs on a read,
+ * and a degenerate mark is not worth failing the read over.
+ *
+ * Pure, and free of the data layer by design: src/data imports this, never the
+ * other way round.
+ */
+export function sessionErrorKmh(session: Session): number | null {
+  const { speedKmh } = session;
+  if (speedKmh === null || !Number.isFinite(speedKmh)) return null;
+
+  // Absent on records saved before the question was asked, and read as seen —
+  // the same default the rest of the app reads them with. A guessed bounce
+  // stored with a speed is what validation exists to reject, so it yields
+  // nothing here either.
+  const confidence = session.markConfidence ?? 'seen';
+  if (confidence === 'guessed') return null;
+
+  const calPixels = distance(session.calA, session.calB);
+  const travelPixels = distance(session.release, session.bounce);
+  const frameDelta = session.bounce.frame - session.release.frame;
+  if (!(calPixels > 0) || !(travelPixels > 0) || !(frameDelta > 0)) return null;
+
+  const sigma = MARK_SIGMA_PX[confidence] * markingScale(session.width, session.height);
+  const relative = Math.hypot(
+    K_TIMING[confidence] / frameDelta,
+    referenceUncertainty(session.calibrationMethod, session.markerSource),
+    (2 * sigma) / calPixels,
+    (2 * sigma) / travelPixels
+  );
+  return Math.ceil(speedKmh * relative);
 }

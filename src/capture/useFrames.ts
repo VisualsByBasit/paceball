@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Directory, File, Paths } from 'expo-file-system';
 import FrameExtractor from '../../modules/frame-extractor/src/FrameExtractorModule';
+import { MARKING_LONG_EDGE_PX } from '../physics/computeSpeed';
 
 /**
  * Long-edge cap for extracted frames. Well above the ~1080 px a phone can show,
  * so marking accuracy is unaffected, but it stops a 4K clip costing 4K of decode
  * and disk for every frame.
+ *
+ * It comes from physics because this cap defines the space the four points are
+ * marked in, which is the space the pixel uncertainty is quoted in. Recomputing
+ * a stored session's error range has to scale that σ back out of the video
+ * pixels the points were saved in, so the two numbers have to be one number.
  */
-export const FRAME_MAX_WIDTH = 1280;
+export const FRAME_MAX_WIDTH = MARKING_LONG_EDGE_PX;
 
 /**
  * Frames per native call. Small enough that the strip visibly fills as it goes,

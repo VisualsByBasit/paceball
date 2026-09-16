@@ -4,6 +4,8 @@ const { test } = require('node:test');
 const {
   computeSpeed,
   referenceUncertainty,
+  sessionErrorKmh,
+  MARKING_LONG_EDGE_PX,
   MAX_PLAUSIBLE_TRAVEL_M,
   PITCH_LENGTH_M,
 } = require('../src/physics/computeSpeed.ts');
@@ -216,4 +218,133 @@ test('travel warns against the chosen ruler and against what a delivery can do',
   // No lower bound — a short indoor throw off markers is legitimately short.
   assert.equal(travelWarning(3, 20.12, 'stumps'), null);
   assert.equal(travelWarning(2.5, 20.12, 'stumps'), null);
+});
+
+/**
+ * A delivery as it sits on disk: marked on the capped JPEG, then scaled up to
+ * the video's own pixels on the way to storage — points, pixelsPerMetre and all.
+ * `over` lands on the record, so a test can age it back to what v1 saved.
+ */
+const storedDelivery = (videoLongEdge = 1920, over = {}) => {
+  const marked = stumpsDelivery();
+  const factor = videoLongEdge / MARKING_LONG_EDGE_PX;
+  const scale = (p) => ({ x: p.x * factor, y: p.y * factor, frame: p.frame });
+  const result = computeSpeed(marked);
+  return {
+    id: 'stored',
+    createdAt: 0,
+    playerId: 'p',
+    videoPath: 'file:///clip.mp4',
+    framesDir: 'file:///frames',
+    fps: marked.fps,
+    frameCount: 180,
+    width: videoLongEdge,
+    height: Math.round((videoLongEdge * 9) / 16),
+    exposureBias: 0,
+    calibrationMethod: marked.calibrationMethod,
+    calA: scale(marked.calA),
+    calB: scale(marked.calB),
+    calRealMetres: marked.calRealMetres,
+    pixelsPerMetre: result.pixelsPerMetre * factor,
+    release: scale(marked.release),
+    bounce: scale(marked.bounce),
+    markConfidence: marked.markConfidence,
+    travelMetres: result.travelMetres,
+    speedKmh: result.speedKmh,
+    errorKmh: result.errorKmh,
+    uncertaintyModelVersion: 2,
+    releaseSpeedKmh: null,
+    releaseAngleDeg: null,
+    ...over,
+  };
+};
+
+test('a stored delivery recomputes to exactly the range it was marked with', () => {
+  const marked = stumpsDelivery();
+  const asMarked = computeSpeed(marked);
+
+  // The record holds the same four marks in the video's own pixels. Reading it
+  // back has to give the range the taps earned, not a tighter one — which only
+  // holds if sigma is scaled out of the stored space the same way the points
+  // were scaled into it. Every clip size has to agree on one answer.
+  for (const longEdge of [MARKING_LONG_EDGE_PX, 1920, 2160, 3840]) {
+    assert.equal(
+      sessionErrorKmh(storedDelivery(longEdge)),
+      asMarked.errorKmh,
+      `a ${longEdge} px clip reads back differently`,
+    );
+  }
+
+  // A clip smaller than the cap was never scaled at all, so it is read as marked.
+  assert.equal(sessionErrorKmh(storedDelivery(720)), asMarked.errorKmh);
+});
+
+test('a v1 record recomputes wider without its speed moving', () => {
+  // What v1 wrote: frame timing alone, treating the ruler and both markings as
+  // exact. It is stored as it was written, so the recomputation is what widens it.
+  const stored = storedDelivery(1920, {
+    uncertaintyModelVersion: 1,
+    errorKmh: Math.ceil(computeSpeed(stumpsDelivery()).speedKmh * (2 / 20)),
+  });
+
+  const recomputed = sessionErrorKmh(stored);
+  assert.ok(recomputed >= stored.errorKmh, 'the extra terms can only widen it');
+  assert.ok(Number.isInteger(recomputed), 'the range is whole km/h');
+  assert.equal(stored.uncertaintyModelVersion, 1, 'nothing on the record is touched');
+  assert.equal(stored.speedKmh, computeSpeed(stumpsDelivery()).speedKmh);
+
+  // Stumps 1720 px apart barely move the range — timing dominates there, which
+  // is why v1 got away with it. A v1 record scaled against a ball 18 px across
+  // in the stored frame is the reading that was wrong, and it widens hugely.
+  const ball = computeSpeed(ballDelivery());
+  const onBall = storedDelivery(1920, {
+    uncertaintyModelVersion: 1,
+    calibrationMethod: 'ball',
+    calRealMetres: 0.072,
+    calA: { x: 750, y: 450, frame: 4 },
+    calB: { x: 768, y: 450, frame: 4 },
+    errorKmh: Math.ceil(ball.speedKmh * (2 / 20)),
+    speedKmh: ball.speedKmh,
+  });
+  assert.ok(
+    sessionErrorKmh(onBall) > onBall.errorKmh * 4,
+    `a ball-scaled v1 reading has to own up, got ${sessionErrorKmh(onBall)} from ${onBall.errorKmh}`,
+  );
+});
+
+test('a stored session takes the defaults its record never recorded', () => {
+  const asMarked = computeSpeed(stumpsDelivery());
+
+  // markConfidence predates the question on a legacy record, and reads as seen.
+  const { markConfidence, ...legacy } = storedDelivery();
+  assert.equal(markConfidence, 'seen');
+  assert.equal(sessionErrorKmh(legacy), asMarked.errorKmh);
+
+  // A legacy markers session recorded no source, so it takes the widest of the
+  // three rather than the reading it would have got from a taped distance.
+  const markers = (over) =>
+    sessionErrorKmh(storedDelivery(1920, { calibrationMethod: 'markers', ...over }));
+  assert.ok(markers({}) > markers({ markerSource: 'measured' }));
+  assert.equal(markers({}), markers({ markerSource: 'paced-shoe-size' }));
+});
+
+test('a stored session with nothing to widen returns no range', () => {
+  // A guessed bounce has no speed for a range to sit either side of.
+  assert.equal(
+    sessionErrorKmh(storedDelivery(1920, { markConfidence: 'guessed', speedKmh: null, errorKmh: null })),
+    null,
+  );
+
+  // Degenerate marks give nothing rather than throwing — this runs on a read,
+  // and a bad record should not take the whole read down with it.
+  const same = { x: 10, y: 10, frame: 4 };
+  assert.equal(sessionErrorKmh(storedDelivery(1920, { calA: same, calB: same })), null);
+  assert.equal(sessionErrorKmh(storedDelivery(1920, { release: same, bounce: { ...same, frame: 9 } })), null);
+});
+
+test('an uncertain stored bounce recomputes wider than a seen one', () => {
+  assert.ok(
+    sessionErrorKmh(storedDelivery(1920, { markConfidence: 'uncertain' })) >
+      sessionErrorKmh(storedDelivery(1920, { markConfidence: 'seen' })),
+  );
 });
