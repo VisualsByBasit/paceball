@@ -115,6 +115,16 @@ export default function Index() {
           </>
         )}
 
+        {/* Outside both branches: restoring a purchase after a reinstall should
+            not wait on setting up a player first. */}
+        <Pressable
+          onPress={() => router.push('/settings')}
+          hitSlop={space.sm}
+          accessibilityRole="button"
+        >
+          <Text style={styles.settingsLink}>Settings</Text>
+        </Pressable>
+
         {/* THROWAWAY — goes with app/debug.tsx once History exists. */}
         {__DEV__ ? (
           <Pressable onPress={() => router.push('/debug')} hitSlop={space.sm}>
@@ -165,6 +175,12 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textAlign: 'center',
     marginTop: space.md,
+  },
+  settingsLink: {
+    ...type.body,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: space.lg,
   },
   debugLink: {
     ...type.caption,

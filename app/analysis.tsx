@@ -17,7 +17,9 @@ import { getSession } from '../src/data';
 import { CALIBRATION_SPECS, formatMetres, travelWarning } from '../src/physics/calibration';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
+import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
 import type { Point, Session } from '../src/types';
 
 /**
@@ -150,6 +152,7 @@ function Replay({
   onBack: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { unit } = useSettings();
   const { fps, release, bounce } = session;
   const max = Math.max(0, frames.length - 1);
 
@@ -330,14 +333,14 @@ function Replay({
         <View style={styles.statRow}>
           <Stat
             label="SPEED"
-            value={measured ? session.speedKmh!.toFixed(1) : '—'}
-            unit={measured ? 'km/h' : 'not measured'}
+            value={measured ? formatSpeed(session.speedKmh!, unit) : '—'}
+            unit={measured ? unitLabel(unit) : 'not measured'}
             hero
           />
           <Stat
             label="ERROR"
-            value={measured ? `± ${session.errorKmh}` : '—'}
-            unit={measured ? 'km/h' : ''}
+            value={measured ? `± ${errorIn(session.errorKmh!, unit)}` : '—'}
+            unit={measured ? unitLabel(unit) : ''}
           />
           <Stat
             label="TRAVEL"

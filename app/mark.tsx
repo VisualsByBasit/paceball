@@ -20,6 +20,7 @@ import {
   type CalibrationSpec,
   type MarkersDraft,
 } from '../src/physics/calibration';
+import { getSettings } from '../src/settings';
 import { CalibrationStep } from '../src/ui/CalibrationStep';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
@@ -154,7 +155,8 @@ export default function MarkScreen() {
 
   // The scale reference. Every reading is scaled by it, so it is chosen up
   // front rather than assumed to be a full pitch.
-  const [method, setMethod] = useState<CalibrationMethod>('stumps');
+  // Opens on the default from Settings; stumps unless the user chose otherwise.
+  const [method, setMethod] = useState<CalibrationMethod>(() => getSettings().calibrationMethod);
   const [markers, setMarkers] = useState<MarkersDraft>({
     source: 'measured',
     metres: '',

@@ -14,7 +14,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frameUri } from '../src/capture/useFrames';
 import { getTrend, listPlayers, listSessions } from '../src/data';
 import { CALIBRATION_SPECS } from '../src/physics/calibration';
+import { useSettings, type SpeedUnit } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+import { errorIn, formatSpeed, speedIn, unitLabel, unitSpoken } from '../src/ui/units';
 import type { Session, Trend, TrendPoint } from '../src/types';
 
 type Range = 'week' | 'month' | 'all';
@@ -28,7 +30,7 @@ const RANGES: { key: Range; label: string; empty: string }[] = [
 const PLOT_HEIGHT = 160;
 const Y_AXIS_WIDTH = 40;
 const DOT = 8;
-/** Clean km/h steps for the y-axis, smallest first. */
+/** Clean steps for the y-axis in the display unit, smallest first. */
 const TICK_STEPS = [2, 5, 10, 20, 50];
 const MAX_TICKS = 5;
 const THUMB_WIDTH = 72;
@@ -93,6 +95,9 @@ export default function HistoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
+  // Display only: the trend, the personal best and every range are compared in
+  // km/h as stored, and converted at the moment they are drawn.
+  const { unit } = useSettings();
 
   const [loaded, setLoaded] = useState<Loaded>({ status: 'loading' });
   const [reload, setReload] = useState(0);
@@ -260,7 +265,7 @@ export default function HistoryScreen() {
       ListHeaderComponent={
         <>
           {header}
-          <BestBlock state={allTime} best={best} session={bestSession} onOpen={open} />
+          <BestBlock state={allTime} best={best} session={bestSession} unit={unit} onOpen={open} />
 
           <View style={styles.ranges}>
             {RANGES.map((r) => {
@@ -284,6 +289,7 @@ export default function HistoryScreen() {
             range={range}
             state={chart}
             empty={RANGES.find((r) => r.key === range)!.empty}
+            unit={unit}
             onOpen={open}
           />
 
@@ -291,7 +297,7 @@ export default function HistoryScreen() {
         </>
       }
       renderItem={({ item }) => (
-        <SessionRow session={item} isBest={item.id === bestId} onOpen={open} />
+        <SessionRow session={item} isBest={item.id === bestId} unit={unit} onOpen={open} />
       )}
     />
   );
@@ -313,11 +319,13 @@ function BestBlock({
   state,
   best,
   session,
+  unit,
   onOpen,
 }: {
   state: TrendState;
   best: TrendPoint | null;
   session: Session | null;
+  unit: SpeedUnit;
   onOpen: (id: string) => void;
 }) {
   if (state.status === 'threw') {
@@ -352,7 +360,7 @@ function BestBlock({
       style={styles.best}
       onPress={() => onOpen(best.id)}
       accessibilityRole="button"
-      accessibilityLabel={`Personal best, average speed to bounce ${best.speedKmh.toFixed(1)} kilometres per hour, plus or minus ${best.errorKmh}. Open it.`}
+      accessibilityLabel={`Personal best, average speed to bounce ${formatSpeed(best.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(best.errorKmh, unit)}. Open it.`}
     >
       <Text style={styles.bestLabel}>PERSONAL BEST · AVG SPEED TO BOUNCE</Text>
       <Text
@@ -361,9 +369,11 @@ function BestBlock({
         adjustsFontSizeToFit
         allowFontScaling={false}
       >
-        {best.speedKmh.toFixed(1)}
+        {formatSpeed(best.speedKmh, unit)}
       </Text>
-      <Text style={styles.bestError}>± {best.errorKmh} km/h</Text>
+      <Text style={styles.bestError}>
+        ± {errorIn(best.errorKmh, unit)} {unitLabel(unit)}
+      </Text>
       <Text style={styles.bestMeta}>
         {formatWhen(best.t)}
         {session === null ? '' : ` · ${session.travelMetres.toFixed(2)} m travelled`}
@@ -376,11 +386,13 @@ function TrendCard({
   range,
   state,
   empty,
+  unit,
   onOpen,
 }: {
   range: Range;
   state: TrendState;
   empty: string;
+  unit: SpeedUnit;
   onOpen: (id: string) => void;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
@@ -406,12 +418,15 @@ function TrendCard({
           accessibilityLabel={`Open the delivery from ${formatWhen(p.t)}`}
         >
           <Text style={styles.readoutSpeed}>
-            {p.speedKmh.toFixed(1)}
-            <Text style={styles.readoutError}> ± {p.errorKmh} km/h</Text>
+            {formatSpeed(p.speedKmh, unit)}
+            <Text style={styles.readoutError}>
+              {' '}
+              ± {errorIn(p.errorKmh, unit)} {unitLabel(unit)}
+            </Text>
           </Text>
           <Text style={styles.readoutMeta}>{formatWhen(p.t)} · Open ›</Text>
         </Pressable>
-        <TrendPlot points={points} selected={sel} onSelect={setSelected} />
+        <TrendPlot points={points} selected={sel} unit={unit} onSelect={setSelected} />
       </>
     );
   }
@@ -429,12 +444,12 @@ function TrendCard({
 }
 
 /** A y-scale on clean steps that holds every point's whole error range. */
-function yScale(points: TrendPoint[]) {
+function yScale(points: TrendPoint[], unit: SpeedUnit) {
   let lo = Infinity;
   let hi = -Infinity;
   for (const p of points) {
-    lo = Math.min(lo, p.speedKmh - p.errorKmh);
-    hi = Math.max(hi, p.speedKmh + p.errorKmh);
+    lo = Math.min(lo, speedIn(p.speedKmh, unit) - errorIn(p.errorKmh, unit));
+    hi = Math.max(hi, speedIn(p.speedKmh, unit) + errorIn(p.errorKmh, unit));
   }
   lo = Math.max(0, lo);
   const span = Math.max(hi - lo, 1);
@@ -451,14 +466,16 @@ function yScale(points: TrendPoint[]) {
 function TrendPlot({
   points,
   selected,
+  unit,
   onSelect,
 }: {
   points: TrendPoint[];
   selected: number;
+  unit: SpeedUnit;
   onSelect: (index: number) => void;
 }) {
   const [width, setWidth] = useState(0);
-  const scale = useMemo(() => yScale(points), [points]);
+  const scale = useMemo(() => yScale(points, unit), [points, unit]);
 
   const plotWidth = Math.max(0, width - Y_AXIS_WIDTH);
   const slot = points.length > 0 ? plotWidth / points.length : 0;
@@ -498,8 +515,10 @@ function TrendPlot({
           />
 
           {points.map((p, i) => {
-            const top = yOf(p.speedKmh + p.errorKmh);
-            const bottom = yOf(Math.max(scale.lo, p.speedKmh - p.errorKmh));
+            const speed = speedIn(p.speedKmh, unit);
+            const error = errorIn(p.errorKmh, unit);
+            const top = yOf(speed + error);
+            const bottom = yOf(Math.max(scale.lo, speed - error));
             const on = i === selected;
             return (
               <View key={p.id} pointerEvents="none">
@@ -515,7 +534,7 @@ function TrendPlot({
                     on && styles.dotOn,
                     {
                       left: xOf(i) - DOT / 2 - stroke.medium,
-                      top: yOf(p.speedKmh) - DOT / 2 - stroke.medium,
+                      top: yOf(speed) - DOT / 2 - stroke.medium,
                     },
                   ]}
                 />
@@ -543,10 +562,12 @@ function TrendPlot({
 function SessionRow({
   session,
   isBest,
+  unit,
   onOpen,
 }: {
   session: Session;
   isBest: boolean;
+  unit: SpeedUnit;
   onOpen: (id: string) => void;
 }) {
   const uri = useMemo(() => thumbFor(session), [session]);
@@ -562,7 +583,7 @@ function SessionRow({
       accessibilityLabel={
         session.speedKmh === null
           ? `${formatWhen(session.createdAt)}, no speed — the bounce was not seen`
-          : `${formatWhen(session.createdAt)}, ${session.speedKmh.toFixed(1)} kilometres per hour, plus or minus ${session.errorKmh}${isBest ? ', personal best' : ''}`
+          : `${formatWhen(session.createdAt)}, ${formatSpeed(session.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(session.errorKmh!, unit)}${isBest ? ', personal best' : ''}`
       }
     >
       <Thumb uri={uri} />
@@ -572,8 +593,11 @@ function SessionRow({
             <Text style={styles.rowNoSpeed}>No speed · bounce not seen</Text>
           ) : (
             <>
-              <Text style={styles.rowSpeed}>{session.speedKmh.toFixed(1)}</Text>
-              <Text style={styles.rowError}> ± {session.errorKmh} km/h</Text>
+              <Text style={styles.rowSpeed}>{formatSpeed(session.speedKmh, unit)}</Text>
+              <Text style={styles.rowError}>
+                {' '}
+                ± {errorIn(session.errorKmh!, unit)} {unitLabel(unit)}
+              </Text>
             </>
           )}
           {isBest ? <Text style={styles.rowBest}>PB</Text> : null}

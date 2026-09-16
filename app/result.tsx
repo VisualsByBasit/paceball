@@ -21,7 +21,9 @@ import {
   travelWarning,
 } from '../src/physics/calibration';
 import { computeSpeed, type SpeedResult } from '../src/physics/computeSpeed';
+import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
 import type { CalibrationMethod, MarkConfidence, MarkerSource, Point } from '../src/types';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -112,6 +114,9 @@ export default function ResultScreen() {
     });
     return () => subscription.remove();
   }, [savedId, router]));
+
+  // Display only. The reading is computed and saved in km/h whatever this says.
+  const { unit } = useSettings();
 
   const videoPath = first(params.videoPath);
   const framesDir = first(params.framesDir);
@@ -380,10 +385,12 @@ export default function ResultScreen() {
             numberOfLines={1}
             adjustsFontSizeToFit
           >
-            {result.speedKmh.toFixed(1)}
+            {formatSpeed(result.speedKmh, unit)}
           </Text>
-          <Text style={styles.heroUnit}>km / h</Text>
-          <Text style={styles.heroError}>± {result.errorKmh} km/h</Text>
+          <Text style={styles.heroUnit}>{unitLabel(unit)}</Text>
+          <Text style={styles.heroError}>
+            ± {errorIn(result.errorKmh, unit)} {unitLabel(unit)}
+          </Text>
         </View>
       )}
 

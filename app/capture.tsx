@@ -16,6 +16,7 @@ import {
 } from '../src/capture/useCapture';
 import { Screen } from '../src/ui/Screen';
 import { captureExposure } from '../src/capture/exposure';
+import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
 const TIPS = [
@@ -35,7 +36,8 @@ export default function CaptureScreen() {
   const insets = useSafeAreaInsets();
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
-  const exposure = captureExposure(device);
+  const { exposureBias } = useSettings();
+  const exposure = captureExposure(device, exposureBias);
   const [sessionReady, setSessionReady] = useState(false);
   const [showTips, setShowTips] = useState(true);
 
