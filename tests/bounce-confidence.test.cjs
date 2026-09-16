@@ -117,7 +117,7 @@ test('the exporter refuses a delivery that has no measured speed', () => {
   );
 });
 
-test('comparing deliveries omits a speed that was never measured', () => {
+test('comparing deliveries omits everything a guessed bounce never measured', () => {
   const { compareSessions } = require(path.join(__dirname, '..', 'src', 'data', 'comparison.ts'));
 
   const labels = (a, b) => compareSessions(a, b).map((d) => d.label);
@@ -125,5 +125,9 @@ test('comparing deliveries omits a speed that was never measured', () => {
   // No fabricated zero-speed delta, the same way a missing angle is omitted.
   assert.equal(labels(measured, guessed).includes('Speed'), false);
   assert.equal(labels(guessed, measured).includes('Speed'), false);
-  assert.equal(labels(measured, guessed).includes('Distance'), true);
+  // The travel comes off the same mark as the speed, so it goes with it —
+  // either way round, and whichever side was the one nobody saw.
+  assert.equal(labels(measured, guessed).includes('Distance'), false);
+  assert.equal(labels(guessed, measured).includes('Distance'), false);
+  assert.deepEqual(labels(guessed, guessed), ['Angle']);
 });

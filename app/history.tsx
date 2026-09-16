@@ -550,6 +550,10 @@ function SessionRow({
   onOpen: (id: string) => void;
 }) {
   const uri = useMemo(() => thumbFor(session), [session]);
+  // Travel is measured from the bounce mark, exactly as the speed is, so a
+  // guessed bounce leaves it worth no more than the speed was. It stays on the
+  // record; this row just does not read it out.
+  const measured = session.speedKmh !== null;
   return (
     <Pressable
       style={styles.row}
@@ -575,7 +579,8 @@ function SessionRow({
           {isBest ? <Text style={styles.rowBest}>PB</Text> : null}
         </View>
         <Text style={styles.rowMeta} numberOfLines={1}>
-          {formatWhen(session.createdAt)} · {session.travelMetres.toFixed(2)} m ·{' '}
+          {formatWhen(session.createdAt)}
+          {measured ? ` · ${session.travelMetres.toFixed(2)} m` : ''} ·{' '}
           {CALIBRATION_SPECS[session.calibrationMethod].short}
         </Text>
       </View>
