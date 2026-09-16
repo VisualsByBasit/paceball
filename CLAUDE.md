@@ -92,7 +92,16 @@ corrupt one.
 - fps is a float read per-file (59.8–60.05). Never hardcode 60.
 - Minimum 3-second recordings. Shorter clips give unreliable fps.
 - Live capture only. No video import.
-- Everything on-device. No backend, no accounts, no upload.
+- Paceball never uploads videos or measurements. No backend of our own,
+  no accounts; measurement runs entirely on the phone. That specific
+  promise is the claim, so never weaken it to "offline measurement" and
+  never widen it to "nothing leaves the device". What can leave is
+  named wherever the promise is made, and only with consent: crash
+  reports to Sentry when opted in (no videos, names or speeds), the
+  purchase through Google Play and RevenueCat when subscribing or
+  restoring, and a card the user chooses to share. Android auto-backup is on, so don't
+  claim videos or measurements "never leave the phone" either — the OS
+  can copy app data to the user's own backup.
 - Free exports carry the Paceball watermark. That is the growth loop.
 
 ## Ownership

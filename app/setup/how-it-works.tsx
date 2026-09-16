@@ -30,7 +30,7 @@ const HONESTY = [
   'You get the average speed to the bounce — not release speed, which is 5–8% quicker off the hand.',
   'Every reading shows an estimated timing error range. It varies with flight time and frame rate; calibration and marking can add further error.',
   'No spin rate, no revolutions. They cannot be measured from 60 fps video, so they are not shown.',
-  'Everything stays on this phone. No account, no upload.',
+  'Paceball never uploads your videos or measurements, and there is no account. What can leave the phone, only if you choose it: crash reports if you turn them on, which carry no videos, names or speeds; your purchase, through Google Play and RevenueCat, if you subscribe or restore; and any card you share.',
 ];
 
 /**

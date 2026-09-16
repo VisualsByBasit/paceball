@@ -9,12 +9,14 @@ import { colors, radius, space, stroke, type } from '../src/ui/tokens';
 
 /**
  * Every number here is real: the pitch length the app calibrates against, the
- * frame timing and local processing.
+ * error range on every reading, and how many videos or speeds Paceball sends —
+ * none. That is narrower than saying nothing is sent: opted-in crash reports and
+ * purchases do reach a server, and neither carries a video or a speed.
  */
 const FACTS = [
   { value: String(PITCH_LENGTH_M), label: 'M PITCH\nAS RULER' },
   { value: '±', label: 'ERROR RANGE\nPER READING' },
-  { value: '0', label: 'UPLOADS\nEVER' },
+  { value: '0', label: 'VIDEOS OR\nSPEEDS SENT' },
 ];
 
 export default function Index() {

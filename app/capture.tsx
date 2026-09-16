@@ -81,8 +81,8 @@ export default function CaptureScreen() {
       <Screen style={styles.center}>
         <Text style={styles.h2}>Camera access needed</Text>
         <Text style={styles.body}>
-          Paceball measures from video recorded on this phone. Nothing leaves the
-          device.
+          Paceball measures from video recorded on this phone, and never uploads
+          your videos or measurements.
         </Text>
         <Pressable style={styles.primaryButton} onPress={requestPermission}>
           <Text style={styles.primaryButtonText}>Grant access</Text>
