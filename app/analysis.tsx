@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -179,6 +179,17 @@ function Replay({
     [max]
   );
 
+  /**
+   * Which side owns `current`. While the clip runs the video owns it and the
+   * frame view follows its playhead; the moment anything lands on a frame, the
+   * frame state owns it and the player's time updates are ignored.
+   *
+   * Without this a step seeked the video, and the time update the seek itself
+   * provoked arrived a moment later carrying the old time and put the frame
+   * straight back — which is why +1 advanced and then reverted.
+   */
+  const videoOwnsFrame = useRef(false);
+
   // Sized off a real frame, as on Mark — the JPEGs are capped on the long
   // edge, so they are not the video's own resolution.
   const sample = useMemo(() => frames.find((f) => f !== null) ?? null, [frames]);
@@ -207,15 +218,21 @@ function Replay({
 
   useEventListener(player, 'playingChange', ({ isPlaying }) => {
     setPlaying(isPlaying);
-    // Stopping hands the frame view back the frame nearest where the video
-    // actually reached, so stepping carries on from what was just on screen.
-    // Converted with the clip's own fps, never an assumed 60.
-    if (!isPlaying) setCurrent(clamp(Math.round(player.currentTime * fps)));
+    // The one write on the way out: stopping hands the frame view back the
+    // frame nearest where the video actually reached, so playing and then
+    // stepping carries on from what was on screen. Converted with the clip's
+    // own fps, never an assumed 60. A pause that a step or a jump asked for has
+    // already taken ownership, so it takes no handoff and keeps its own frame.
+    if (isPlaying || !videoOwnsFrame.current) return;
+    videoOwnsFrame.current = false;
+    setCurrent(clamp(Math.round(player.currentTime * fps)));
   });
 
   // Carries the scrubber playhead during playback. The frame <Image> is not
-  // mounted while the video is, so this costs no decode.
+  // mounted while the video is, so this costs no decode. Silent while paused —
+  // the frame state is the truth then, and a seek's own echo must not undo it.
   useEventListener(player, 'timeUpdate', ({ currentTime }) => {
+    if (!videoOwnsFrame.current) return;
     setCurrent(clamp(Math.round(currentTime * fps)));
   });
 
@@ -227,12 +244,21 @@ function Replay({
     );
   });
 
+  /**
+   * Land on a frame — stepping, scrubbing, and both jumps all come through
+   * here. Pause, take ownership, set the frame, then put the player's playhead
+   * on the same frame so Play picks up from what is on screen. The time update
+   * that seek provokes arrives after all of it and is ignored.
+   */
   const seek = useCallback(
     (frame: number) => {
+      videoOwnsFrame.current = false;
       player.pause();
-      setCurrent(clamp(frame));
+      const next = clamp(frame);
+      setCurrent(next);
+      player.currentTime = next / fps;
     },
-    [player, clamp]
+    [player, clamp, fps]
   );
 
   const togglePlay = useCallback(() => {
@@ -241,8 +267,10 @@ function Replay({
       return;
     }
     // Picks up from the frame on screen, and starts over if it is already at
-    // the end. Setting currentTime seeks the player.
+    // the end. Setting currentTime seeks the player. Ownership passes back to
+    // the video only once it is about to run.
     player.currentTime = (current >= max ? 0 : current) / fps;
+    videoOwnsFrame.current = true;
     player.play();
   }, [playing, player, current, max, fps]);
 
