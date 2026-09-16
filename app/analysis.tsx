@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listFrames } from '../src/capture/useFrames';
 import { getSession } from '../src/data';
 import { CALIBRATION_SPECS, formatMetres, travelWarning } from '../src/physics/calibration';
+import { measurementState } from '../src/physics/measurementState';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { useSettings } from '../src/settings';
@@ -306,9 +307,11 @@ function Replay({
   const frameDelta = bounce.frame - release.frame;
   const currentUri = frames[current] ?? null;
   const sinceRelease = (current - release.frame) / fps;
-  // Travel, frame delta and flight time are all read off the bounce mark, so a
-  // guessed bounce leaves them worth exactly what the speed is worth.
-  const measured = session.speedKmh !== null;
+  // The error range is recomputed from the marks, never read off the record — a
+  // v1 record's stored range is timing alone. Travel, frame delta and flight time
+  // come off the same marks, so they are withheld whenever the speed is.
+  const state = useMemo(() => measurementState(session), [session]);
+  const measured = state.kind === 'measured';
 
   // The same guard as Result, against the ruler this delivery actually used.
   const warning = travelWarning(
@@ -333,13 +336,13 @@ function Replay({
         <View style={styles.statRow}>
           <Stat
             label="SPEED"
-            value={measured ? formatSpeed(session.speedKmh!, unit) : '—'}
+            value={state.kind === 'measured' ? formatSpeed(state.speedKmh, unit) : '—'}
             unit={measured ? unitLabel(unit) : 'not measured'}
             hero
           />
           <Stat
             label="ERROR"
-            value={measured ? `± ${errorIn(session.errorKmh!, unit)}` : '—'}
+            value={state.kind === 'measured' ? `± ${errorIn(state.errorKmh, unit)}` : '—'}
             unit={measured ? unitLabel(unit) : ''}
           />
           <Stat
@@ -356,7 +359,16 @@ function Replay({
             unit={measured ? 'frames' : ''}
           />
         </View>
-        {measured ? null : (
+        {state.kind === 'unusable' ? (
+          <Text style={styles.note}>
+            This delivery can't be measured from what was saved. Its marks don't
+            hold enough to put an error range on a speed, and a speed without its
+            range is not a reading — so no speed, flight time, frame delta or
+            distance travelled is shown. The clip and the marks are kept, and the
+            delivery is left out of your trend.
+          </Text>
+        ) : null}
+        {state.kind === 'not-seen' ? (
           <Text style={styles.note}>
             The bounce was marked without the ball being visible in that frame, so
             this delivery carries no speed — and no flight time, frame delta or
@@ -364,7 +376,7 @@ function Replay({
             mark. The clip and the marks are kept, and everything stays saved;
             none of it is invented, and the delivery stays out of your trend.
           </Text>
-        )}
+        ) : null}
         {/* The warning quotes the travel figure, so it would leak a number this
             screen is deliberately withholding. */}
         {warning && measured ? <Text style={styles.note}>{warning.message}</Text> : null}

@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frameUri } from '../src/capture/useFrames';
 import { getTrend, listPlayers, listSessions } from '../src/data';
 import { CALIBRATION_SPECS } from '../src/physics/calibration';
+import { measurementState, type MeasurementState } from '../src/physics/measurementState';
 import { useSettings, type SpeedUnit } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, speedIn, unitLabel, unitSpoken } from '../src/ui/units';
@@ -69,6 +70,34 @@ async function loadTrend(playerId: string, range: Range): Promise<TrendState> {
     console.error(`[History] getTrend('${range}') threw`, e);
     return { status: 'threw', message: describe(e) };
   }
+}
+
+/**
+ * The trend as it can honestly be drawn. Each point is read through its own
+ * delivery: only a measured one is kept, and it carries the recomputed error
+ * range rather than the one getTrend copied off the record, which on a v1
+ * delivery is timing alone. A point whose delivery is not in the list cannot be
+ * checked, so it is left off rather than drawn on trust. Best and average follow
+ * the points that remain.
+ */
+function readTrend(state: TrendState, states: Map<string, MeasurementState>): TrendState {
+  if (state.status !== 'ready') return state;
+  const points: TrendPoint[] = [];
+  for (const point of state.trend.points) {
+    const reading = states.get(point.id);
+    if (reading?.kind !== 'measured') continue;
+    points.push({ ...point, speedKmh: reading.speedKmh, errorKmh: reading.errorKmh });
+  }
+  const count = points.length;
+  return {
+    status: 'ready',
+    trend: {
+      points,
+      count,
+      best: count === 0 ? null : Math.max(...points.map((p) => p.speedKmh)),
+      avg: count === 0 ? null : points.reduce((total, p) => total + p.speedKmh, 0) / count,
+    },
+  };
 }
 
 function formatDay(t: number): string {
@@ -152,21 +181,33 @@ export default function HistoryScreen() {
     };
   }, [playerId, sessions, range]);
 
+  // Every delivery read once, and every number below comes from here.
+  const states = useMemo(
+    () => new Map((sessions ?? []).map((s) => [s.id, measurementState(s)] as const)),
+    [sessions]
+  );
+
+  const allTimeRead = useMemo(() => readTrend(allTime, states), [allTime, states]);
+  const rangedRead = useMemo(
+    () => (ranged ? { range: ranged.range, state: readTrend(ranged.state, states) } : null),
+    [ranged, states]
+  );
+
   const chart: TrendState =
     range === 'all'
-      ? allTime
-      : ranged && ranged.range === range
-        ? ranged.state
+      ? allTimeRead
+      : rangedRead && rangedRead.range === range
+        ? rangedRead.state
         : { status: 'loading' };
 
   // The fastest delivery, and of equals the most recent — points are in time
   // order. A trend with no best has nothing to show, which is not a zero.
   const best = useMemo(() => {
-    if (allTime.status !== 'ready' || allTime.trend.best === null) return null;
-    const { points } = allTime.trend;
+    if (allTimeRead.status !== 'ready' || allTimeRead.trend.best === null) return null;
+    const { points } = allTimeRead.trend;
     if (points.length === 0) return null;
     return points.reduce((b, p) => (p.speedKmh >= b.speedKmh ? p : b));
-  }, [allTime]);
+  }, [allTimeRead]);
 
   // The trend carries no travel distance, so the best block reads that one
   // field off the delivery the point already names.
@@ -265,7 +306,7 @@ export default function HistoryScreen() {
       ListHeaderComponent={
         <>
           {header}
-          <BestBlock state={allTime} best={best} session={bestSession} unit={unit} onOpen={open} />
+          <BestBlock state={allTimeRead} best={best} session={bestSession} unit={unit} onOpen={open} />
 
           <View style={styles.ranges}>
             {RANGES.map((r) => {
@@ -297,7 +338,13 @@ export default function HistoryScreen() {
         </>
       }
       renderItem={({ item }) => (
-        <SessionRow session={item} isBest={item.id === bestId} unit={unit} onOpen={open} />
+        <SessionRow
+          session={item}
+          reading={states.get(item.id) ?? measurementState(item)}
+          isBest={item.id === bestId}
+          unit={unit}
+          onOpen={open}
+        />
       )}
     />
   );
@@ -561,44 +608,51 @@ function TrendPlot({
 
 function SessionRow({
   session,
+  reading,
   isBest,
   unit,
   onOpen,
 }: {
   session: Session;
+  reading: MeasurementState;
   isBest: boolean;
   unit: SpeedUnit;
   onOpen: (id: string) => void;
 }) {
   const uri = useMemo(() => thumbFor(session), [session]);
-  // Travel is measured from the bounce mark, exactly as the speed is, so a
-  // guessed bounce leaves it worth no more than the speed was. It stays on the
-  // record; this row just does not read it out.
-  const measured = session.speedKmh !== null;
+  // Travel comes off the same marks as the speed, so it is read out only when
+  // the speed is. It stays on the record either way.
+  const measured = reading.kind === 'measured';
   return (
     <Pressable
       style={styles.row}
       onPress={() => onOpen(session.id)}
       accessibilityRole="button"
       accessibilityLabel={
-        session.speedKmh === null
-          ? `${formatWhen(session.createdAt)}, no speed — the bounce was not seen`
-          : `${formatWhen(session.createdAt)}, ${formatSpeed(session.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(session.errorKmh!, unit)}${isBest ? ', personal best' : ''}`
+        reading.kind === 'measured'
+          ? `${formatWhen(session.createdAt)}, ${formatSpeed(reading.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(reading.errorKmh, unit)}${isBest ? ', personal best' : ''}`
+          : reading.kind === 'not-seen'
+            ? `${formatWhen(session.createdAt)}, no speed — the bounce was not seen`
+            : `${formatWhen(session.createdAt)}, no speed — it can't be measured from what was saved`
       }
     >
       <Thumb uri={uri} />
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
-          {session.speedKmh === null ? (
-            <Text style={styles.rowNoSpeed}>No speed · bounce not seen</Text>
-          ) : (
+          {reading.kind === 'measured' ? (
             <>
-              <Text style={styles.rowSpeed}>{formatSpeed(session.speedKmh, unit)}</Text>
+              <Text style={styles.rowSpeed}>{formatSpeed(reading.speedKmh, unit)}</Text>
               <Text style={styles.rowError}>
                 {' '}
-                ± {errorIn(session.errorKmh!, unit)} {unitLabel(unit)}
+                ± {errorIn(reading.errorKmh, unit)} {unitLabel(unit)}
               </Text>
             </>
+          ) : reading.kind === 'not-seen' ? (
+            <Text style={styles.rowNoSpeed}>No speed · bounce not seen</Text>
+          ) : (
+            <Text style={styles.rowNoSpeed} numberOfLines={1}>
+              No speed · can't be measured from what was saved
+            </Text>
           )}
           {isBest ? <Text style={styles.rowBest}>PB</Text> : null}
         </View>

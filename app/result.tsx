@@ -20,7 +20,12 @@ import {
   isCalibrationMethod,
   travelWarning,
 } from '../src/physics/calibration';
-import { computeSpeed, type SpeedResult } from '../src/physics/computeSpeed';
+import {
+  computeSpeed,
+  MARKING_LONG_EDGE_PX,
+  type SpeedResult,
+} from '../src/physics/computeSpeed';
+import { measurementState } from '../src/physics/measurementState';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
@@ -328,9 +333,26 @@ export default function ResultScreen() {
     );
   }
 
+  // Read the same way History and Analysis read the saved delivery, so the range
+  // shown here is the range those screens will show. Nothing is saved yet, so the
+  // points are still in the extracted frame's own space, where the marking scale
+  // is 1 by definition — the frame's size stands in if it did not survive.
+  const state = measurementState({
+    speedKmh: result.speedKmh,
+    markConfidence: markConfidence!,
+    calA: calA!,
+    calB: calB!,
+    release: release!,
+    bounce: bounce!,
+    width: imageWidth ?? MARKING_LONG_EDGE_PX,
+    height: imageHeight ?? MARKING_LONG_EDGE_PX,
+    calibrationMethod: calibrationMethod!,
+    markerSource: markerSource ?? undefined,
+  });
+
   // Everything downstream of the bounce mark — the flight time, the frame
   // delta and the distance travelled — is only worth as much as that mark.
-  const measured = result.speedKmh !== null;
+  const measured = state.kind === 'measured';
 
   // Measured against the ruler that was actually chosen. Warning on the pitch
   // length alone never fired for markers, ball or height.
@@ -354,9 +376,25 @@ export default function ResultScreen() {
         )}
       </View>
 
-      {result.speedKmh === null || result.errorKmh === null ? (
+      {state.kind === 'unusable' ? (
         <View style={styles.unmeasured}>
-          <Text style={styles.unmeasuredTitle}>This delivery cannot be measured</Text>
+          <Text style={styles.unmeasuredTitle}>This delivery can't be measured from these marks</Text>
+          <Text style={styles.unmeasuredBody}>
+            The marks don't hold enough to put an error range on the speed, and a
+            speed without its range is not a reading. Paceball will not show one.
+          </Text>
+          <Pressable
+            style={styles.remarkButton}
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back and re-mark the delivery"
+          >
+            <Text style={styles.remarkButtonText}>Re-mark the delivery</Text>
+          </Pressable>
+        </View>
+      ) : state.kind === 'not-seen' ? (
+        <View style={styles.unmeasured}>
+          <Text style={styles.unmeasuredTitle}>The bounce wasn't seen</Text>
           <Text style={styles.unmeasuredBody}>
             You marked the bounce without being able to see the ball in that frame.
             The flight time is read from that frame, so any speed taken from it
@@ -385,11 +423,11 @@ export default function ResultScreen() {
             numberOfLines={1}
             adjustsFontSizeToFit
           >
-            {formatSpeed(result.speedKmh, unit)}
+            {formatSpeed(state.speedKmh, unit)}
           </Text>
           <Text style={styles.heroUnit}>{unitLabel(unit)}</Text>
           <Text style={styles.heroError}>
-            ± {errorIn(result.errorKmh, unit)} {unitLabel(unit)}
+            ± {errorIn(state.errorKmh, unit)} {unitLabel(unit)}
           </Text>
         </View>
       )}
@@ -440,10 +478,9 @@ export default function ResultScreen() {
             <Row label="Ball travelled" value={`${result.travelMetres.toFixed(2)} m`} />
           ) : (
             <Text style={styles.workingFootnote}>
-              Frame delta, flight time and distance travelled are not shown. Each
-              is measured from the bounce mark, and that frame was guessed — they
-              would be as invented as the speed. All three are still saved with
-              the delivery.
+              {state.kind === 'not-seen'
+                ? 'Frame delta, flight time and distance travelled are not shown. Each is measured from the bounce mark, and that frame was guessed — they would be as invented as the speed. All three are still saved with the delivery.'
+                : 'Frame delta, flight time and distance travelled are not shown. They come from the same marks that cannot produce a reading, so they are worth no more than the speed would be.'}
             </Text>
           )}
           <Text style={styles.workingFootnote}>
@@ -455,7 +492,7 @@ export default function ResultScreen() {
 
       <View style={styles.footer}>
         {/* Nothing to put on a share card without a measured speed. */}
-        {savedId && result.speedKmh !== null ? <SessionActions sessionId={savedId} /> : null}
+        {savedId && measured ? <SessionActions sessionId={savedId} /> : null}
         {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
 
         <Pressable

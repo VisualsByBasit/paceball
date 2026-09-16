@@ -348,3 +348,70 @@ test('an uncertain stored bounce recomputes wider than a seen one', () => {
       sessionErrorKmh(storedDelivery(1920, { markConfidence: 'seen' })),
   );
 });
+
+const { measurementState } = require('../src/physics/measurementState.ts');
+
+test('a measured delivery carries the recomputed range, never the stored one', () => {
+  const asMarked = computeSpeed(stumpsDelivery());
+  // A v1 record whose stored range is timing alone, and deliberately wrong here
+  // so any read of it shows up.
+  const stored = storedDelivery(1920, { uncertaintyModelVersion: 1, errorKmh: 1 });
+  assert.deepEqual(measurementState(stored), {
+    kind: 'measured',
+    speedKmh: stored.speedKmh,
+    errorKmh: sessionErrorKmh(stored),
+  });
+  assert.notEqual(measurementState(stored).errorKmh, 1);
+  assert.equal(measurementState(stored).errorKmh, asMarked.errorKmh);
+});
+
+test('Result, before saving, reads the same range the saved delivery will', () => {
+  // Points still in the extracted frame's space, as Result has them.
+  const marked = stumpsDelivery();
+  const result = computeSpeed(marked);
+  const onResult = measurementState({
+    ...marked,
+    speedKmh: result.speedKmh,
+    width: MARKING_LONG_EDGE_PX,
+    height: 720,
+  });
+  assert.equal(onResult.kind, 'measured');
+  assert.equal(onResult.errorKmh, result.errorKmh);
+  assert.equal(onResult.errorKmh, measurementState(storedDelivery(3840)).errorKmh);
+});
+
+test('a guessed bounce is not-seen, and carries no number of any kind', () => {
+  const state = measurementState(
+    storedDelivery(1920, { markConfidence: 'guessed', speedKmh: null, errorKmh: null }),
+  );
+  assert.deepEqual(state, { kind: 'not-seen' });
+  // Even if a speed somehow came with it: the bounce was still never seen.
+  assert.deepEqual(measurementState(storedDelivery(1920, { markConfidence: 'guessed' })), {
+    kind: 'not-seen',
+  });
+});
+
+test('a stored speed with no recomputable range is unusable, with no fallback', () => {
+  const same = { x: 10, y: 10, frame: 4 };
+  const noScale = storedDelivery(1920, { calA: same, calB: same, errorKmh: 3 });
+  assert.equal(noScale.speedKmh > 0, true, 'a speed is on the record');
+  assert.equal(sessionErrorKmh(noScale), null);
+  // Not the stored ± 3, and no speed either — only the kind.
+  assert.deepEqual(measurementState(noScale), { kind: 'unusable' });
+
+  assert.deepEqual(
+    measurementState(storedDelivery(1920, { release: same, bounce: { ...same, frame: 9 } })),
+    { kind: 'unusable' },
+  );
+  // A seen bounce with no speed at all is not a guessed one; it is unusable.
+  assert.deepEqual(measurementState(storedDelivery(1920, { speedKmh: null, errorKmh: null })), {
+    kind: 'unusable',
+  });
+});
+
+test('measurementState stays free of the data layer', () => {
+  const physics = ['computeSpeed.ts', 'measurementState.ts'].map((f) =>
+    require('node:fs').readFileSync(require('node:path').join(__dirname, '../src/physics', f), 'utf8'),
+  );
+  for (const source of physics) assert.doesNotMatch(source, /from ['"][./]*\/data/);
+});

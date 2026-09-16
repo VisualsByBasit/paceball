@@ -233,6 +233,25 @@ export function computeSpeed({
 }
 
 /**
+ * What the error range is recomputed from: the reading, the four marks and the
+ * space they live in, and the reference. A whole `Session` is one; so is a
+ * delivery still on Result, before anything has been saved.
+ */
+export type MeasurableSession = Pick<
+  Session,
+  | 'speedKmh'
+  | 'markConfidence'
+  | 'calA'
+  | 'calB'
+  | 'release'
+  | 'bounce'
+  | 'width'
+  | 'height'
+  | 'calibrationMethod'
+  | 'markerSource'
+>;
+
+/**
  * How far a stored session's points were scaled up on the way to disk.
  *
  * Points are marked on the extracted JPEG and saved in the video's own pixels,
@@ -273,7 +292,7 @@ function markingScale(width: number, height: number): number {
  * Pure, and free of the data layer by design: src/data imports this, never the
  * other way round.
  */
-export function sessionErrorKmh(session: Session): number | null {
+export function sessionErrorKmh(session: MeasurableSession): number | null {
   const { speedKmh } = session;
   if (speedKmh === null || !Number.isFinite(speedKmh)) return null;
 
