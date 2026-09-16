@@ -1,6 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { ImageFormat, Skia, type SkFont } from '@shopify/react-native-skia';
 import type { Session } from '../types';
+import { measurementState } from '../physics/measurementState';
 import { colors } from '../ui/tokens';
 import { isSession } from '../data/validation';
 import { drawCard } from './drawCard';
@@ -9,6 +10,9 @@ import { EXPORT_HEIGHT, EXPORT_WIDTH, frameFileName } from './layout';
 
 export async function renderSessionImage(session: Session, watermark: boolean) {
   if (!isSession(session)) throw new Error('Cannot export an invalid saved delivery.');
+  if (measurementState(session).kind !== 'measured') {
+    throw new Error('This delivery has no measured speed to export.');
+  }
   const frames = new Directory(session.framesDir);
   const relative = Paths.relative(Paths.document, frames);
   if (!session.framesDir.startsWith('file://') || !relative || relative === '..' ||

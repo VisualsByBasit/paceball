@@ -110,6 +110,12 @@ test('unusable font fails before writing a blank PNG, disposes it and preserves 
   assert.deepEqual([...files.keys()], [`${session.framesDir}/frame_00042.jpg`]);
   assert.deepEqual(saved, []);
 });
+test('unusable marks are rejected before decoding a saved frame', async () => {
+  const session = input();
+  session.calB = { ...session.calA };
+  await assert.rejects(renderSessionImage(session, true), /no measured speed/);
+  assert.deepEqual([...files.keys()], [`${session.framesDir}/frame_00042.jpg`]);
+});
 test('missing, corrupt, remote and wrongly oriented source frames fail explicitly', async () => {
   const session = input();
   files.clear();

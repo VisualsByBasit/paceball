@@ -129,6 +129,13 @@ const dataModulePath = require.resolve(
 const { createMockSession } = require(
   path.join(__dirname, '..', 'src', 'data', 'mockData.ts'),
 );
+const { measurementState } = require(
+  path.join(__dirname, '..', 'src', 'physics', 'measurementState.ts'),
+);
+const expectedRead = (session) => {
+  const reading = measurementState(session);
+  return reading.kind === 'measured' ? { ...session, errorKmh: reading.errorKmh } : session;
+};
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const sessionInput = (
@@ -173,9 +180,9 @@ test('direct session reads isolate copies, observe changes, and distinguish miss
   const saved = await data.saveSession(sessionInput('player-a'));
   const copy = await data.getSession(saved.id);
   copy.release.x = 0; copy.errorKmh = 999;
-  assert.deepEqual(await data.getSession(saved.id), saved);
+  assert.deepEqual(await data.getSession(saved.id), expectedRead(saved));
   storageValues.set(`sessions:${saved.id}`, JSON.stringify({ ...saved, errorKmh: 17 }));
-  assert.equal((await data.getSession(saved.id)).errorKmh, 17);
+  assert.equal((await data.getSession(saved.id)).errorKmh, measurementState(saved).errorKmh);
   storageValues.set(`sessions:${saved.id}`, '{broken');
   await assert.rejects(data.getSession(saved.id), /invalid/);
   storageValues.set(`sessions:${saved.id}`, JSON.stringify({ ...saved, id: 'wrong' }));
@@ -184,17 +191,21 @@ test('direct session reads isolate copies, observe changes, and distinguish miss
   assert.equal(await data.getSession(saved.id), null);
 });
 
-test('legacy version defaults on read without rewriting storage or claiming combined uncertainty', async () => {
+test('legacy version keeps stored bytes while every read exposes the combined range', async () => {
   const saved = await data.saveSession(sessionInput('player-a'));
   const legacy = { ...saved }; delete legacy.uncertaintyModelVersion;
   storageValues.set(`sessions:${saved.id}`, JSON.stringify(legacy));
   const before = [...storageValues];
   const read = await data.getSession(saved.id);
   assert.equal(read.uncertaintyModelVersion, 1);
-  assert.equal(read.errorKmh, saved.errorKmh);
+  assert.equal(read.speedKmh, saved.speedKmh);
+  assert.equal(read.errorKmh, measurementState(saved).errorKmh);
+  assert.ok(read.errorKmh > saved.errorKmh);
   assert.deepEqual(await data.listSessions(), [read]);
   assert.equal((await data.getTrend('player-a', 'all')).points[0].errorKmh, read.errorKmh);
   assert.equal((await data.getComparison(saved.id, saved.id)).a.errorKmh, read.errorKmh);
+  delete require.cache[dataModulePath];
+  assert.equal((await require(dataModulePath).getSession(saved.id)).errorKmh, read.errorKmh);
   assert.deepEqual([...storageValues], before);
 });
 
@@ -205,7 +216,8 @@ test('session metadata survives saving and invalid versions or marker metadata a
       ...(markerSource === 'measured' ? {} : { paceCount: 12.5 }) };
     const saved = await data.saveSession(input);
     assert.equal((await data.getSession(saved.id)).markerSource, markerSource);
-    assert.equal((await data.getSession(saved.id)).errorKmh, 23);
+    assert.equal((await data.getSession(saved.id)).errorKmh, measurementState(saved).errorKmh);
+    assert.equal(JSON.parse(storageValues.get(`sessions:${saved.id}`)).errorKmh, 23);
     assert.equal((await data.getSession(saved.id)).uncertaintyModelVersion, 2);
     assert.equal((await data.getSession(saved.id)).paceCount, input.paceCount);
   }
@@ -233,7 +245,9 @@ test('trends include stable IDs and saved errors for ties and inclusive time win
   Date.now = () => now;
   const trend = await data.getTrend('p', 'week');
   assert.deepEqual(trend.points.map(p => p.id), ['edge', 'a', 'b']);
-  assert.deepEqual(trend.points.map(p => p.errorKmh), [rows[2].errorKmh, 7, 12]);
+  assert.deepEqual(trend.points.map(p => p.errorKmh), rows.slice(0, 3)
+    .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+    .map((row) => measurementState(row).errorKmh));
   assert.equal(trend.count, 3);
   assert.equal(trend.best, Math.max(...rows.slice(0, 3).map(s => s.speedKmh)));
   assert.equal(trend.avg, Math.round(rows.slice(0, 3).reduce((sum, s) => sum + s.speedKmh, 0) / 3 * 10) / 10);
@@ -275,7 +289,7 @@ test('skips one corrupt session and repairs the index', async () => {
   const corrupt = await data.saveSession(sessionInput('player-a'));
   storageValues.set(`sessions:${corrupt.id}`, '{not-json');
 
-  assert.deepEqual(await data.listSessions(), [valid]);
+  assert.deepEqual(await data.listSessions(), [expectedRead(valid)]);
   assert.deepEqual(JSON.parse(storageValues.get('sessions:index')), [valid.id]);
 });
 
@@ -289,7 +303,7 @@ test('recovers a valid session orphaned before its index write', async () => {
   };
   storageValues.set(`sessions:${orphan.id}`, JSON.stringify(orphan));
 
-  assert.deepEqual(await data.listSessions(), [orphan, indexed]);
+  assert.deepEqual(await data.listSessions(), [expectedRead(orphan), expectedRead(indexed)]);
   assert.deepEqual(JSON.parse(storageValues.get('sessions:index')), [
     indexed.id,
     orphan.id,
@@ -326,7 +340,7 @@ test('saved sessions survive a JavaScript module restart', async () => {
   delete require.cache[dataModulePath];
   const restartedData = require(dataModulePath);
 
-  assert.deepEqual(await restartedData.listSessions(), [session]);
+  assert.deepEqual(await restartedData.listSessions(), [expectedRead(session)]);
 });
 
 test('rolls back permanent files when frame preservation fails', async () => {
@@ -455,7 +469,7 @@ test('builds weekly trends from real sessions for one player', async () => {
   Date.now = () => now;
 
   assert.deepEqual(await data.getTrend('player-a', 'week'), {
-    points: [{ id: recent.id, t: recent.createdAt, speedKmh: recent.speedKmh, errorKmh: recent.errorKmh }],
+    points: [{ id: recent.id, t: recent.createdAt, speedKmh: recent.speedKmh, errorKmh: measurementState(recent).errorKmh }],
     best: recent.speedKmh,
     avg: recent.speedKmh,
     count: 1,
@@ -504,7 +518,7 @@ test('corrupt or missing selected players recover without changing deliveries', 
   await data.setActivePlayer(b.id);
   storageValues.set(`players:${b.id}`, '{bad');
   assert.equal((await data.getActivePlayer()).id, a.id);
-  assert.deepEqual(await data.listSessions({ playerId: b.id }), [saved]);
+  assert.deepEqual(await data.listSessions({ playerId: b.id }), [expectedRead(saved)]);
   storageValues.delete(`players:${a.id}`);
   assert.equal(await data.getActivePlayer(), null);
   assert.deepEqual(await data.listActivePlayerSessions(), []);
@@ -556,7 +570,7 @@ test('cached sessions stay isolated from caller edits and detect changed or corr
   const first = (await data.listSessions())[0];
   first.release.x = 999;
   first.speedKmh = 999;
-  assert.deepEqual((await data.listSessions())[0], saved);
+  assert.deepEqual((await data.listSessions())[0], expectedRead(saved));
   const changed = { ...saved, speedKmh: 125 };
   storageValues.set(`sessions:${saved.id}`, JSON.stringify(changed));
   assert.equal((await data.listSessions())[0].speedKmh, 125);
@@ -614,8 +628,8 @@ test('compares persisted deliveries, signed deltas, ties and nullable angles', a
   const a = await data.saveSession(inputA);
   const b = await data.saveSession(sessionInput('player-a', 140));
   const comparison = await data.getComparison(a.id, b.id);
-  assert.deepEqual(comparison.a, a);
-  assert.deepEqual(comparison.b, b);
+  assert.deepEqual(comparison.a, expectedRead(a));
+  assert.deepEqual(comparison.b, expectedRead(b));
   assert.equal(comparison.diffs[0].delta, b.speedKmh - a.speedKmh);
   assert.equal(comparison.diffs[0].better, 'b');
   assert.equal(comparison.diffs.some((d) => d.label === 'Angle'), false);
@@ -632,6 +646,24 @@ test('comparison rejects missing and corrupt records instead of fabricating resu
   await assert.rejects(data.getComparison(a.id, 'missing'), /was not found/);
   storageValues.set(`sessions:${a.id}`, '{broken');
   await assert.rejects(data.getComparison(a.id, a.id), /invalid/);
+});
+
+test('unusable saved marks remain accessible but cannot enter trends, comparisons or exports', async () => {
+  const measured = await data.saveSession(sessionInput('player-a'));
+  const badMarks = sessionInput('player-a');
+  badMarks.calB = { ...badMarks.calA };
+  const unusable = await data.saveSession(badMarks);
+  const stored = storageValues.get(`sessions:${unusable.id}`);
+
+  const read = await data.getSession(unusable.id);
+  assert.equal(measurementState(read).kind, 'unusable');
+  assert.deepEqual((await data.listSessions({ playerId: 'player-a' })).map((s) => s.id).sort(),
+    [unusable.id, measured.id].sort());
+  assert.deepEqual((await data.getTrend('player-a', 'all')).points.map((p) => p.id), [measured.id]);
+  await assert.rejects(data.getComparison(measured.id, unusable.id), /measured speeds/);
+  await assert.rejects(data.getComparison(unusable.id, measured.id), /measured speeds/);
+  await assert.rejects(data.renderExport({ sessionId: unusable.id, watermark: true }), /no measured speed/);
+  assert.equal(storageValues.get(`sessions:${unusable.id}`), stored);
 });
 
 test('export rejects an unknown delivery before loading the native renderer', async () => {
@@ -653,7 +685,7 @@ test('filters saved deliveries by player, inclusive dates and limit', async () =
   const middle = await data.saveSession(sessionInput('player-a'));
   Date.now = () => 300;
   await data.saveSession(sessionInput('player-b'));
-  assert.deepEqual(await data.listSessions({ playerId: 'player-a', from: 200, to: 200 }), [middle]);
-  assert.deepEqual(await data.listSessions({ playerId: 'player-a', limit: 1 }), [middle]);
+  assert.deepEqual(await data.listSessions({ playerId: 'player-a', from: 200, to: 200 }), [expectedRead(middle)]);
+  assert.deepEqual(await data.listSessions({ playerId: 'player-a', limit: 1 }), [expectedRead(middle)]);
   assert.deepEqual(await data.listSessions({ limit: 0 }), []);
 });

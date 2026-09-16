@@ -6,8 +6,36 @@ const path = require('node:path');
 const { createMockSession } = require('../src/data/mockData.ts');
 const { exportGeometry, frameFileName, EXPORT_WIDTH, EXPORT_HEIGHT } = require('../src/export/layout.ts');
 const { drawCard } = require('../src/export/drawCard.ts');
+const { measurementState } = require('../src/physics/measurementState.ts');
 const { captureExposure } = require('../src/capture/exposure.ts');
 const { restoredGeometry } = require('../src/data/geometry.ts');
+
+test('export card uses the recomputed range and refuses unusable marks', () => {
+  const session = createMockSession('legacy-card', 125);
+  session.errorKmh = 1;
+  const reading = measurementState(session);
+  assert.equal(reading.kind, 'measured');
+  assert.notEqual(reading.errorKmh, 1);
+
+  const labels = [];
+  const paint = { setAntiAlias() {}, setColor() {}, setStrokeWidth() {}, dispose() {} };
+  const skia = {
+    Paint: () => paint, Color: (color) => color,
+    XYWHRect: (x, y, width, height) => ({ x, y, width, height }),
+  };
+  const canvas = {
+    drawText: (value) => labels.push(value),
+    drawRect() {}, drawImageRect() {}, drawLine() {}, drawCircle() {},
+  };
+  const photo = { width: () => 1920, height: () => 1080 };
+  const colors = { bg: '#000', surface: '#111', text: '#fff', muted: '#aaa', accent: '#0f0' };
+  drawCard(skia, canvas, photo, session, true, () => null, colors);
+  assert.ok(labels.includes(`± ${reading.errorKmh} km/h`));
+  assert.ok(!labels.includes('± 1 km/h'));
+
+  const unusable = { ...session, calB: { ...session.calA } };
+  assert.throws(() => drawCard(null, null, null, unusable, true, null, null), /no measured speed/);
+});
 
 test('saved calibration and points share the same pixel scale after upscaling', () => {
   const geometry = restoredGeometry(1280, 720, 1920, 1080);

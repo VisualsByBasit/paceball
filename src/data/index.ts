@@ -1,5 +1,6 @@
 import { createMMKV } from 'react-native-mmkv';
 import type { Diff, Player, Session, Trend } from '../types';
+import { measurementState } from '../physics/measurementState';
 import { deleteSessionFiles, stageSessionFiles } from './files';
 import { compareSessions } from './comparison';
 import {
@@ -26,6 +27,15 @@ const copySession = (s: Session): Session => ({
   ...s, calA: { ...s.calA }, calB: { ...s.calB },
   release: { ...s.release }, bounce: { ...s.bounce },
 });
+const sessionForRead = (stored: Session): Session => {
+  const session = copySession(stored);
+  const state = measurementState(session);
+  // The cache and MMKV keep the original record and its model version. A read
+  // exposes the current range only when the marks support a measurement.
+  return state.kind === 'measured'
+    ? { ...session, errorKmh: state.errorKmh }
+    : session;
+};
 
 const warnAboutStoredData = (message: string, error?: unknown) => {
   console.warn(`[Paceball storage] ${message}`, error);
@@ -54,13 +64,13 @@ const readSession = (id: string): Session | undefined => {
     return undefined;
   }
   const cached = sessionCache.get(id);
-  if (cached?.raw === raw) return copySession(cached.session);
+  if (cached?.raw === raw) return sessionForRead(cached.session);
   sessionCache.delete(id);
   let value: unknown;
   try { value = JSON.parse(raw); }
   catch (cause) { throw new Error(`Stored Paceball session "${id}" is invalid.`, { cause }); }
   // Legacy records predate versioning. Normalize the returned value only;
-  // keep its original error until AB supplies the combined uncertainty helper.
+  // the stored record keeps its original model version and error range.
   if (typeof value === 'object' && value !== null && !('uncertaintyModelVersion' in value)) {
     value = { ...value, uncertaintyModelVersion: 1 };
   }
@@ -72,7 +82,7 @@ const readSession = (id: string): Session | undefined => {
     sessionCache.delete(sessionCache.keys().next().value!);
   }
   sessionCache.set(id, { raw, session: value });
-  return copySession(value);
+  return sessionForRead(value);
 };
 
 const readPlayer = (id: string): Player | undefined => {
@@ -320,14 +330,13 @@ export async function getTrend(
     from: days === undefined ? undefined : Date.now() - days * DAY_MS,
   });
   const points = sessions
-    // A delivery whose bounce was guessed carries no speed, so there is nothing
-    // to plot for it and nothing to average it into.
-    .filter(
-      (session): session is Session & { speedKmh: number; errorKmh: number } =>
-        session.speedKmh !== null && session.errorKmh !== null,
-    )
     .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
-    .map(({ id, createdAt: t, speedKmh, errorKmh }) => ({ id, t, speedKmh, errorKmh }));
+    .flatMap((session) => {
+      const state = measurementState(session);
+      return state.kind === 'measured'
+        ? [{ id: session.id, t: session.createdAt, speedKmh: state.speedKmh, errorKmh: state.errorKmh }]
+        : [];
+    });
 
   if (points.length === 0) {
     return { points: [], best: null, avg: null, count: 0 };
@@ -371,6 +380,9 @@ export async function renderExport(options: {
   watermark: boolean;
 }): Promise<{ imagePath: string; videoPath: string | null }> {
   const session = requireSession(options.sessionId);
+  if (measurementState(session).kind !== 'measured') {
+    throw new Error('This delivery has no measured speed to export.');
+  }
   // Keep native rendering out of startup and data-only consumers.
   const { renderSessionImage } = await import('../export/renderSessionImage');
   return renderSessionImage(session, options.watermark);

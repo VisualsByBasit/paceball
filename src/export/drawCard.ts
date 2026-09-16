@@ -1,5 +1,6 @@
 import type { SkCanvas, SkFont, SkImage, Skia } from '@shopify/react-native-skia';
 import type { Session } from '../types';
+import { measurementState } from '../physics/measurementState';
 import { exportGeometry, EXPORT_WIDTH, EXPORT_HEIGHT, PHOTO } from './layout';
 
 type Palette = { bg: string; surface: string; text: string; muted: string; accent: string };
@@ -9,12 +10,11 @@ export function drawCard(
   skia: typeof Skia, canvas: SkCanvas, photo: SkImage, session: Session,
   watermark: boolean, font: (size: number) => SkFont, colors: Palette,
 ) {
-  // A guessed bounce produces no speed, so there is nothing honest to put on a
-  // card. Refusing beats rendering a blank or an invented number.
-  const { speedKmh, errorKmh } = session;
-  if (speedKmh === null || errorKmh === null) {
+  const reading = measurementState(session);
+  if (reading.kind !== 'measured') {
     throw new Error('This delivery has no measured speed to export.');
   }
+  const { speedKmh, errorKmh } = reading;
   const geometry = exportGeometry(session, photo.width(), photo.height());
   const paint = skia.Paint();
   try {
