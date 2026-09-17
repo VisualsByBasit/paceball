@@ -1,11 +1,29 @@
+import { FREE_ANALYSES_PER_WEEK } from './freeLimit';
+
 /**
- * Whether this user may compare two deliveries. Compare is a Pro feature.
- *
- * STAND-IN: returns true until the RevenueCat SDK is wired. The 'pro'
- * entitlement (PRO_ENTITLEMENT_ID) replaces this body; every entry point to
- * Compare - the History action and the screen itself - already asks here, so
- * gating is a change to this one function.
+ * What every gate is decided from. isPro is the 'pro' entitlement as the store
+ * last reported it; analysesLast7Days is this player's saved deliveries inside
+ * the rolling week.
  */
-export function canCompare(): boolean {
-  return true;
+export type Entitlements = {
+  isPro: boolean;
+  analysesLast7Days: number;
+};
+
+/** Comparing two deliveries is Pro only. */
+export function canCompare(entitlements: Entitlements): boolean {
+  return entitlements.isPro;
+}
+
+/**
+ * Whether another delivery can be measured. Free users get
+ * FREE_ANALYSES_PER_WEEK inside the rolling week; Pro is unlimited.
+ */
+export function canAnalyse(entitlements: Entitlements): boolean {
+  return entitlements.isPro || entitlements.analysesLast7Days < FREE_ANALYSES_PER_WEEK;
+}
+
+/** Free exports carry the Paceball watermark. Removing it is Pro only. */
+export function canExportWithoutWatermark(entitlements: Entitlements): boolean {
+  return entitlements.isPro;
 }

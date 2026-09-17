@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Directory, File } from 'expo-file-system';
 import { listSessions } from '../src/data';
 import { SessionActions } from '../src/export/SessionActions';
+import { usePurchases } from '../src/purchases';
 import { colors, radius, space, stroke, type } from '../src/ui/tokens';
 import type { Session } from '../src/types';
 
@@ -139,6 +140,11 @@ export default function DebugScreen() {
         <Text style={styles.practiceLinkText}>Reanimated practice →</Text>
       </Pressable>
 
+      {/* Development only. __DEV__ is a compile-time constant, so this whole
+          block is stripped from a production bundle and the override cannot be
+          reached there; the provider also refuses to honour or set it. */}
+      {__DEV__ ? <ProOverride /> : null}
+
       {error ? <Text style={styles.error}>listSessions() threw: {error}</Text> : null}
 
       {sessions === null ? (
@@ -185,8 +191,72 @@ export default function DebugScreen() {
   );
 }
 
+/**
+ * THROWAWAY, and development only. Forces the Pro entitlement on or off so the
+ * gates and the paywall can be exercised without a store account. It is only
+ * rendered under __DEV__, and the provider ignores the override outside __DEV__
+ * as well, so a production build has no path to it.
+ */
+function ProOverride() {
+  const { isPro, devOverride, setDevOverride, configured, mocked } = usePurchases();
+  const choices: { label: string; value: boolean | null }[] = [
+    { label: 'Store', value: null },
+    { label: 'Pro on', value: true },
+    { label: 'Pro off', value: false },
+  ];
+  return (
+    <View style={styles.overrideCard}>
+      <Text style={styles.overrideLabel}>PRO OVERRIDE · DEV ONLY</Text>
+      <View style={styles.overrideRow}>
+        {choices.map((choice) => {
+          const on = devOverride === choice.value;
+          return (
+            <Pressable
+              key={choice.label}
+              style={[styles.overrideChoice, on && styles.overrideChoiceOn]}
+              onPress={() => setDevOverride(choice.value)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={`Entitlement: ${choice.label}`}
+            >
+              <Text style={[styles.overrideChoiceText, on && styles.overrideChoiceTextOn]}>
+                {choice.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={styles.overrideState}>
+        isPro {String(isPro)} · key {configured ? 'set' : 'missing'} · offering{' '}
+        {mocked ? 'mock' : 'store'}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  overrideCard: {
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    padding: space.md,
+    marginBottom: space.md,
+  },
+  overrideLabel: { ...type.label, color: colors.muted, marginBottom: space.sm },
+  overrideRow: { flexDirection: 'row' },
+  overrideChoice: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    marginRight: space.sm,
+  },
+  overrideChoiceOn: { backgroundColor: colors.text, borderColor: colors.text },
+  overrideChoiceText: { ...type.caption, color: colors.muted },
+  overrideChoiceTextOn: { color: colors.bg, fontWeight: '800' },
+  overrideState: { ...type.caption, ...type.mono, color: colors.muted, marginTop: space.sm },
   content: { paddingHorizontal: space.lg },
 
   header: {

@@ -12,18 +12,18 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   plansIn,
-  restorePurchases,
   trialDays,
+  usePurchases,
   type PaywallPackage,
   type PlanPeriod,
+  type PurchaseOutcome,
   type RestoreOutcome,
 } from '../src/purchases';
 import { TERMS_URL } from '../src/purchases/links';
-import { MOCK_OFFERING } from '../src/purchases/mockOffering';
-import { colors, radius, space, stroke, type } from '../src/ui/tokens';
+import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
 /** What sent the user here. Same layout; the headline speaks to what they just tried. */
-type PaywallContext = 'export' | 'limit' | 'compare';
+type PaywallContext = 'export' | 'limit' | 'compare' | 'pro';
 
 type Copy = {
   /** The value, not the product. */
@@ -61,6 +61,16 @@ const COPY: Record<PaywallContext, Copy> = {
     ],
     dismiss: 'Continue without comparing',
   },
+  // Opened from Settings rather than by being blocked, so it leads with the lot.
+  pro: {
+    headline: 'Measure as much as you like',
+    values: [
+      'Unlimited analyses, every week',
+      'Export without the watermark',
+      'Compare any two deliveries',
+    ],
+    dismiss: 'Stay on the free plan',
+  },
 };
 
 const PLAN_ORDER: PlanPeriod[] = ['annual', 'monthly'];
@@ -70,7 +80,7 @@ const PLAN_PER: Record<PlanPeriod, string> = { annual: 'a year', monthly: 'a mon
 
 function parseContext(value: string | string[] | undefined): PaywallContext {
   const raw = Array.isArray(value) ? value[0] : value;
-  return raw === 'limit' || raw === 'compare' ? raw : 'export';
+  return raw === 'limit' || raw === 'compare' || raw === 'pro' ? raw : 'export';
 }
 
 type RestoreState = { status: 'idle' } | { status: 'restoring' } | RestoreOutcome;
@@ -90,20 +100,39 @@ function restoreNote(state: RestoreState): string | null {
   }
 }
 
+/** What the store said about the purchase. Never a success it did not report. */
+function purchaseNote(outcome: PurchaseOutcome): string | null {
+  switch (outcome.status) {
+    case 'purchased':
+      return null;
+    case 'not-active':
+      return 'Google Play took the purchase but has not granted Pro yet. If payment is still pending, it will arrive once the payment clears.';
+    case 'cancelled':
+      return 'Purchase cancelled. Nothing has been charged.';
+    case 'unavailable':
+      return 'Purchases are not set up in this build, so nothing can be bought here. Nothing has been charged.';
+    case 'failed':
+      return `Could not complete the purchase: ${outcome.message}`;
+  }
+}
+
 export default function PaywallScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const context = parseContext(useLocalSearchParams().context);
   const copy = COPY[context];
+  const { isPro, offering, loading, mocked, purchase, restore: restoreWithStore } = usePurchases();
 
-  // STAND-IN: swap for the SDK's current offering once it is wired.
-  const plans = useMemo(() => plansIn(MOCK_OFFERING), []);
+  // The store's offering when there is one, otherwise the stand-in. Either way
+  // every figure on screen is the store's own price text, never written here.
+  const plans = useMemo(() => plansIn(offering), [offering]);
   const available = PLAN_ORDER.filter((period) => plans[period] !== undefined);
 
   // Annual is the default, whenever the store offers it.
   const [selected, setSelected] = useState<PlanPeriod | null>(available[0] ?? null);
   const [restore, setRestore] = useState<RestoreState>({ status: 'idle' });
   const [notice, setNotice] = useState<string | null>(null);
+  const [buying, setBuying] = useState(false);
 
   const chosen = selected ? (plans[selected] ?? null) : null;
   const chosenTrial = chosen ? trialDays(chosen) : null;
@@ -119,18 +148,23 @@ export default function PaywallScreen() {
         ? `Start my ${PLAN_NAME[selected].toLowerCase()} plan`
         : null;
 
-  const onPurchase = useCallback(() => {
-    // STAND-IN: Purchases.purchasePackage(chosen) once the SDK offering is wired.
-    // Said on screen rather than pretended, so nobody believes they have bought.
-    setNotice('Purchasing is not connected in this build yet. Nothing has been charged.');
-  }, []);
+  const onPurchase = useCallback(async () => {
+    if (!chosen || buying) return;
+    setBuying(true);
+    setNotice(null);
+    // The outcome is read off the customer info the store returned, so Pro only
+    // ever turns on because the entitlement came back with it.
+    const outcome = await purchase(chosen);
+    setBuying(false);
+    setNotice(purchaseNote(outcome));
+  }, [buying, chosen, purchase]);
 
   const onRestore = useCallback(async () => {
     setRestore({ status: 'restoring' });
-    setRestore(await restorePurchases());
-  }, []);
+    setRestore(await restoreWithStore());
+  }, [restoreWithStore]);
 
-  const restored = restore.status === 'restored';
+  const restored = restore.status === 'restored' || isPro;
   const restoring = restore.status === 'restoring';
   const note = restoreNote(restore);
 
@@ -158,7 +192,9 @@ export default function PaywallScreen() {
         ))}
       </View>
 
-      {available.length === 0 ? (
+      {loading ? (
+        <ActivityIndicator color={colors.muted} style={styles.plansLoading} />
+      ) : available.length === 0 ? (
         <Text style={styles.problem}>
           The plans could not be loaded. Check the connection and try again.
         </Text>
@@ -181,13 +217,24 @@ export default function PaywallScreen() {
 
       {cta && !restored ? (
         <Pressable
-          style={styles.cta}
+          style={[styles.cta, buying && styles.ctaBusy]}
           onPress={onPurchase}
+          disabled={buying}
           accessibilityRole="button"
+          accessibilityState={{ busy: buying, disabled: buying }}
           accessibilityLabel={cta}
         >
-          <Text style={styles.ctaText}>{cta}</Text>
+          {buying ? (
+            <ActivityIndicator color={colors.bg} />
+          ) : (
+            <Text style={styles.ctaText}>{cta}</Text>
+          )}
         </Pressable>
+      ) : null}
+      {mocked && !restored ? (
+        <Text style={styles.ctaNote}>
+          These are stand-in prices: this build has no store connection yet.
+        </Text>
       ) : null}
       {chosenTrial !== null && !restored ? (
         <Text style={styles.ctaNote}>
@@ -357,6 +404,8 @@ const styles = StyleSheet.create({
     marginTop: space.md,
   },
   ctaText: { ...type.h2, color: colors.bg, fontWeight: '800' },
+  ctaBusy: { opacity: opacity.inactive },
+  plansLoading: { marginVertical: space.lg },
   ctaNote: { ...type.body, color: colors.text, textAlign: 'center', marginTop: space.sm },
   notice: { ...type.body, color: colors.warn, textAlign: 'center', marginTop: space.md },
 

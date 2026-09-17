@@ -1,15 +1,18 @@
 import { Stack } from 'expo-router';
 import { wrap } from '../src/diagnostics';
+import { PurchasesProvider } from '../src/purchases';
 import { colors } from '../src/ui/tokens';
 
 function RootLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.bg },
-      }}
-    />
+    <PurchasesProvider>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.bg },
+        }}
+      />
+    </PurchasesProvider>
   );
 }
 

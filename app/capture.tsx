@@ -16,6 +16,7 @@ import {
 } from '../src/capture/useCapture';
 import { Screen } from '../src/ui/Screen';
 import { captureExposure } from '../src/capture/exposure';
+import { canAnalyse, useEntitlements, usePurchases } from '../src/purchases';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
@@ -37,6 +38,14 @@ export default function CaptureScreen() {
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
   const { exposureBias } = useSettings();
+  const entitlements = useEntitlements();
+  const { refreshAnalyses } = usePurchases();
+  // Re-read on focus, so a delivery saved since this screen was last open
+  // counts against the week.
+  useEffect(() => {
+    if (isFocused) refreshAnalyses();
+  }, [isFocused, refreshAnalyses]);
+  const allowed = canAnalyse(entitlements);
   const exposure = captureExposure(device, exposureBias);
   const [sessionReady, setSessionReady] = useState(false);
   const [showTips, setShowTips] = useState(true);
@@ -106,6 +115,7 @@ export default function CaptureScreen() {
 
   let hint: string;
   if (isProcessing) hint = 'Reading the clip…';
+  else if (!allowed) hint = "That's your free analyses for this week. Tap to see Pro.";
   else if (!isRecording) hint = `Tap to record · ${MIN_RECORDING_MS / 1000}s minimum`;
   else if (canStop) hint = 'Tap to stop';
   else hint = `Stop unlocks in ${lockedSeconds}s`;
@@ -184,7 +194,15 @@ export default function CaptureScreen() {
           </View>
 
           <Pressable
-            onPress={isRecording ? capture.stop : capture.start}
+            onPress={
+              isRecording
+                ? capture.stop
+                : // The limit is checked at the moment of recording, so the clip
+                  // is never taken and then refused.
+                  allowed
+                  ? capture.start
+                  : () => router.push({ pathname: '/paywall', params: { context: 'limit' } })
+            }
             disabled={!sessionReady || isProcessing || (isRecording && !canStop)}
             accessibilityRole="button"
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}

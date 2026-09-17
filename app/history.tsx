@@ -16,7 +16,7 @@ import { frameUri } from '../src/capture/useFrames';
 import { getActivePlayer, getTrend, listSessions } from '../src/data';
 import { CALIBRATION_SPECS } from '../src/physics/calibration';
 import { measurementState, type MeasurementState } from '../src/physics/measurementState';
-import { canCompare } from '../src/purchases';
+import { canCompare, useEntitlements } from '../src/purchases';
 import { useSettings, type SpeedUnit } from '../src/settings';
 import {
   COMPARE_COUNT,
@@ -136,6 +136,7 @@ export default function HistoryScreen() {
   // Display only: the trend, the personal best and every range are compared in
   // km/h as stored, and converted at the moment they are drawn.
   const { unit } = useSettings();
+  const entitlements = useEntitlements();
 
   const [loaded, setLoaded] = useState<Loaded>({ status: 'loading' });
   const [reload, setReload] = useState(0);
@@ -247,13 +248,13 @@ export default function HistoryScreen() {
   // Compare is Pro. The gate decides; while it says no, the action sells it
   // instead of entering select mode.
   const startCompare = useCallback(() => {
-    if (!canCompare()) {
+    if (!canCompare(entitlements)) {
       router.push({ pathname: '/paywall', params: { context: 'compare' } });
       return;
     }
     setPicked([]);
     setSelecting(true);
-  }, [router]);
+  }, [entitlements, router]);
 
   const confirmCompare = useCallback(() => {
     if (picked.length !== COMPARE_COUNT || !sessions) return;
@@ -267,19 +268,24 @@ export default function HistoryScreen() {
     router.push({ pathname: '/compare', params: { idA: older.id, idB: newer.id } });
   }, [picked, sessions, cancelCompare, router]);
 
-  // Back leaves select mode before it leaves the screen.
+  // Back leaves select mode before it leaves the screen. Only while this screen
+  // has focus, or the handler would swallow Back on whatever is on top of it.
   useEffect(() => {
-    if (!selecting) return;
+    if (!selecting || !isFocused) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       cancelCompare();
       return true;
     });
     return () => subscription.remove();
-  }, [selecting, cancelCompare]);
+  }, [selecting, isFocused, cancelCompare]);
 
   const header = (
     <View style={styles.header}>
-      <Pressable onPress={() => router.back()} hitSlop={space.md}>
+      <Pressable
+        onPress={() => (selecting ? cancelCompare() : router.back())}
+        hitSlop={space.md}
+        accessibilityRole="button"
+      >
         <Text style={styles.headerAction}>Back</Text>
       </Pressable>
       <Text style={styles.headerTitle}>HISTORY</Text>

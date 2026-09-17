@@ -1,10 +1,22 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALIBRATION_ORDER, CALIBRATION_SPECS } from '../src/physics/calibration';
-import { restorePurchases, type RestoreOutcome } from '../src/purchases';
+import {
+  MANAGE_SUBSCRIPTION_URL,
+  usePurchases,
+  type RestoreOutcome,
+} from '../src/purchases';
 import {
   EXPOSURE_BIAS_OPTIONS,
   SPEED_UNITS,
@@ -62,6 +74,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const settings = useSettings();
+  const { isPro, pro, restore: restorePurchases } = usePurchases();
 
   const [restore, setRestore] = useState<RestoreState>({ status: 'idle' });
   const [licenceOpen, setLicenceOpen] = useState(false);
@@ -69,7 +82,7 @@ export default function SettingsScreen() {
   const onRestore = useCallback(async () => {
     setRestore({ status: 'restoring' });
     setRestore(await restorePurchases());
-  }, []);
+  }, [restorePurchases]);
 
   const version = Constants.expoConfig?.version ?? null;
   const restoring = restore.status === 'restoring';
@@ -90,6 +103,45 @@ export default function SettingsScreen() {
         <Text style={styles.headerTitle}>SETTINGS</Text>
         <View style={styles.headerSpacer} />
       </View>
+
+      {/* Always here, Pro or not: this is how Pro is found, and how a
+          subscription is checked and managed. */}
+      <Section title="PACEBALL PRO">
+        {isPro ? (
+          <>
+            <Text style={styles.rowTitle}>Paceball Pro is active</Text>
+            <Text style={styles.rowDetail}>
+              {pro.active
+                ? pro.expiresAt === null
+                  ? 'Unlimited analyses, exports without the watermark, and compare.'
+                  : `${pro.willRenew ? 'Renews' : 'Ends'} on ${formatDate(pro.expiresAt)}.`
+                : 'Forced on for development. The store has no subscription on this account.'}
+            </Text>
+            <Pressable
+              style={styles.button}
+              onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL)}
+              accessibilityRole="link"
+            >
+              <Text style={styles.buttonText}>Manage subscription</Text>
+            </Pressable>
+          </>
+        ) : (
+          <Pressable
+            style={styles.link}
+            onPress={() => router.push({ pathname: '/paywall', params: { context: 'pro' } })}
+            accessibilityRole="button"
+            accessibilityLabel="See what Paceball Pro adds"
+          >
+            <View style={styles.optionBody}>
+              <Text style={styles.optionTitle}>Paceball Pro</Text>
+              <Text style={styles.optionDetail}>
+                Unlimited analyses, exports without the watermark, and compare.
+              </Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        )}
+      </Section>
 
       <Section title="READINGS">
         <Text style={styles.rowTitle}>Speed units</Text>

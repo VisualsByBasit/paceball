@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frameUri } from '../src/capture/useFrames';
 import { getComparison, getPlayer, getSession } from '../src/data';
 import { measurementState } from '../src/physics/measurementState';
-import { canCompare } from '../src/purchases';
+import { canCompare, useEntitlements } from '../src/purchases';
 import { useSettings, type SpeedUnit } from '../src/settings';
 import { orderForCompare } from '../src/ui/compareSelection';
 import { speedVerdict, type SpeedVerdict } from '../src/ui/speedVerdict';
@@ -155,9 +155,10 @@ async function loadComparison(idA: string, idB: string): Promise<Loaded> {
 }
 
 export default function CompareScreen() {
+  const entitlements = useEntitlements();
   // The same gate the History action goes through, so a direct link cannot
   // reach a Pro screen the action would not.
-  if (!canCompare()) {
+  if (!canCompare(entitlements)) {
     return <Redirect href={{ pathname: '/paywall', params: { context: 'compare' } }} />;
   }
   return <Comparison />;

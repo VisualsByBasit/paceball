@@ -75,11 +75,13 @@ test('picking stops at two, and the older delivery is A', () => {
 });
 
 test('compare goes through one gate, from History and from the screen', () => {
-  assert.equal(canCompare(), true, 'open until the RevenueCat entitlement replaces it');
+  // Compare is Pro: the gate is the entitlement now, not a stand-in true.
+  assert.equal(canCompare({ isPro: true, analysesLast7Days: 0 }), true);
+  assert.equal(canCompare({ isPro: false, analysesLast7Days: 0 }), false);
   const history = read('app/history.tsx');
   const compare = read('app/compare.tsx');
-  assert.match(history, /if \(!canCompare\(\)\) \{\s*router\.push\(\{ pathname: '\/paywall', params: \{ context: 'compare' \} \}\);/);
-  assert.match(compare, /if \(!canCompare\(\)\) \{\s*return <Redirect href=\{\{ pathname: '\/paywall', params: \{ context: 'compare' \} \}\} \/>;/);
+  assert.match(history, /if \(!canCompare\(entitlements\)\) \{\s*router\.push\(\{ pathname: '\/paywall', params: \{ context: 'compare' \} \}\);/);
+  assert.match(compare, /if \(!canCompare\(entitlements\)\) \{\s*return <Redirect href=\{\{ pathname: '\/paywall', params: \{ context: 'compare' \} \}\} \/>;/);
 });
 
 test('compare.tsx takes every colour and size from tokens', () => {

@@ -15,10 +15,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listFrames } from '../src/capture/useFrames';
-import { getSession } from '../src/data';
+import { getSession, renderExport } from '../src/data';
+import { saveExportToGallery, shareExport } from '../src/export/deliveryActions';
 import { SessionActions } from '../src/export/SessionActions';
 import { CALIBRATION_SPECS, formatMetres, travelWarning } from '../src/physics/calibration';
 import { measurementState } from '../src/physics/measurementState';
+import { canExportWithoutWatermark, useEntitlements } from '../src/purchases';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { useSettings } from '../src/settings';
@@ -581,6 +583,7 @@ function Replay({
                 </Pressable>
               </View>
               <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
+                <CleanExport sessionId={session.id} />
                 <SessionActions
                   sessionId={session.id}
                   onDeleted={() => {
@@ -593,6 +596,101 @@ function Replay({
             </View>
           </View>
         </Modal>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The watermark-free export. Free exports carry the watermark, which is the
+ * growth loop, so for a free user this option sells Pro instead of doing it.
+ *
+ * SessionActions is Mustafa's and always asks for the watermarked card, so the
+ * clean render is made here through the same renderExport his component uses,
+ * with the flag it already accepts.
+ */
+function CleanExport({ sessionId }: { sessionId: string }) {
+  const router = useRouter();
+  const entitlements = useEntitlements();
+  const [busy, setBusy] = useState(false);
+  const [imagePath, setImagePath] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const run = async (action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      await action();
+    } catch (e) {
+      setNotice(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!canExportWithoutWatermark(entitlements)) {
+    return (
+      <Pressable
+        style={styles.cleanLocked}
+        onPress={() => router.push({ pathname: '/paywall', params: { context: 'export' } })}
+        accessibilityRole="button"
+        accessibilityLabel="Export without the watermark, with Paceball Pro"
+      >
+        <Text style={styles.cleanLockedTitle}>Export without the watermark</Text>
+        <Text style={styles.cleanLockedDetail}>
+          Free cards carry the Paceball mark. Pro cards carry your reading only.
+        </Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View>
+      <Pressable
+        style={[styles.cleanButton, busy && styles.off]}
+        disabled={busy}
+        onPress={() =>
+          void run(async () => {
+            const result = await renderExport({ sessionId, watermark: false });
+            setImagePath(result.imagePath);
+          })
+        }
+        accessibilityRole="button"
+      >
+        <Text style={styles.cleanButtonText}>
+          {busy ? 'Working…' : imagePath ? 'Create clean image again' : 'Create image without the watermark'}
+        </Text>
+      </Pressable>
+      {imagePath ? (
+        <>
+          <Pressable
+            style={[styles.cleanButton, busy && styles.off]}
+            disabled={busy}
+            onPress={() =>
+              void run(async () => {
+                await saveExportToGallery(imagePath);
+                setNotice('Clean image saved to gallery.');
+              })
+            }
+            accessibilityRole="button"
+          >
+            <Text style={styles.cleanButtonText}>Save clean image to gallery</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.cleanButton, busy && styles.off]}
+            disabled={busy}
+            onPress={() => void run(() => shareExport(imagePath))}
+            accessibilityRole="button"
+          >
+            <Text style={styles.cleanButtonText}>Share clean image</Text>
+          </Pressable>
+        </>
+      ) : null}
+      {notice ? (
+        <Text style={styles.cleanNotice} accessibilityLiveRegion="polite">
+          {notice}
+        </Text>
       ) : null}
     </View>
   );
@@ -683,6 +781,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  cleanLocked: {
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.accent,
+    padding: space.md,
+    marginBottom: space.sm,
+  },
+  cleanLockedTitle: { ...type.body, color: colors.accent, fontWeight: '800' },
+  cleanLockedDetail: { ...type.caption, color: colors.muted, marginTop: space.xs },
+  cleanButton: {
+    backgroundColor: colors.surface,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    padding: space.md,
+    alignItems: 'center',
+    marginBottom: space.sm,
+  },
+  cleanButtonText: { ...type.body, color: colors.text },
+  cleanNotice: { ...type.caption, color: colors.muted, marginBottom: space.sm },
   sheetScroll: { flexGrow: 0 },
   sheetContent: { paddingBottom: space.md },
   statRow: { flexDirection: 'row' },
