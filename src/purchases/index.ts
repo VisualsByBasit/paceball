@@ -2,6 +2,7 @@ import Purchases from 'react-native-purchases';
 import { restoreOutcome, type RestoreOutcome } from './entitlement';
 
 export * from './entitlement';
+export * from './gates';
 export * from './offering';
 
 /**

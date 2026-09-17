@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   FlatList,
   Image,
   Pressable,
@@ -15,7 +16,15 @@ import { frameUri } from '../src/capture/useFrames';
 import { getActivePlayer, getTrend, listSessions } from '../src/data';
 import { CALIBRATION_SPECS } from '../src/physics/calibration';
 import { measurementState, type MeasurementState } from '../src/physics/measurementState';
+import { canCompare } from '../src/purchases';
 import { useSettings, type SpeedUnit } from '../src/settings';
+import {
+  COMPARE_COUNT,
+  compareSelectability,
+  orderForCompare,
+  togglePick,
+  type Selectability,
+} from '../src/ui/compareSelection';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, speedIn, unitLabel, unitSpoken } from '../src/ui/units';
 import type { Session, Trend, TrendPoint } from '../src/types';
@@ -221,6 +230,53 @@ export default function HistoryScreen() {
     [router]
   );
 
+  // Compare select mode. Outside it a row opens Analysis as it always has.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+
+  const measuredCount = useMemo(
+    () => [...states.values()].filter((s) => s.kind === 'measured').length,
+    [states]
+  );
+
+  const cancelCompare = useCallback(() => {
+    setSelecting(false);
+    setPicked([]);
+  }, []);
+
+  // Compare is Pro. The gate decides; while it says no, the action sells it
+  // instead of entering select mode.
+  const startCompare = useCallback(() => {
+    if (!canCompare()) {
+      router.push({ pathname: '/paywall', params: { context: 'compare' } });
+      return;
+    }
+    setPicked([]);
+    setSelecting(true);
+  }, [router]);
+
+  const confirmCompare = useCallback(() => {
+    if (picked.length !== COMPARE_COUNT || !sessions) return;
+    const chosen = picked
+      .map((id) => sessions.find((s) => s.id === id))
+      .filter((s): s is Session => s !== undefined);
+    if (chosen.length !== COMPARE_COUNT) return;
+    // The older delivery is A, so the change reads forwards in time.
+    const [older, newer] = orderForCompare(chosen[0], chosen[1]);
+    cancelCompare();
+    router.push({ pathname: '/compare', params: { idA: older.id, idB: newer.id } });
+  }, [picked, sessions, cancelCompare, router]);
+
+  // Back leaves select mode before it leaves the screen.
+  useEffect(() => {
+    if (!selecting) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      cancelCompare();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [selecting, cancelCompare]);
+
   const header = (
     <View style={styles.header}>
       <Pressable onPress={() => router.back()} hitSlop={space.md}>
@@ -295,13 +351,19 @@ export default function HistoryScreen() {
   const bestId = best?.id ?? null;
 
   return (
+    <View style={styles.screen}>
     <FlatList
       style={styles.screen}
       contentContainerStyle={[
         styles.padded,
-        { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.lg },
+        {
+          paddingTop: insets.top + space.md,
+          // Room for the confirm bar, so the last row can scroll clear of it.
+          paddingBottom: insets.bottom + (selecting ? space.xxl + space.xxl : space.lg),
+        },
       ]}
       data={loaded.sessions}
+      extraData={{ selecting, picked }}
       keyExtractor={(s) => s.id}
       ListHeaderComponent={
         <>
@@ -334,19 +396,67 @@ export default function HistoryScreen() {
             onOpen={open}
           />
 
-          <Text style={styles.listLabel}>EVERY DELIVERY</Text>
+          <View style={styles.listTop}>
+            <Text style={styles.listTopLabel}>
+              {selecting ? 'PICK TWO TO COMPARE' : 'EVERY DELIVERY'}
+            </Text>
+            {selecting ? (
+              <Pressable onPress={cancelCompare} hitSlop={space.sm} accessibilityRole="button">
+                <Text style={styles.listAction}>Cancel</Text>
+              </Pressable>
+            ) : measuredCount >= COMPARE_COUNT ? (
+              <Pressable
+                style={styles.compareButton}
+                onPress={startCompare}
+                hitSlop={space.sm}
+                accessibilityRole="button"
+                accessibilityLabel="Compare two deliveries"
+              >
+                <Text style={styles.compareButtonText}>Compare</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </>
       }
-      renderItem={({ item }) => (
-        <SessionRow
-          session={item}
-          reading={states.get(item.id) ?? measurementState(item)}
-          isBest={item.id === bestId}
-          unit={unit}
-          onOpen={open}
-        />
-      )}
+      renderItem={({ item }) => {
+        const reading = states.get(item.id) ?? measurementState(item);
+        return (
+          <SessionRow
+            session={item}
+            reading={reading}
+            isBest={item.id === bestId}
+            unit={unit}
+            onOpen={open}
+            select={
+              selecting
+                ? {
+                    picked: picked.includes(item.id),
+                    selectability: compareSelectability(reading),
+                    onToggle: () => setPicked((current) => togglePick(current, item.id)),
+                  }
+                : null
+            }
+          />
+        );
+      }}
     />
+    {selecting ? (
+      <View style={[styles.compareBar, { paddingBottom: insets.bottom + space.md }]}>
+        <Text style={styles.compareBarCount}>
+          {picked.length} of {COMPARE_COUNT} picked
+        </Text>
+        <Pressable
+          style={[styles.compareConfirm, picked.length !== COMPARE_COUNT && styles.off]}
+          disabled={picked.length !== COMPARE_COUNT}
+          onPress={confirmCompare}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: picked.length !== COMPARE_COUNT }}
+        >
+          <Text style={styles.primaryButtonText}>Compare</Text>
+        </Pressable>
+      </View>
+    ) : null}
+    </View>
   );
 }
 
@@ -606,28 +716,42 @@ function TrendPlot({
   );
 }
 
+/** How a row behaves while picking deliveries to compare. Null outside select mode. */
+type RowSelect = {
+  picked: boolean;
+  selectability: Selectability;
+  onToggle: () => void;
+} | null;
+
 function SessionRow({
   session,
   reading,
   isBest,
   unit,
   onOpen,
+  select,
 }: {
   session: Session;
   reading: MeasurementState;
   isBest: boolean;
   unit: SpeedUnit;
   onOpen: (id: string) => void;
+  select: RowSelect;
 }) {
   const uri = useMemo(() => thumbFor(session), [session]);
   // Travel comes off the same marks as the speed, so it is read out only when
   // the speed is. It stays on the record either way.
   const measured = reading.kind === 'measured';
+  // Not-seen and unusable rows have no speed to compare, so in select mode they
+  // are dimmed, cannot be tapped, and say why.
+  const blocked = select !== null && !select.selectability.selectable;
   return (
     <Pressable
-      style={styles.row}
-      onPress={() => onOpen(session.id)}
-      accessibilityRole="button"
+      style={[styles.row, select?.picked && styles.rowPicked, blocked && styles.off]}
+      onPress={select ? select.onToggle : () => onOpen(session.id)}
+      disabled={blocked}
+      accessibilityRole={select ? 'checkbox' : 'button'}
+      accessibilityState={select ? { checked: select.picked, disabled: blocked } : undefined}
       accessibilityLabel={
         reading.kind === 'measured'
           ? `${formatWhen(session.createdAt)}, ${formatSpeed(reading.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(reading.errorKmh, unit)}${isBest ? ', personal best' : ''}`
@@ -661,7 +785,13 @@ function SessionRow({
           {measured ? ` · ${session.travelMetres.toFixed(2)} m` : ''} ·{' '}
           {CALIBRATION_SPECS[session.calibrationMethod].short}
         </Text>
+        {select && !select.selectability.selectable ? (
+          <Text style={styles.rowReason}>{select.selectability.reason}</Text>
+        ) : null}
       </View>
+      {select && select.selectability.selectable ? (
+        <View style={[styles.pick, select.picked && styles.pickOn]} />
+      ) : null}
     </Pressable>
   );
 }
@@ -811,7 +941,55 @@ const styles = StyleSheet.create({
   },
   xTick: { ...type.caption, color: colors.muted },
 
-  listLabel: { ...type.label, color: colors.muted, marginTop: space.xl, marginBottom: space.sm },
+  listTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: space.xl,
+    marginBottom: space.sm,
+  },
+  listTopLabel: { ...type.label, color: colors.muted },
+  listAction: { ...type.caption, color: colors.muted },
+  compareButton: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    paddingHorizontal: space.md,
+  },
+  compareButtonText: { ...type.caption, color: colors.text },
+  compareBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: stroke.hairline,
+    borderColor: colors.line,
+  },
+  compareBarCount: { ...type.body, ...type.tabular, color: colors.text },
+  compareConfirm: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.pill,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+  },
+  off: { opacity: opacity.disabled },
+  rowPicked: { backgroundColor: colors.surface },
+  rowReason: { ...type.caption, color: colors.warn, marginTop: space.xs },
+  pick: {
+    width: space.md,
+    height: space.md,
+    borderRadius: radius.pill,
+    borderWidth: stroke.medium,
+    borderColor: colors.muted,
+    marginLeft: space.md,
+  },
+  pickOn: { borderColor: colors.text, backgroundColor: colors.text },
 
   row: {
     flexDirection: 'row',

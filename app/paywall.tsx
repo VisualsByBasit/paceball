@@ -23,7 +23,7 @@ import { MOCK_OFFERING } from '../src/purchases/mockOffering';
 import { colors, radius, space, stroke, type } from '../src/ui/tokens';
 
 /** What sent the user here. Same layout; the headline speaks to what they just tried. */
-type PaywallContext = 'export' | 'limit';
+type PaywallContext = 'export' | 'limit' | 'compare';
 
 type Copy = {
   /** The value, not the product. */
@@ -52,6 +52,15 @@ const COPY: Record<PaywallContext, Copy> = {
     ],
     dismiss: 'Continue without unlimited analyses',
   },
+  compare: {
+    headline: 'Compare any two deliveries',
+    values: [
+      'Side by side, each with its own error range',
+      'Only called faster when the ranges say so',
+      'Cancel any time in Google Play',
+    ],
+    dismiss: 'Continue without comparing',
+  },
 };
 
 const PLAN_ORDER: PlanPeriod[] = ['annual', 'monthly'];
@@ -61,7 +70,7 @@ const PLAN_PER: Record<PlanPeriod, string> = { annual: 'a year', monthly: 'a mon
 
 function parseContext(value: string | string[] | undefined): PaywallContext {
   const raw = Array.isArray(value) ? value[0] : value;
-  return raw === 'limit' ? 'limit' : 'export';
+  return raw === 'limit' || raw === 'compare' ? raw : 'export';
 }
 
 type RestoreState = { status: 'idle' } | { status: 'restoring' } | RestoreOutcome;
