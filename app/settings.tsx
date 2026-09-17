@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CALIBRATION_ORDER, CALIBRATION_SPECS } from '../src/physics/calibration';
 import {
+  allowanceLine,
   MANAGE_SUBSCRIPTION_URL,
   usePurchases,
   type RestoreOutcome,
@@ -74,7 +75,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const settings = useSettings();
-  const { isPro, pro, restore: restorePurchases } = usePurchases();
+  const { isPro, pro, allowance, restore: restorePurchases } = usePurchases();
 
   const [restore, setRestore] = useState<RestoreState>({ status: 'idle' });
   const [licenceOpen, setLicenceOpen] = useState(false);
@@ -136,6 +137,12 @@ export default function SettingsScreen() {
               <Text style={styles.optionTitle}>Paceball Pro</Text>
               <Text style={styles.optionDetail}>
                 Unlimited analyses, exports without the watermark, and compare.
+              </Text>
+              {/* Only a free user has an allowance to report. */}
+              <Text style={styles.allowance}>
+                {allowanceLine(allowance, (t) =>
+                  new Date(t).toLocaleDateString(undefined, { weekday: 'long' })
+                )}
               </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
@@ -385,6 +392,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: space.sm,
   },
+  allowance: { ...type.caption, color: colors.text, marginTop: space.xs },
   aboutValue: { ...type.body, color: colors.muted },
   licence: {
     ...type.caption,

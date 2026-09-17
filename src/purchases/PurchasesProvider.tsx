@@ -11,8 +11,10 @@ import {
 import type { PurchasesPackage } from 'react-native-purchases';
 import { getActivePlayer, listSessions } from '../data';
 import { proStatus, type ProStatus, type PurchaseOutcome, type RestoreOutcome } from './entitlement';
-import { analysesInWindow } from './freeLimit';
+import { FREE_ANALYSES_PER_PERIOD } from './freeLimit';
+import { allowanceIn, resolveAnchor, type Allowance } from './freeLimit';
 import { MOCK_OFFERING } from './mockOffering';
+import { getSettings, updateSettings } from '../settings';
 import type { PaywallOffering, PaywallPackage } from './offering';
 import {
   purchase as purchaseWithStore,
@@ -36,8 +38,8 @@ export type Purchases = {
   configured: boolean;
   /** Whether the offering on screen is the stand-in rather than the store's. */
   mocked: boolean;
-  /** This player's saved deliveries inside the rolling week. */
-  analysesLast7Days: number;
+  /** This player's saved deliveries inside the current period, and what is left. */
+  allowance: Allowance;
   /** Re-reads the saved deliveries, so the limit reflects a delivery just saved. */
   refreshAnalyses: () => void;
   purchase: (pkg: PaywallPackage) => Promise<PurchaseOutcome>;
@@ -57,7 +59,7 @@ const FREE: Purchases = {
   loading: false,
   configured: false,
   mocked: true,
-  analysesLast7Days: 0,
+  allowance: { used: 0, left: FREE_ANALYSES_PER_PERIOD, periodStart: null, nextReset: null },
   refreshAnalyses: () => {},
   purchase: async () => ({ status: 'unavailable' }),
   restore: async () => ({ status: 'unavailable' }),
@@ -73,7 +75,12 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
   const [pro, setPro] = useState<ProStatus>({ active: false });
   const [offering, setOffering] = useState<PaywallOffering | null>(null);
   const [loading, setLoading] = useState(configured);
-  const [analyses, setAnalyses] = useState(0);
+  const [allowance, setAllowance] = useState<Allowance>({
+    used: 0,
+    left: FREE_ANALYSES_PER_PERIOD,
+    periodStart: null,
+    nextReset: null,
+  });
   const [devOverride, setDevOverrideState] = useState<boolean | null>(null);
 
   // The live packages, kept so a purchase is made against the store's own
@@ -122,11 +129,23 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
       try {
         const player = await getActivePlayer();
         if (!player) {
-          if (alive) setAnalyses(0);
+          if (alive) {
+            setAllowance({
+              used: 0,
+              left: FREE_ANALYSES_PER_PERIOD,
+              periodStart: null,
+              nextReset: null,
+            });
+          }
           return;
         }
         const sessions = await listSessions({ playerId: player.id });
-        if (alive) setAnalyses(analysesInWindow(sessions, Date.now(), player.id));
+        // The anchor is the first ever analysis. Written once, on the first
+        // refresh that finds any delivery, and never moved after that.
+        const stored = getSettings().analysisAnchor;
+        const anchor = resolveAnchor(stored, sessions);
+        if (anchor !== null && stored === null) updateSettings({ analysisAnchor: anchor });
+        if (alive) setAllowance(allowanceIn(sessions, anchor, Date.now(), player.id));
       } catch {
         // An unreadable list must not hand out free analyses, so the count
         // stands where it was rather than falling back to zero.
@@ -168,7 +187,7 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
       loading,
       configured,
       mocked: offering === null,
-      analysesLast7Days: analyses,
+      allowance,
       refreshAnalyses,
       purchase,
       restore,
@@ -176,7 +195,7 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
       setDevOverride,
     };
   }, [
-    analyses,
+    allowance,
     configured,
     devOverride,
     loading,
@@ -197,7 +216,7 @@ export function usePurchases(): Purchases {
 }
 
 /** Just what the gates in gates.ts read, for a screen that only asks permission. */
-export function useEntitlements(): { isPro: boolean; analysesLast7Days: number } {
-  const { isPro, analysesLast7Days } = usePurchases();
-  return { isPro, analysesLast7Days };
+export function useEntitlements(): { isPro: boolean; analysesThisPeriod: number } {
+  const { isPro, allowance } = usePurchases();
+  return { isPro, analysesThisPeriod: allowance.used };
 }

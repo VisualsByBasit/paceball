@@ -14,12 +14,19 @@ export type Settings = {
    * is what keeps a ball at pace from smearing across the frame.
    */
   exposureBias: number;
+  /**
+   * When the first ever analysis was saved, as epoch milliseconds. The free
+   * allowance runs in seven-day periods from here, so this is written once and
+   * never moved. Null until the first analysis is saved.
+   */
+  analysisAnchor: number | null;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
   calibrationMethod: 'stumps',
   unit: 'kmh',
   exposureBias: -4,
+  analysisAnchor: null,
 };
 
 export const SPEED_UNITS: SpeedUnit[] = ['kmh', 'mph'];
@@ -51,5 +58,9 @@ export function parseSettings(raw: unknown): Settings {
     exposureBias: isExposureOption(value.exposureBias)
       ? value.exposureBias
       : DEFAULT_SETTINGS.exposureBias,
+    analysisAnchor:
+      typeof value.analysisAnchor === 'number' && Number.isFinite(value.analysisAnchor)
+        ? value.analysisAnchor
+        : DEFAULT_SETTINGS.analysisAnchor,
   };
 }

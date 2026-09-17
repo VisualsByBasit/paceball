@@ -1,39 +1,120 @@
-/** Analyses a free user may save in a week. The fourth in seven days needs Pro. */
-export const FREE_ANALYSES_PER_WEEK = 3;
+/** Analyses a free user gets each period. The fourth inside a period needs Pro. */
+export const FREE_ANALYSES_PER_PERIOD = 3;
 
-/** Rolling, not calendar: the last seven days from now, to the millisecond. */
-export const FREE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** A period is seven days from the anchor, not a calendar week. */
+export const PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** The fields the count reads. A whole Session is one. */
 export type CountableDelivery = { createdAt: number; playerId: string };
 
+export type Allowance = {
+  /** Analyses saved inside the current period. */
+  used: number;
+  /** What is left of the period's allowance, never below zero. */
+  left: number;
+  /** When the current period began, or null before the first ever analysis. */
+  periodStart: number | null;
+  /** When the allowance comes back, or null before the first ever analysis. */
+  nextReset: number | null;
+};
+
+const usable = (t: unknown): t is number => typeof t === 'number' && Number.isFinite(t);
+
 /**
- * How many deliveries this player saved inside the rolling window.
+ * The anchor: the moment of the first ever saved analysis. Set once and never
+ * moved, so every period boundary afterwards falls on that same weekday.
  *
- * The edge is exclusive: a delivery exactly FREE_WINDOW_MS old has left the
- * window, so the allowance comes back seven days after it was used rather than
- * a moment later. Counted per player, because the limit follows the bowler
- * whose deliveries they are.
+ * Passing the stored anchor back keeps it fixed. Only an install with no anchor
+ * yet takes one, from the oldest delivery on file, so an install that already
+ * has deliveries anchors to its real first analysis rather than to today.
  */
-export function analysesInWindow(
-  deliveries: readonly CountableDelivery[],
-  now: number,
-  playerId: string | null
-): number {
-  if (playerId === null) return 0;
-  const since = now - FREE_WINDOW_MS;
-  let count = 0;
+export function resolveAnchor(
+  stored: number | null,
+  deliveries: readonly CountableDelivery[]
+): number | null {
+  if (usable(stored)) return stored;
+  let earliest: number | null = null;
   for (const delivery of deliveries) {
-    if (delivery.playerId !== playerId) continue;
-    if (!Number.isFinite(delivery.createdAt)) continue;
-    // Future timestamps would otherwise fall outside the window and hand back
-    // free analyses to a phone whose clock is ahead.
-    if (delivery.createdAt > since) count += 1;
+    if (!usable(delivery.createdAt)) continue;
+    if (earliest === null || delivery.createdAt < earliest) earliest = delivery.createdAt;
   }
-  return count;
+  return earliest;
 }
 
-/** How many a free user has left, never below zero. */
-export function freeAnalysesLeft(used: number): number {
-  return Math.max(0, FREE_ANALYSES_PER_WEEK - used);
+/**
+ * Which seven-day period `now` falls in, counting from the anchor.
+ *
+ * A `now` before the anchor means the phone's clock has gone backwards. That is
+ * read as the first period rather than as a negative one, so winding the clock
+ * back cannot hand out a fresh allowance.
+ */
+export function periodIndex(anchor: number, now: number): number {
+  if (!usable(anchor) || !usable(now)) return 0;
+  if (now <= anchor) return 0;
+  return Math.floor((now - anchor) / PERIOD_MS);
+}
+
+/** The start of the period `now` falls in. */
+export function periodStart(anchor: number, now: number): number {
+  return anchor + periodIndex(anchor, now) * PERIOD_MS;
+}
+
+/** When the current period ends and all three come back. */
+export function nextReset(anchor: number, now: number): number {
+  return periodStart(anchor, now) + PERIOD_MS;
+}
+
+/**
+ * The allowance as it stands: what this player has used inside the current
+ * period, what is left, and when it comes back.
+ *
+ * The period is anchored, so the count drops to zero on the anniversary weekday
+ * of the first ever analysis rather than creeping forward with each delivery.
+ * The period's own bounds are what decide, so a delivery saved before the
+ * current period began is not counted, and neither is one dated after it ends.
+ */
+export function allowanceIn(
+  deliveries: readonly CountableDelivery[],
+  anchor: number | null,
+  now: number,
+  playerId: string | null
+): Allowance {
+  if (anchor === null || !usable(anchor)) {
+    return { used: 0, left: FREE_ANALYSES_PER_PERIOD, periodStart: null, nextReset: null };
+  }
+  const start = periodStart(anchor, now);
+  const end = start + PERIOD_MS;
+  let used = 0;
+  if (playerId !== null) {
+    for (const delivery of deliveries) {
+      if (delivery.playerId !== playerId) continue;
+      if (!usable(delivery.createdAt)) continue;
+      if (delivery.createdAt >= start && delivery.createdAt < end) used += 1;
+    }
+  }
+  return {
+    used,
+    left: Math.max(0, FREE_ANALYSES_PER_PERIOD - used),
+    periodStart: start,
+    nextReset: end,
+  };
+}
+
+/**
+ * What a free user is told about their allowance, or null when there is nothing
+ * to say. Pro never sees any of this, so Pro never asks.
+ *
+ * At zero it names the day the allowance returns, which is the anchor's weekday.
+ */
+export function allowanceLine(
+  allowance: Allowance,
+  weekday: (t: number) => string
+): string {
+  if (allowance.left > 0) {
+    return `${allowance.left} of ${FREE_ANALYSES_PER_PERIOD} analyses left this week`;
+  }
+  if (allowance.nextReset === null) {
+    return `No analyses left this week`;
+  }
+  return `All ${FREE_ANALYSES_PER_PERIOD} come back on ${weekday(allowance.nextReset)}`;
 }

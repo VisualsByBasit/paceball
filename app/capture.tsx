@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Camera,
   useCameraDevice,
+  useCameraDevices,
   useCameraPermission,
   useVideoOutput,
 } from 'react-native-vision-camera';
@@ -16,7 +17,8 @@ import {
 } from '../src/capture/useCapture';
 import { Screen } from '../src/ui/Screen';
 import { captureExposure } from '../src/capture/exposure';
-import { canAnalyse, useEntitlements, usePurchases } from '../src/purchases';
+import { deviceForLens, hasUltraWide, LENS_LABEL, type Lens } from '../src/capture/lenses';
+import { allowanceLine, canAnalyse, useEntitlements, usePurchases } from '../src/purchases';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
@@ -25,6 +27,11 @@ const TIPS = [
   'Keep both sets of stumps in frame the whole delivery.',
   'Shoot in bright, even light. Avoid shooting into the sun.',
 ];
+
+/** The day an allowance comes back, named as the phone names its weekdays. */
+function weekdayOf(t: number): string {
+  return new Date(t).toLocaleDateString(undefined, { weekday: 'long' });
+}
 
 function formatElapsed(ms: number): string {
   const seconds = ms / 1000;
@@ -36,16 +43,25 @@ export default function CaptureScreen() {
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice('back');
+  const defaultDevice = useCameraDevice('back');
+  // The whole pitch fits from closer on an ultra-wide, where the phone has one.
+  // The option is only offered when such a camera really exists: the device
+  // filter returns the nearest match rather than nothing, so it cannot be asked.
+  const devices = useCameraDevices();
+  const ultraWideAvailable = hasUltraWide(devices);
+  const [lens, setLens] = useState<Lens>('wide');
+  const device = deviceForLens(lens, devices, defaultDevice);
   const { exposureBias } = useSettings();
   const entitlements = useEntitlements();
-  const { refreshAnalyses } = usePurchases();
+  const { refreshAnalyses, isPro, allowance } = usePurchases();
   // Re-read on focus, so a delivery saved since this screen was last open
   // counts against the week.
   useEffect(() => {
     if (isFocused) refreshAnalyses();
   }, [isFocused, refreshAnalyses]);
   const allowed = canAnalyse(entitlements);
+  // Pro is unlimited, so Pro is told nothing about limits anywhere.
+  const allowanceNote = isPro ? null : allowanceLine(allowance, weekdayOf);
   const exposure = captureExposure(device, exposureBias);
   const [sessionReady, setSessionReady] = useState(false);
   const [showTips, setShowTips] = useState(true);
@@ -115,7 +131,7 @@ export default function CaptureScreen() {
 
   let hint: string;
   if (isProcessing) hint = 'Reading the clip…';
-  else if (!allowed) hint = "That's your free analyses for this week. Tap to see Pro.";
+  else if (!allowed) hint = 'Tap to see Pro.';
   else if (!isRecording) hint = `Tap to record · ${MIN_RECORDING_MS / 1000}s minimum`;
   else if (canStop) hint = 'Tap to stop';
   else hint = `Stop unlocks in ${lockedSeconds}s`;
@@ -144,6 +160,32 @@ export default function CaptureScreen() {
         pointerEvents="box-none"
       >
         <View style={styles.top} pointerEvents="box-none">
+          {!isRecording && !isProcessing && ultraWideAvailable ? (
+            <View style={styles.lenses} accessibilityRole="radiogroup">
+              {(['wide', 'ultra-wide'] as Lens[]).map((option) => {
+                const on = option === lens;
+                return (
+                  <Pressable
+                    key={option}
+                    style={[styles.lens, on && styles.lensOn]}
+                    onPress={() => setLens(option)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                    accessibilityLabel={
+                      option === 'ultra-wide'
+                        ? 'Ultra wide lens, 0.6x'
+                        : 'Standard lens, 1x'
+                    }
+                  >
+                    <Text style={[styles.lensText, on && styles.lensTextOn]}>
+                      {LENS_LABEL[option]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
           {isRecording || isProcessing ? null : showTips ? (
             <View style={styles.tipsCard}>
               <View style={styles.tipsHeader}>
@@ -223,6 +265,9 @@ export default function CaptureScreen() {
             </View>
           </Pressable>
 
+          {allowanceNote ? (
+            <Text style={[styles.hint, !allowed && styles.hintLimit]}>{allowanceNote}</Text>
+          ) : null}
           <Text style={styles.hint}>{hint}</Text>
         </View>
       </View>
@@ -348,4 +393,19 @@ const styles = StyleSheet.create({
   countdown: { ...type.h2, ...type.tabular, color: colors.text },
 
   hint: { ...type.caption, color: colors.muted, marginTop: space.md },
+  lenses: { flexDirection: 'row', alignSelf: 'center', marginBottom: space.md },
+  lens: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    backgroundColor: colors.bg,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    marginHorizontal: space.xs,
+  },
+  lensOn: { backgroundColor: colors.text, borderColor: colors.text },
+  lensText: { ...type.caption, ...type.tabular, color: colors.text },
+  lensTextOn: { color: colors.bg, fontWeight: '800' },
+  // The allowance is worth reading at a glance once it has run out.
+  hintLimit: { color: colors.warn },
 });

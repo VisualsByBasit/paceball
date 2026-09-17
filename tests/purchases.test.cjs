@@ -4,11 +4,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 const {
-  FREE_ANALYSES_PER_WEEK,
-  FREE_WINDOW_MS,
-  analysesInWindow,
-  freeAnalysesLeft,
+  FREE_ANALYSES_PER_PERIOD,
+  PERIOD_MS,
+  allowanceIn,
+  allowanceLine,
+  nextReset,
+  periodIndex,
+  resolveAnchor,
 } = require('../src/purchases/freeLimit.ts');
+const { DEFAULT_SETTINGS, parseSettings } = require('../src/settings/settings.ts');
 const {
   canAnalyse,
   canCompare,
@@ -25,65 +29,136 @@ const {
 const read = (file) =>
   fs.readFileSync(path.join(__dirname, '..', file), 'utf8').replace(/\r\n/g, '\n');
 
-const NOW = Date.UTC(2026, 8, 18, 12, 0, 0);
-const at = (msAgo, playerId = 'me') => ({ createdAt: NOW - msAgo, playerId });
 const MINUTE = 60 * 1000;
+const DAY = 24 * 60 * 60 * 1000;
+/** A saved delivery. `msAgo` is kept for callers that count back from `createdAt`. */
+const at = (msAgo, playerId = 'me', createdAt = 0) => ({ createdAt: createdAt - msAgo, playerId });
 
-test('the weekly count takes only this player, inside the rolling window', () => {
-  assert.equal(FREE_ANALYSES_PER_WEEK, 3);
-  assert.equal(analysesInWindow([], NOW, 'me'), 0);
-  assert.equal(analysesInWindow([at(MINUTE)], NOW, null), 0, 'no player, no count');
+test('the anchor is the first ever analysis, set once and never moved', () => {
+  const first = Date.UTC(2026, 8, 1, 9, 30);
+  const saved = [at(0, 'me', first + 3 * DAY), at(0, 'me', first), at(0, 'them', first - DAY)];
 
-  // Another bowler's deliveries are not this bowler's allowance.
-  const mixed = [at(MINUTE), at(2 * MINUTE, 'them'), at(3 * MINUTE)];
-  assert.equal(analysesInWindow(mixed, NOW, 'me'), 2);
-  assert.equal(analysesInWindow(mixed, NOW, 'them'), 1);
+  // With nothing stored, the anchor is the oldest delivery on file, so an
+  // install that already has deliveries anchors to its real first analysis.
+  assert.equal(resolveAnchor(null, saved), first - DAY);
+  assert.equal(resolveAnchor(null, []), null, 'no deliveries, no anchor yet');
 
-  // A record with an unusable timestamp is not counted, and does not throw.
-  assert.equal(analysesInWindow([{ createdAt: NaN, playerId: 'me' }], NOW, 'me'), 0);
+  // Once stored it never moves, whatever turns up later.
+  assert.equal(resolveAnchor(first, saved), first);
+  assert.equal(resolveAnchor(first, [at(0, 'me', first - 10 * DAY)]), first);
+  // An unusable stored value is not an anchor.
+  assert.equal(resolveAnchor(NaN, saved), first - DAY);
+
+  // It is kept in the app's own settings, not in the data layer.
+  assert.equal(DEFAULT_SETTINGS.analysisAnchor, null);
+  assert.equal(parseSettings({ analysisAnchor: first }).analysisAnchor, first);
+  assert.equal(parseSettings({ analysisAnchor: 'soon' }).analysisAnchor, null);
+  const provider = read('src/purchases/PurchasesProvider.tsx');
+  assert.match(provider, /const anchor = resolveAnchor\(stored, sessions\);/);
+  assert.match(provider, /if \(anchor !== null && stored === null\) updateSettings\(\{ analysisAnchor: anchor \}\);/);
 });
 
-test('the window edge is exclusive, so the allowance comes back after 7 days', () => {
-  const justInside = analysesInWindow([at(FREE_WINDOW_MS - 1)], NOW, 'me');
-  const exactly = analysesInWindow([at(FREE_WINDOW_MS)], NOW, 'me');
-  const justOutside = analysesInWindow([at(FREE_WINDOW_MS + 1)], NOW, 'me');
-  assert.equal(justInside, 1, 'a millisecond inside still counts');
-  assert.equal(exactly, 0, 'exactly seven days old has left the window');
-  assert.equal(justOutside, 0);
+test('the count resets at the period boundary and not before', () => {
+  const anchor = Date.UTC(2026, 8, 1, 9, 30);
+  const used = (now, deliveries) => allowanceIn(deliveries, anchor, now, 'me').used;
+  const three = [at(0, 'me', anchor), at(0, 'me', anchor + DAY), at(0, 'me', anchor + 2 * DAY)];
 
-  // A clock ahead of the window must not hand back free analyses.
-  assert.equal(analysesInWindow([at(-MINUTE)], NOW, 'me'), 1);
+  assert.equal(used(anchor + 3 * DAY, three), 3, 'all three are in the first period');
+  assert.equal(used(anchor + PERIOD_MS - 1, three), 3, 'still spent a millisecond before');
+  assert.equal(used(anchor + PERIOD_MS, three), 0, 'the new period starts clean');
+  assert.equal(used(anchor + 9 * DAY, three), 0);
+
+  // A delivery in the new period counts there, and the old ones do not.
+  const later = [...three, at(0, 'me', anchor + PERIOD_MS + DAY)];
+  assert.equal(used(anchor + PERIOD_MS + 2 * DAY, later), 1);
+  // Only this player's.
+  assert.equal(allowanceIn([at(0, 'them', anchor)], anchor, anchor + DAY, 'me').used, 0);
+  assert.equal(allowanceIn(three, anchor, anchor + DAY, null).used, 0, 'no player, no count');
+  // A record with an unusable timestamp is not counted, and does not throw.
+  assert.equal(used(anchor + DAY, [{ createdAt: NaN, playerId: 'me' }]), 0);
+});
+
+test('the reset lands on the anchor weekday, period after period', () => {
+  // A Tuesday.
+  const anchor = Date.UTC(2026, 8, 1, 9, 30);
+  assert.equal(new Date(anchor).getUTCDay(), 2);
+
+  for (const period of [0, 1, 2, 9]) {
+    const now = anchor + period * PERIOD_MS + 3 * DAY;
+    const reset = nextReset(anchor, now);
+    assert.equal(reset, anchor + (period + 1) * PERIOD_MS);
+    assert.equal(new Date(reset).getUTCDay(), 2, 'always the anchor weekday');
+    assert.equal(periodIndex(anchor, now), period);
+  }
+});
+
+test('a backwards clock cannot hand out a fresh period', () => {
+  const anchor = Date.UTC(2026, 8, 1, 9, 30);
+  const spent = [at(0, 'me', anchor), at(0, 'me', anchor + 1), at(0, 'me', anchor + 2)];
+
+  // Wound back before the anchor: still the first period, still spent.
+  assert.equal(periodIndex(anchor, anchor - 5 * PERIOD_MS), 0);
+  const back = allowanceIn(spent, anchor, anchor - 5 * PERIOD_MS, 'me');
+  assert.equal(back.used, 3);
+  assert.equal(back.left, 0);
+  assert.equal(canAnalyse({ isPro: false, analysesThisPeriod: back.used }), false);
+});
+
+test('before the first analysis the allowance is whole, with nothing to reset', () => {
+  const none = allowanceIn([], null, Date.now(), 'me');
+  assert.deepEqual(none, {
+    used: 0,
+    left: FREE_ANALYSES_PER_PERIOD,
+    periodStart: null,
+    nextReset: null,
+  });
 });
 
 test('the third delivery is allowed and the fourth is not', () => {
-  const free = (used) => ({ isPro: false, analysesLast7Days: used });
+  const anchor = Date.UTC(2026, 8, 1, 9, 30);
   const saved = [];
   for (let i = 1; i <= 4; i += 1) {
-    const used = analysesInWindow(saved, NOW, 'me');
-    const allowed = canAnalyse(free(used));
-    assert.equal(allowed, i <= 3, `delivery ${i}`);
-    saved.push(at(i * MINUTE));
+    const now = anchor + i * MINUTE;
+    const { used, left } = allowanceIn(saved, anchor, now, 'me');
+    assert.equal(canAnalyse({ isPro: false, analysesThisPeriod: used }), i <= 3, `delivery ${i}`);
+    assert.equal(left, Math.max(0, 4 - i));
+    saved.push(at(0, 'me', now));
   }
-
-  assert.equal(freeAnalysesLeft(0), 3);
-  assert.equal(freeAnalysesLeft(2), 1);
-  assert.equal(freeAnalysesLeft(3), 0);
-  assert.equal(freeAnalysesLeft(9), 0, 'never negative');
-
   // Pro is not counted at all.
-  assert.equal(canAnalyse({ isPro: true, analysesLast7Days: 99 }), true);
+  assert.equal(canAnalyse({ isPro: true, analysesThisPeriod: 99 }), true);
+});
+
+test('the allowance line counts down, then names the day it comes back', () => {
+  const anchor = Date.UTC(2026, 8, 1, 9, 30);
+  const weekday = (t) => new Date(t).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
+  const lineAfter = (n) => {
+    const saved = [];
+    for (let i = 0; i < n; i += 1) saved.push(at(0, 'me', anchor + i * MINUTE));
+    return allowanceLine(allowanceIn(saved, anchor, anchor + DAY, 'me'), weekday);
+  };
+  assert.equal(lineAfter(0), '3 of 3 analyses left this week');
+  assert.equal(lineAfter(1), '2 of 3 analyses left this week');
+  assert.equal(lineAfter(3), 'All 3 come back on Tuesday', 'the anchor weekday');
+
+  // Pro sees none of this: both screens ask isPro before building the line.
+  assert.match(read('app/capture.tsx'), /const allowanceNote = isPro \? null : allowanceLine\(allowance, weekdayOf\);/);
+  const settings = read('app/settings.tsx');
+  const freeBranch = settings.slice(settings.indexOf('See what Paceball Pro adds'), settings.indexOf('<Section title="READINGS">'));
+  assert.match(freeBranch, /allowanceLine\(allowance,/);
+  const proBranch = settings.slice(settings.indexOf('Paceball Pro is active'), settings.indexOf('See what Paceball Pro adds'));
+  assert.doesNotMatch(proBranch, /allowanceLine/, 'Pro is told nothing about limits');
 });
 
 test('each gate answers for a free user and for Pro', () => {
-  const free = { isPro: false, analysesLast7Days: 0 };
-  const spent = { isPro: false, analysesLast7Days: 3 };
-  const pro = { isPro: true, analysesLast7Days: 0 };
+  const free = { isPro: false, analysesThisPeriod: 0 };
+  const spent = { isPro: false, analysesThisPeriod: 3 };
+  const pro = { isPro: true, analysesThisPeriod: 0 };
 
   assert.equal(canCompare(free), false);
   assert.equal(canCompare(pro), true);
   assert.equal(canAnalyse(free), true);
   assert.equal(canAnalyse(spent), false);
-  assert.equal(canAnalyse({ isPro: true, analysesLast7Days: 3 }), true);
+  assert.equal(canAnalyse({ isPro: true, analysesThisPeriod: 3 }), true);
   assert.equal(canExportWithoutWatermark(free), false);
   assert.equal(canExportWithoutWatermark(pro), true);
 });
@@ -219,5 +294,38 @@ test('the new copy uses no em dashes', () => {
   assert.doesNotMatch(cleanExport, /—/);
 
   const capture = read('app/capture.tsx');
-  assert.match(capture, /That's your free analyses for this week\. Tap to see Pro\./);
+  assert.match(capture, /'Tap to see Pro\.'/);
+  assert.doesNotMatch(read('src/purchases/freeLimit.ts'), /\u2014/);
+  assert.doesNotMatch(read('src/purchases/mockOffering.ts'), /\u2014/);
+});
+
+test('with no key the paywall says the prices are samples and cannot buy', () => {
+  const paywall = read('app/paywall.tsx');
+  // The notice and the disabled button both hang off purchasesConfigured, which
+  // the provider reports as `configured`, so they appear together or not at all.
+  assert.match(paywall, /const sample = !configured;/);
+  assert.match(paywall, /Sample prices\. The store is not connected in this build\./);
+  assert.match(paywall, /\{sample \? \(\s*<Text style=\{styles\.sampleNotice\}>/);
+  assert.match(paywall, /disabled=\{buying \|\| sample\}/);
+  assert.match(paywall, /accessibilityState=\{\{ busy: buying, disabled: buying \|\| sample \}\}/);
+  // Restore is untouched by it, and still reports unavailable on its own.
+  assert.doesNotMatch(paywall, /disabled=\{restoring \|\| sample\}/);
+  assert.match(paywall, /'Purchases are not set up in this build, so there is nothing to restore from\.'/);
+  // `configured` is the key check, not a guess about the offering.
+  const sdk = read('src/purchases/sdk.ts');
+  assert.match(sdk, /export function purchasesConfigured\(\): boolean \{\s*return Boolean\(apiKey\);/);
+  assert.match(read('src/purchases/PurchasesProvider.tsx'), /const configured = purchasesConfigured\(\);/);
+});
+
+test('the sample prices are plainly samples, and not dollars', () => {
+  const mock = read('src/purchases/mockOffering.ts');
+  // Non-dollar, so a price the paywall renders is visibly the store's text and
+  // never something the screen built.
+  assert.match(mock, /priceString: 'Rs 1,100\.00'/);
+  assert.match(mock, /priceString: 'Rs 6,900\.00'/);
+  assert.match(mock, /priceString: 'Rs 0\.00'/);
+  // No dollar (or other symbol) price. The bare $ in RevenueCat's own package
+  // identifiers, like $rc_monthly, is not a price.
+  assert.doesNotMatch(mock, /[$€£₹¥]\s?\d/);
+  assert.match(mock, /SAMPLE figures, not the real plan prices/);
 });

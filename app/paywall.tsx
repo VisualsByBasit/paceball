@@ -121,7 +121,19 @@ export default function PaywallScreen() {
   const insets = useSafeAreaInsets();
   const context = parseContext(useLocalSearchParams().context);
   const copy = COPY[context];
-  const { isPro, offering, loading, mocked, purchase, restore: restoreWithStore } = usePurchases();
+  const {
+    isPro,
+    offering,
+    loading,
+    mocked,
+    configured,
+    purchase,
+    restore: restoreWithStore,
+  } = usePurchases();
+  // No key in this build means the prices on screen are the stand-in's. Nothing
+  // can be bought, and the screen has to say so rather than look like a working
+  // paywall with odd prices.
+  const sample = !configured;
 
   // The store's offering when there is one, otherwise the stand-in. Either way
   // every figure on screen is the store's own price text, never written here.
@@ -215,14 +227,20 @@ export default function PaywallScreen() {
         </View>
       )}
 
+      {sample ? (
+        <Text style={styles.sampleNotice}>
+          Sample prices. The store is not connected in this build.
+        </Text>
+      ) : null}
+
       {cta && !restored ? (
         <Pressable
-          style={[styles.cta, buying && styles.ctaBusy]}
+          style={[styles.cta, (buying || sample) && styles.ctaBusy]}
           onPress={onPurchase}
-          disabled={buying}
+          disabled={buying || sample}
           accessibilityRole="button"
-          accessibilityState={{ busy: buying, disabled: buying }}
-          accessibilityLabel={cta}
+          accessibilityState={{ busy: buying, disabled: buying || sample }}
+          accessibilityLabel={sample ? `${cta}. Not available in this build.` : cta}
         >
           {buying ? (
             <ActivityIndicator color={colors.bg} />
@@ -231,9 +249,9 @@ export default function PaywallScreen() {
           )}
         </Pressable>
       ) : null}
-      {mocked && !restored ? (
+      {mocked && !sample && !restored ? (
         <Text style={styles.ctaNote}>
-          These are stand-in prices: this build has no store connection yet.
+          These are stand-in prices: the store did not return an offering.
         </Text>
       ) : null}
       {chosenTrial !== null && !restored ? (
@@ -405,6 +423,15 @@ const styles = StyleSheet.create({
   },
   ctaText: { ...type.h2, color: colors.bg, fontWeight: '800' },
   ctaBusy: { opacity: opacity.inactive },
+  sampleNotice: {
+    ...type.body,
+    color: colors.warn,
+    borderWidth: stroke.hairline,
+    borderColor: colors.warn,
+    borderRadius: radius.md,
+    padding: space.md,
+    marginTop: space.md,
+  },
   plansLoading: { marginVertical: space.lg },
   ctaNote: { ...type.body, color: colors.text, textAlign: 'center', marginTop: space.sm },
   notice: { ...type.body, color: colors.warn, textAlign: 'center', marginTop: space.md },
