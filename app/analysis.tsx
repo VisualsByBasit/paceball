@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -14,6 +16,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listFrames } from '../src/capture/useFrames';
 import { getSession } from '../src/data';
+import { SessionActions } from '../src/export/SessionActions';
 import { CALIBRATION_SPECS, formatMetres, travelWarning } from '../src/physics/calibration';
 import { measurementState } from '../src/physics/measurementState';
 import { FrameMarker } from '../src/ui/FrameMarker';
@@ -313,6 +316,10 @@ function Replay({
   const state = useMemo(() => measurementState(session), [session]);
   const measured = state.kind === 'measured';
 
+  // Export and delete live in a sheet over the screen rather than in the layout,
+  // so the video stage keeps its full height whether or not they are open.
+  const [sharing, setSharing] = useState(false);
+
   // The same guard as Result, against the ruler this delivery actually used.
   const warning = travelWarning(
     session.travelMetres,
@@ -332,7 +339,25 @@ function Replay({
       </View>
 
       <View style={styles.stats}>
-        <Text style={styles.statsLabel}>AVG SPEED TO BOUNCE</Text>
+        <View style={styles.statsTop}>
+          <Text style={styles.statsLabel}>AVG SPEED TO BOUNCE</Text>
+          {/* Same rule as Result: nothing to put on a share card without a
+              measured speed, so not-seen and unusable deliveries get no button. */}
+          {measured ? (
+            <Pressable
+              style={[styles.shareButton, sharing && styles.shareButtonOn]}
+              onPress={() => setSharing((open) => !open)}
+              hitSlop={space.sm}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: sharing }}
+              accessibilityLabel="Share this delivery"
+            >
+              <Text style={[styles.shareButtonText, sharing && styles.shareButtonTextOn]}>
+                Share
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
         <View style={styles.statRow}>
           <Stat
             label="SPEED"
@@ -528,6 +553,47 @@ function Replay({
           })}
         </View>
       </View>
+
+      {measured ? (
+        <Modal
+          visible={sharing}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={() => setSharing(false)}
+        >
+          <View style={[styles.sheetFrame, { paddingTop: insets.top + space.xxl }]}>
+            <Pressable
+              style={[StyleSheet.absoluteFill, styles.scrim]}
+              onPress={() => setSharing(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close sharing"
+            />
+            <View style={[styles.sheet, { paddingBottom: insets.bottom + space.md }]}>
+              <View style={styles.sheetHeader}>
+                <Text style={styles.statsLabel}>SHARE THIS DELIVERY</Text>
+                <Pressable
+                  onPress={() => setSharing(false)}
+                  hitSlop={space.md}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.headerAction}>Close</Text>
+                </Pressable>
+              </View>
+              <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
+                <SessionActions
+                  sessionId={session.id}
+                  onDeleted={() => {
+                    // The record is gone, so there is nothing left to replay.
+                    setSharing(false);
+                    onBack();
+                  }}
+                />
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -577,7 +643,48 @@ const styles = StyleSheet.create({
   headerMeta: { ...type.caption, color: colors.text },
 
   stats: { paddingHorizontal: space.lg, paddingBottom: space.md },
-  statsLabel: { ...type.label, color: colors.muted, marginBottom: space.sm },
+  statsTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.sm,
+  },
+  statsLabel: { ...type.label, color: colors.muted },
+  // Kept to the label row's own height, so the stage below loses nothing to it.
+  shareButton: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    paddingHorizontal: space.md,
+  },
+  shareButtonOn: { backgroundColor: colors.text, borderColor: colors.text },
+  shareButtonText: { ...type.caption, color: colors.text },
+  shareButtonTextOn: { color: colors.bg, fontWeight: '800' },
+
+  sheetFrame: { flex: 1, justifyContent: 'flex-end' },
+  scrim: {
+    backgroundColor: colors.bg,
+    opacity: opacity.scrim,
+  },
+  // Shrinks to fit under the top inset, so a tall export preview scrolls inside
+  // the sheet instead of pushing it off the screen.
+  sheet: {
+    flexShrink: 1,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    borderTopWidth: stroke.hairline,
+    borderColor: colors.line,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sheetScroll: { flexGrow: 0 },
+  sheetContent: { paddingBottom: space.md },
   statRow: { flexDirection: 'row' },
   stat: { flex: 1, marginRight: space.xs },
   statLabel: { ...type.label, color: colors.muted },

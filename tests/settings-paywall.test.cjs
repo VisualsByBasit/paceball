@@ -113,13 +113,14 @@ test('the paywall never writes a price of its own', () => {
 });
 
 test('the new screens take every colour and size from tokens', () => {
-  for (const file of ['app/settings.tsx', 'app/paywall.tsx']) {
+  for (const file of ['app/settings.tsx', 'app/paywall.tsx', 'app/analysis.tsx']) {
     const source = read(file);
     assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b/i, `${file} hardcodes a colour`);
     const styles = source.slice(source.indexOf('StyleSheet.create'));
     // A bare number as a style value: `padding: 12`. Strings like fontWeight are
-    // fine, and so is flex — a layout ratio, not a size the tokens could name.
-    assert.doesNotMatch(styles.replace(/\bflex:\s*1\b/g, ''),/:\s*-?\d+(\.\d+)?\s*[,}\n]/, `${file} hardcodes a size`);
+    // fine, and so are flex, flexGrow and flexShrink - layout ratios, not sizes
+    // the tokens could name.
+    assert.doesNotMatch(styles.replace(/\bflex(Grow|Shrink)?:\s*[01]\b/g, ''),/:\s*-?\d+(\.\d+)?\s*[,}\n]/, `${file} hardcodes a size`);
   }
 });
 
