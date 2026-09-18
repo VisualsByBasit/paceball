@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-nat
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { diagnosticsStatus, sendDiagnosticTest, setDiagnosticsConsent } from '../src/diagnostics';
+import { purchasesConfigured } from '../src/purchases';
 import { colors, radius, space, type } from '../src/ui/tokens';
 
 export default function DiagnosticsScreen() {
@@ -14,8 +15,13 @@ export default function DiagnosticsScreen() {
   return <ScrollView style={styles.screen} contentContainerStyle={{ padding: space.md, paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.lg }}>
     <Pressable onPress={() => router.back()} accessibilityRole="button" style={styles.button}><Text style={styles.body}>Back</Text></Pressable>
     <Text style={styles.title}>Privacy and crash reports</Text>
-    <Text style={styles.body}>Paceball processes recordings and measurements on your phone. Images you save to your gallery or share can remain after uninstalling. Device backups may also retain app data.</Text>
+    <Text style={styles.body}>Your videos and measurements stay on this phone. Paceball never uploads your videos or measurements, and there is no account. Android's own backup can copy app data to your backup, and images you save to your gallery or share can remain after uninstalling.</Text>
+    <Text style={styles.title}>Purchases</Text>
+    {purchasesConfigured()
+      ? <Text style={styles.body}>Paceball Pro is sold through Google Play and RevenueCat. When the app opens, it asks RevenueCat whether this phone has Pro and what the plans cost. When you subscribe or restore, your purchase goes through Google Play and RevenueCat. They receive the purchase, an anonymous ID and device details such as the Android and app version. They never receive your videos, names or speeds.</Text>
+      : <Text style={styles.body}>Purchases are not set up in this build, so nothing is sent to Google Play or RevenueCat.</Text>}
     <Text style={styles.title}>Optional crash reports</Text>
+    <Text style={styles.body}>Off unless you turn them on below. Crash reports go to Sentry only if you opt in.</Text>
     <Text style={styles.body}>If you enable this, Paceball sends limited JavaScript error reports to Sentry: app version, error type, time, code locations and reviewed static error messages. Reports exclude player names, recordings, marked points and speeds. Other error messages are redacted. Sentry receives your network address when a report is sent. Your bowling measurements work without crash reports. Native crash reporting is not enabled.</Text>
     <View style={styles.row}>
       <Text style={styles.body}>Send crash reports</Text>

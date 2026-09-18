@@ -23,7 +23,7 @@ import { TERMS_URL } from '../src/purchases/links';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
 /** What sent the user here. Same layout; the headline speaks to what they just tried. */
-type PaywallContext = 'export' | 'limit' | 'compare' | 'pro';
+type PaywallContext = 'export' | 'limit' | 'compare' | 'pro' | 'onboarding';
 
 type Copy = {
   /** The value, not the product. */
@@ -71,6 +71,17 @@ const COPY: Record<PaywallContext, Copy> = {
     ],
     dismiss: 'Stay on the free plan',
   },
+  // Offered once, at the end of setup, before a limit has ever been reached. It
+  // leads with what Pro adds and says nothing about the free allowance.
+  onboarding: {
+    headline: 'Get more from every session',
+    values: [
+      'Analyse every delivery you record',
+      'Export without the watermark',
+      'Compare any two deliveries side by side',
+    ],
+    dismiss: 'Start with the free plan',
+  },
 };
 
 const PLAN_ORDER: PlanPeriod[] = ['annual', 'monthly'];
@@ -80,7 +91,9 @@ const PLAN_PER: Record<PlanPeriod, string> = { annual: 'a year', monthly: 'a mon
 
 function parseContext(value: string | string[] | undefined): PaywallContext {
   const raw = Array.isArray(value) ? value[0] : value;
-  return raw === 'limit' || raw === 'compare' || raw === 'pro' ? raw : 'export';
+  return raw === 'limit' || raw === 'compare' || raw === 'pro' || raw === 'onboarding'
+    ? raw
+    : 'export';
 }
 
 type RestoreState = { status: 'idle' } | { status: 'restoring' } | RestoreOutcome;
@@ -176,6 +189,13 @@ export default function PaywallScreen() {
     setRestore(await restoreWithStore());
   }, [restoreWithStore]);
 
+  // Onboarding came here instead of the camera, so leaving goes on to the
+  // camera rather than back into setup. Everywhere else, back to where it was.
+  const leave = useCallback(() => {
+    if (context === 'onboarding') router.replace('/capture');
+    else router.back();
+  }, [context, router]);
+
   const restored = restore.status === 'restored' || isPro;
   const restoring = restore.status === 'restoring';
   const note = restoreNote(restore);
@@ -267,12 +287,14 @@ export default function PaywallScreen() {
       ) : null}
 
       <Pressable
-        style={styles.dismiss}
-        onPress={() => router.back()}
+        style={[styles.dismiss, context === 'onboarding' && styles.dismissOutlined]}
+        onPress={leave}
         accessibilityRole="button"
         hitSlop={space.sm}
       >
-        <Text style={styles.dismissText}>{restored ? 'Done' : copy.dismiss}</Text>
+        <Text style={[styles.dismissText, context === 'onboarding' && styles.dismissTextOn]}>
+          {restored ? 'Done' : copy.dismiss}
+        </Text>
       </Pressable>
 
       <View style={styles.links}>
@@ -438,6 +460,15 @@ const styles = StyleSheet.create({
 
   dismiss: { alignItems: 'center', paddingVertical: space.md, marginTop: space.sm },
   dismissText: { ...type.body, color: colors.muted },
+  // Nothing has been refused yet during onboarding, so skipping is a plain,
+  // full-weight choice beside the offer, not small print under it.
+  dismissOutlined: {
+    borderWidth: stroke.medium,
+    borderColor: colors.line,
+    borderRadius: radius.pill,
+    marginTop: space.md,
+  },
+  dismissTextOn: { color: colors.text },
 
   links: {
     flexDirection: 'row',

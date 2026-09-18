@@ -11,6 +11,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createPlayer } from '../../src/data';
 import { PITCH_LENGTH_M } from '../../src/physics/computeSpeed';
+import { shouldShowOnboardingPaywall, usePurchases } from '../../src/purchases';
+import { getSettings, updateSettings } from '../../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../../src/ui/tokens';
 
 const REQUIREMENTS = [
@@ -141,6 +143,7 @@ export default function SetupCameraScreen() {
 
   const name = (Array.isArray(params.name) ? params.name[0] : params.name)?.trim() ?? '';
   const isOnboarding = name.length > 0;
+  const { isPro, configured, loading } = usePurchases();
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,12 +160,26 @@ export default function SetupCameraScreen() {
       // Unwind setup before opening the camera, so Back from the camera does
       // not walk into onboarding again and offer to create a second profile.
       router.dismissAll();
-      router.push('/capture');
+      const offerPro = shouldShowOnboardingPaywall({
+        shown: getSettings().onboardingPaywallShown,
+        isPro,
+        configured,
+        loading,
+      });
+      if (offerPro) {
+        // Recorded before it opens, so buying, skipping or closing the app on it
+        // all count as the one time it is offered.
+        updateSettings({ onboardingPaywallShown: true });
+        // The paywall moves on to the camera itself when it is dismissed.
+        router.push({ pathname: '/paywall', params: { context: 'onboarding' } });
+      } else {
+        router.push('/capture');
+      }
     } catch (e) {
       setSaving(false);
       setError(message(e));
     }
-  }, [isOnboarding, name, router]);
+  }, [configured, isOnboarding, isPro, loading, name, router]);
 
   return (
     <View style={styles.screen}>

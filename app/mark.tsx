@@ -9,6 +9,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { framesDirUri, useFrames } from '../src/capture/useFrames';
 import { getActivePlayer, updatePlayer } from '../src/data';
@@ -25,6 +26,7 @@ import { CalibrationStep } from '../src/ui/CalibrationStep';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+import { useHoldRepeat } from '../src/ui/useHoldRepeat';
 import type { CalibrationMethod, MarkConfidence, Player, Point } from '../src/types';
 
 type StepKey = 'calA' | 'calB' | 'release' | 'bounce';
@@ -295,6 +297,25 @@ export default function MarkScreen() {
     },
     []
   );
+
+  // One tick for the press itself, none while it repeats: a buzz every 75 ms
+  // reads as a fault, and the moving frame counter already shows the pace.
+  const tick = useCallback((first: boolean) => {
+    if (first) Haptics.selectionAsync().catch(() => undefined);
+  }, []);
+  const stepBack = useHoldRepeat(
+    useCallback((first: boolean) => { tick(first); step(-1); }, [step, tick])
+  );
+  const stepForward = useHoldRepeat(
+    useCallback((first: boolean) => { tick(first); step(1); }, [step, tick])
+  );
+
+  // A button disabled under a held finger may never report the release, so
+  // reaching either end stops the repeat that was heading for it.
+  useEffect(() => {
+    if (current === 0) stepBack.stop();
+    if (current >= scrubMax) stepForward.stop();
+  }, [current, scrubMax, stepBack.stop, stepForward.stop]);
 
   const place = useCallback(
     (event: GestureResponderEvent) => {
@@ -618,7 +639,9 @@ export default function MarkScreen() {
 
         <View style={styles.stepRow}>
           <Pressable
-            onPress={() => step(-1)}
+            onPressIn={stepBack.onPressIn}
+            onPressOut={stepBack.onPressOut}
+            onPress={stepBack.onPress}
             disabled={current === 0}
             hitSlop={space.sm}
             style={[styles.stepButton, current === 0 && styles.stepButtonOff]}
@@ -636,7 +659,9 @@ export default function MarkScreen() {
           </View>
 
           <Pressable
-            onPress={() => step(1)}
+            onPressIn={stepForward.onPressIn}
+            onPressOut={stepForward.onPressOut}
+            onPress={stepForward.onPress}
             disabled={current >= scrubMax}
             hitSlop={space.sm}
             style={[styles.stepButton, current >= scrubMax && styles.stepButtonOff]}

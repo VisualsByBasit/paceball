@@ -9,3 +9,4 @@ export {
   purchasesConfigured,
   restorePurchases,
 } from './sdk';
+export * from './onboarding';

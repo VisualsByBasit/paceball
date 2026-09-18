@@ -27,6 +27,12 @@ export type Settings = {
    * target to this phone, never to assume anything about a clip being marked.
    */
   lastRecording: RecordingProfile | null;
+  /**
+   * Whether the paywall has been offered once during onboarding. Set the moment
+   * it is shown, whether the user then buys or skips, and never cleared, so it
+   * is offered at most once per install.
+   */
+  onboardingPaywallShown: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -35,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   exposureBias: -4,
   analysisAnchor: null,
   lastRecording: null,
+  onboardingPaywallShown: false,
 };
 
 export const SPEED_UNITS: SpeedUnit[] = ['kmh', 'mph'];
@@ -81,5 +88,6 @@ export function parseSettings(raw: unknown): Settings {
     lastRecording: isRecordingProfile(value.lastRecording)
       ? value.lastRecording
       : DEFAULT_SETTINGS.lastRecording,
+    onboardingPaywallShown: value.onboardingPaywallShown === true,
   };
 }

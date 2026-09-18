@@ -64,6 +64,10 @@ export const motion = {
   dotStagger: 70,
   /** The endpoint's single pulse once a path has drawn. */
   pulse: 560,
+  /** A held step button: the pause before it starts repeating, like a keyboard key. */
+  holdDelay: 400,
+  /** Then one step every this many milliseconds while it stays held. */
+  holdRepeat: 75,
   /** How far a released drag carries on, as milliseconds of its release speed. */
   throw: 120,
   /** Cubic-bezier control points: fast start, long settle, never past 1. */
