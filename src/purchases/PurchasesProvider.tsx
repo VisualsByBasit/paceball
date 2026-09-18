@@ -127,25 +127,16 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
     let alive = true;
     (async () => {
       try {
+        // Every delivery on the phone, whoever bowled it: the allowance and its
+        // anchor both belong to the phone, so they count the same deliveries.
         const player = await getActivePlayer();
-        if (!player) {
-          if (alive) {
-            setAllowance({
-              used: 0,
-              left: FREE_ANALYSES_PER_PERIOD,
-              periodStart: null,
-              nextReset: null,
-            });
-          }
-          return;
-        }
-        const sessions = await listSessions({ playerId: player.id });
+        const sessions = player ? await listSessions({ playerId: player.id }) : [];
         // The anchor is the first ever analysis. Written once, on the first
         // refresh that finds any delivery, and never moved after that.
         const stored = getSettings().analysisAnchor;
         const anchor = resolveAnchor(stored, sessions);
         if (anchor !== null && stored === null) updateSettings({ analysisAnchor: anchor });
-        if (alive) setAllowance(allowanceIn(sessions, anchor, Date.now(), player.id));
+        if (alive) setAllowance(allowanceIn(sessions, anchor, Date.now()));
       } catch {
         // An unreadable list must not hand out free analyses, so the count
         // stands where it was rather than falling back to zero.

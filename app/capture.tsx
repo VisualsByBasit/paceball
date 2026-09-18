@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -17,10 +17,25 @@ import {
 } from '../src/capture/useCapture';
 import { Screen } from '../src/ui/Screen';
 import { captureExposure } from '../src/capture/exposure';
+import { highBitRate, profileFrom } from '../src/capture/bitrate';
 import { deviceForLens, hasUltraWide, LENS_LABEL, type Lens } from '../src/capture/lenses';
-import { allowanceLine, canAnalyse, useEntitlements, usePurchases } from '../src/purchases';
-import { useSettings } from '../src/settings';
+import {
+  allowanceLine,
+  canAnalyse,
+  canRecordHighBitrate,
+  useEntitlements,
+  usePurchases,
+} from '../src/purchases';
+import { updateSettings, useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+
+/**
+ * How long the preview takes to fade out and back in around a lens swap.
+ * Swapping lenses restarts the camera session, which blinks; this covers the
+ * blink so the change reads as deliberate. It is a swap between two lenses, not
+ * a zoom ramp.
+ */
+const LENS_FADE_MS = 200;
 
 const TIPS = [
   'Stand side-on to the pitch, level with the bounce.',
@@ -51,9 +66,37 @@ export default function CaptureScreen() {
   const ultraWideAvailable = hasUltraWide(devices);
   const [lens, setLens] = useState<Lens>('wide');
   const device = deviceForLens(lens, devices, defaultDevice);
-  const { exposureBias } = useSettings();
+
+  /**
+   * Swapping lenses restarts the camera session, so the preview blinks. It
+   * cannot be avoided with a device swap, so it is covered: fade out, swap, fade
+   * back in. The controls and the lens label sit outside this and stay visible.
+   */
+  const previewFade = useRef(new Animated.Value(1)).current;
+  const chooseLens = useCallback(
+    (next: Lens) => {
+      if (next === lens) return;
+      Animated.timing(previewFade, {
+        toValue: 0,
+        duration: LENS_FADE_MS / 2,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(() => {
+        setLens(next);
+        Animated.timing(previewFade, {
+          toValue: 1,
+          duration: LENS_FADE_MS / 2,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }).start();
+      });
+    },
+    [lens, previewFade]
+  );
+  const { exposureBias, lastRecording } = useSettings();
   const entitlements = useEntitlements();
   const { refreshAnalyses, isPro, allowance } = usePurchases();
+  const [showGuide, setShowGuide] = useState(true);
   // Re-read on focus, so a delivery saved since this screen was last open
   // counts against the week.
   useEffect(() => {
@@ -63,13 +106,24 @@ export default function CaptureScreen() {
   // Pro is unlimited, so Pro is told nothing about limits anywhere.
   const allowanceNote = isPro ? null : allowanceLine(allowance, weekdayOf);
   const exposure = captureExposure(device, exposureBias);
+
+  // Pro records the same frames with less compression. The target is scaled to
+  // what this camera actually produced last time, and is null until it has
+  // produced anything, in which case the camera keeps its own default.
+  const bitRate = canRecordHighBitrate(entitlements) ? highBitRate(lastRecording) : null;
   const [sessionReady, setSessionReady] = useState(false);
   const [showTips, setShowTips] = useState(true);
 
-  const videoOutput = useVideoOutput({ fileType: 'mp4' });
+  const videoOutput = useVideoOutput(
+    bitRate === null ? { fileType: 'mp4' } : { fileType: 'mp4', targetBitRate: bitRate }
+  );
 
   const onFinished = useCallback(
     ({ path, info }: CaptureResult) => {
+      // What the camera really delivered, so the next Pro recording can be
+      // scaled to it. Read off the file, never assumed from the camera.
+      const profile = profileFrom(info);
+      if (profile) updateSettings({ lastRecording: profile });
       router.push({
         pathname: '/mark',
         params: {
@@ -138,6 +192,7 @@ export default function CaptureScreen() {
 
   return (
     <View style={styles.container}>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: previewFade }]}>
       <Camera
         style={StyleSheet.absoluteFill}
         device={device}
@@ -149,6 +204,7 @@ export default function CaptureScreen() {
         onStopped={() => setSessionReady(false)}
         onError={onCameraError}
       />
+      </Animated.View>
 
       {isProcessing ? <View style={[StyleSheet.absoluteFill, styles.scrim]} /> : null}
 
@@ -160,6 +216,10 @@ export default function CaptureScreen() {
         pointerEvents="box-none"
       >
         <View style={styles.top} pointerEvents="box-none">
+          {showGuide ? (
+            <FramingGuide dimmed={isRecording} onDismiss={() => setShowGuide(false)} />
+          ) : null}
+
           {!isRecording && !isProcessing && ultraWideAvailable ? (
             <View style={styles.lenses} accessibilityRole="radiogroup">
               {(['wide', 'ultra-wide'] as Lens[]).map((option) => {
@@ -168,7 +228,7 @@ export default function CaptureScreen() {
                   <Pressable
                     key={option}
                     style={[styles.lens, on && styles.lensOn]}
-                    onPress={() => setLens(option)}
+                    onPress={() => chooseLens(option)}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: on }}
                     accessibilityLabel={
@@ -228,6 +288,12 @@ export default function CaptureScreen() {
             </Pressable>
           ) : null}
 
+          {bitRate !== null ? (
+            <View style={styles.qualityMark}>
+              <Text style={styles.qualityMarkText}>PRO QUALITY</Text>
+            </View>
+          ) : null}
+
           <View style={styles.timerRow}>
             {isRecording ? <View style={styles.recDot} /> : null}
             <Text style={[styles.timer, !isRecording && styles.timerIdle]}>
@@ -270,6 +336,40 @@ export default function CaptureScreen() {
           ) : null}
           <Text style={styles.hint}>{hint}</Text>
         </View>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Where the reference should sit in frame, and why it matters.
+ *
+ * This is guidance, not a check. The app cannot tell how much of the frame the
+ * reference fills until the marks are placed, so nothing here claims to have
+ * measured the framing; Result says something about it afterwards, once the
+ * marks exist.
+ */
+function FramingGuide({ dimmed, onDismiss }: { dimmed: boolean; onDismiss: () => void }) {
+  return (
+    <View style={[styles.guide, dimmed && styles.guideDimmed]} pointerEvents="box-none">
+      <View style={styles.guideBand} pointerEvents="none">
+        <View style={styles.guideEnd} />
+        <View style={styles.guideLine} />
+        <View style={styles.guideEnd} />
+      </View>
+      <View style={styles.guideCard}>
+        <View style={styles.guideHeader}>
+          <Text style={styles.label}>FRAMING</Text>
+          <Pressable onPress={onDismiss} hitSlop={space.md} accessibilityRole="button">
+            <Text style={styles.tipsToggleText}>Hide</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.guideTitle}>Fit both ends of your reference inside the guide</Text>
+        <Text style={styles.guideBody}>
+          Both sets of stumps, or both markers, close to the end bars. The scale comes from
+          that one distance, so the more of the frame it fills, the less the reading drifts.
+          Standing too far back reads low, and the error range cannot see it.
+        </Text>
       </View>
     </View>
   );
@@ -393,6 +493,50 @@ const styles = StyleSheet.create({
   countdown: { ...type.h2, ...type.tabular, color: colors.text },
 
   hint: { ...type.caption, color: colors.muted, marginTop: space.md },
+  guide: { alignSelf: 'stretch' },
+  guideDimmed: { opacity: opacity.inactive },
+  guideBand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: space.md,
+  },
+  guideEnd: {
+    width: stroke.heavy,
+    height: space.xl,
+    backgroundColor: colors.accent,
+  },
+  guideLine: {
+    flex: 1,
+    height: stroke.medium,
+    backgroundColor: colors.accent,
+    opacity: opacity.secondary,
+  },
+  guideCard: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    padding: space.md,
+    marginBottom: space.md,
+  },
+  guideHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.sm,
+  },
+  guideTitle: { ...type.body, color: colors.text, fontWeight: '800' },
+  guideBody: { ...type.caption, color: colors.muted, marginTop: space.xs },
+  qualityMark: {
+    alignSelf: 'center',
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    marginBottom: space.sm,
+  },
+  qualityMarkText: { ...type.label, color: colors.muted },
   lenses: { flexDirection: 'row', alignSelf: 'center', marginBottom: space.md },
   lens: {
     borderRadius: radius.pill,

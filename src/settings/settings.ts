@@ -1,3 +1,4 @@
+import type { RecordingProfile } from '../capture/bitrate';
 import { isCalibrationMethod } from '../physics/calibration';
 import type { CalibrationMethod } from '../types';
 
@@ -20,6 +21,12 @@ export type Settings = {
    * never moved. Null until the first analysis is saved.
    */
   analysisAnchor: number | null;
+  /**
+   * What the camera actually produced last time: the recorded frame size and the
+   * frame rate read from that file. Only used to scale a Pro recording's bitrate
+   * target to this phone, never to assume anything about a clip being marked.
+   */
+  lastRecording: RecordingProfile | null;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -27,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   unit: 'kmh',
   exposureBias: -4,
   analysisAnchor: null,
+  lastRecording: null,
 };
 
 export const SPEED_UNITS: SpeedUnit[] = ['kmh', 'mph'];
@@ -36,6 +44,14 @@ export const EXPOSURE_BIAS_OPTIONS = [-4, -3, -2, -1, 0] as const;
 
 function isSpeedUnit(value: unknown): value is SpeedUnit {
   return value === 'kmh' || value === 'mph';
+}
+
+function isRecordingProfile(value: unknown): value is RecordingProfile {
+  if (typeof value !== 'object' || value === null) return false;
+  const profile = value as Record<string, unknown>;
+  return (['width', 'height', 'fps'] as const).every(
+    (key) => typeof profile[key] === 'number' && Number.isFinite(profile[key]) && profile[key] > 0
+  );
 }
 
 function isExposureOption(value: unknown): value is number {
@@ -62,5 +78,8 @@ export function parseSettings(raw: unknown): Settings {
       typeof value.analysisAnchor === 'number' && Number.isFinite(value.analysisAnchor)
         ? value.analysisAnchor
         : DEFAULT_SETTINGS.analysisAnchor,
+    lastRecording: isRecordingProfile(value.lastRecording)
+      ? value.lastRecording
+      : DEFAULT_SETTINGS.lastRecording,
   };
 }

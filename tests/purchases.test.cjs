@@ -14,9 +14,11 @@ const {
 } = require('../src/purchases/freeLimit.ts');
 const { DEFAULT_SETTINGS, parseSettings } = require('../src/settings/settings.ts');
 const {
+  canAddPlayer,
   canAnalyse,
   canCompare,
   canExportWithoutWatermark,
+  canRecordHighBitrate,
 } = require('../src/purchases/gates.ts');
 const {
   PRO_ENTITLEMENT_ID,
@@ -60,7 +62,7 @@ test('the anchor is the first ever analysis, set once and never moved', () => {
 
 test('the count resets at the period boundary and not before', () => {
   const anchor = Date.UTC(2026, 8, 1, 9, 30);
-  const used = (now, deliveries) => allowanceIn(deliveries, anchor, now, 'me').used;
+  const used = (now, deliveries) => allowanceIn(deliveries, anchor, now).used;
   const three = [at(0, 'me', anchor), at(0, 'me', anchor + DAY), at(0, 'me', anchor + 2 * DAY)];
 
   assert.equal(used(anchor + 3 * DAY, three), 3, 'all three are in the first period');
@@ -71,9 +73,14 @@ test('the count resets at the period boundary and not before', () => {
   // A delivery in the new period counts there, and the old ones do not.
   const later = [...three, at(0, 'me', anchor + PERIOD_MS + DAY)];
   assert.equal(used(anchor + PERIOD_MS + 2 * DAY, later), 1);
-  // Only this player's.
-  assert.equal(allowanceIn([at(0, 'them', anchor)], anchor, anchor + DAY, 'me').used, 0);
-  assert.equal(allowanceIn(three, anchor, anchor + DAY, null).used, 0, 'no player, no count');
+  // Every delivery on the phone counts, whoever bowled it: the allowance and
+  // its anchor are the phone's, so they count the same deliveries.
+  assert.equal(allowanceIn([at(0, 'them', anchor)], anchor, anchor + DAY).used, 1);
+  assert.equal(
+    allowanceIn([at(0, 'me', anchor), at(0, 'them', anchor + MINUTE)], anchor, anchor + DAY).used,
+    2,
+    'two players, one allowance',
+  );
   // A record with an unusable timestamp is not counted, and does not throw.
   assert.equal(used(anchor + DAY, [{ createdAt: NaN, playerId: 'me' }]), 0);
 });
@@ -98,14 +105,14 @@ test('a backwards clock cannot hand out a fresh period', () => {
 
   // Wound back before the anchor: still the first period, still spent.
   assert.equal(periodIndex(anchor, anchor - 5 * PERIOD_MS), 0);
-  const back = allowanceIn(spent, anchor, anchor - 5 * PERIOD_MS, 'me');
+  const back = allowanceIn(spent, anchor, anchor - 5 * PERIOD_MS);
   assert.equal(back.used, 3);
   assert.equal(back.left, 0);
   assert.equal(canAnalyse({ isPro: false, analysesThisPeriod: back.used }), false);
 });
 
 test('before the first analysis the allowance is whole, with nothing to reset', () => {
-  const none = allowanceIn([], null, Date.now(), 'me');
+  const none = allowanceIn([], null, Date.now());
   assert.deepEqual(none, {
     used: 0,
     left: FREE_ANALYSES_PER_PERIOD,
@@ -119,7 +126,7 @@ test('the third delivery is allowed and the fourth is not', () => {
   const saved = [];
   for (let i = 1; i <= 4; i += 1) {
     const now = anchor + i * MINUTE;
-    const { used, left } = allowanceIn(saved, anchor, now, 'me');
+    const { used, left } = allowanceIn(saved, anchor, now);
     assert.equal(canAnalyse({ isPro: false, analysesThisPeriod: used }), i <= 3, `delivery ${i}`);
     assert.equal(left, Math.max(0, 4 - i));
     saved.push(at(0, 'me', now));
@@ -134,7 +141,7 @@ test('the allowance line counts down, then names the day it comes back', () => {
   const lineAfter = (n) => {
     const saved = [];
     for (let i = 0; i < n; i += 1) saved.push(at(0, 'me', anchor + i * MINUTE));
-    return allowanceLine(allowanceIn(saved, anchor, anchor + DAY, 'me'), weekday);
+    return allowanceLine(allowanceIn(saved, anchor, anchor + DAY), weekday);
   };
   assert.equal(lineAfter(0), '3 of 3 analyses left this week');
   assert.equal(lineAfter(1), '2 of 3 analyses left this week');
@@ -161,6 +168,21 @@ test('each gate answers for a free user and for Pro', () => {
   assert.equal(canAnalyse({ isPro: true, analysesThisPeriod: 3 }), true);
   assert.equal(canExportWithoutWatermark(free), false);
   assert.equal(canExportWithoutWatermark(pro), true);
+
+  // Bitrate is Pro only, and the capture code asks the gate rather than isPro.
+  assert.equal(canRecordHighBitrate(free), false);
+  assert.equal(canRecordHighBitrate(spent), false);
+  assert.equal(canRecordHighBitrate(pro), true);
+  const capture = read('app/capture.tsx');
+  assert.match(capture, /canRecordHighBitrate\(entitlements\) \? highBitRate\(lastRecording\) : null/);
+  assert.doesNotMatch(capture.slice(capture.indexOf('const bitRate')), /isPro \?\s*highBitRate/);
+
+  // A player gate for the players UI that has not shipped: the phone's first
+  // profile is free, a second one is Pro.
+  assert.equal(canAddPlayer(free, 0), true);
+  assert.equal(canAddPlayer(free, 1), false);
+  assert.equal(canAddPlayer(pro, 1), true);
+  assert.equal(canAddPlayer(pro, 7), true);
 });
 
 test('Pro is read off the entitlement the store sent, never assumed', () => {

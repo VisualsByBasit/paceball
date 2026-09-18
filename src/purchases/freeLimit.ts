@@ -4,8 +4,8 @@ export const FREE_ANALYSES_PER_PERIOD = 3;
 /** A period is seven days from the anchor, not a calendar week. */
 export const PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** The fields the count reads. A whole Session is one. */
-export type CountableDelivery = { createdAt: number; playerId: string };
+/** The field the count reads. A whole Session is one. */
+export type CountableDelivery = { createdAt: number };
 
 export type Allowance = {
   /** Analyses saved inside the current period. */
@@ -65,8 +65,13 @@ export function nextReset(anchor: number, now: number): number {
 }
 
 /**
- * The allowance as it stands: what this player has used inside the current
- * period, what is left, and when it comes back.
+ * The allowance as it stands: what has been used inside the current period, what
+ * is left, and when it comes back.
+ *
+ * Counted across every delivery in the period, whoever bowled it. The anchor is
+ * the phone's, so the allowance is the phone's too; counting per player would
+ * put the two out of step, and give one phone several allowances on a device
+ * that has no way to add a second player yet.
  *
  * The period is anchored, so the count drops to zero on the anniversary weekday
  * of the first ever analysis rather than creeping forward with each delivery.
@@ -76,8 +81,7 @@ export function nextReset(anchor: number, now: number): number {
 export function allowanceIn(
   deliveries: readonly CountableDelivery[],
   anchor: number | null,
-  now: number,
-  playerId: string | null
+  now: number
 ): Allowance {
   if (anchor === null || !usable(anchor)) {
     return { used: 0, left: FREE_ANALYSES_PER_PERIOD, periodStart: null, nextReset: null };
@@ -85,12 +89,9 @@ export function allowanceIn(
   const start = periodStart(anchor, now);
   const end = start + PERIOD_MS;
   let used = 0;
-  if (playerId !== null) {
-    for (const delivery of deliveries) {
-      if (delivery.playerId !== playerId) continue;
-      if (!usable(delivery.createdAt)) continue;
-      if (delivery.createdAt >= start && delivery.createdAt < end) used += 1;
-    }
+  for (const delivery of deliveries) {
+    if (!usable(delivery.createdAt)) continue;
+    if (delivery.createdAt >= start && delivery.createdAt < end) used += 1;
   }
   return {
     used,

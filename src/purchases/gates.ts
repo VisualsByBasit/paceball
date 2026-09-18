@@ -23,6 +23,24 @@ export function canAnalyse(entitlements: Entitlements): boolean {
   return entitlements.isPro || entitlements.analysesThisPeriod < FREE_ANALYSES_PER_PERIOD;
 }
 
+/**
+ * Whether another player profile can be added. Free keeps the one profile the
+ * phone starts with; Pro may keep several. The gate exists for the players UI
+ * that has not shipped yet, so that screen has something to ask when it does.
+ */
+export function canAddPlayer(entitlements: Entitlements, playerCount: number): boolean {
+  return entitlements.isPro || playerCount < 1;
+}
+
+/**
+ * Whether to ask the camera for a higher bitrate. Pro only, and only ever a
+ * cleaner encode of the same frames: the resolution and the frame rate the
+ * measurement reads are untouched by it.
+ */
+export function canRecordHighBitrate(entitlements: Entitlements): boolean {
+  return entitlements.isPro;
+}
+
 /** Free exports carry the Paceball watermark. Removing it is Pro only. */
 export function canExportWithoutWatermark(entitlements: Entitlements): boolean {
   return entitlements.isPro;

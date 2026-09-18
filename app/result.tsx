@@ -25,6 +25,7 @@ import {
   MARKING_LONG_EDGE_PX,
   type SpeedResult,
 } from '../src/physics/computeSpeed';
+import { referenceFraming, spanBetween } from '../src/capture/framing';
 import { measurementState } from '../src/physics/measurementState';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
@@ -356,6 +357,11 @@ export default function ResultScreen() {
   // delta and the distance travelled — is only worth as much as that mark.
   const measured = state.kind === 'measured';
 
+  // How much of the frame's width the two calibration marks spanned, in the
+  // space they were marked in.
+  const framing =
+    calA && calB && imageWidth ? referenceFraming(spanBetween(calA, calB), imageWidth) : null;
+
   // Measured against the ruler that was actually chosen. Warning on the pitch
   // length alone never fired for markers, ball or height.
   const warning = travelWarning(result.travelMetres, calRealMetres!, calibrationMethod!);
@@ -437,6 +443,17 @@ export default function ResultScreen() {
       {/* The warning quotes the travel figure, so on a guessed bounce it would
           leak the very number the rest of the screen is withholding. */}
       {warning && measured ? <Text style={styles.note}>{warning.message}</Text> : null}
+      {/* Now the marks exist, how much of the frame the reference filled is
+          known. Only worth saying where the reference is laid along the pitch:
+          a ball or a standing bowler is small in frame by nature. */}
+      {framing && !framing.tight && spec!.rulerBoundsTravel && measured ? (
+        <Text style={styles.note}>
+          Your reference filled about {Math.round(framing.fraction * 100)}% of the frame. The
+          scale comes from that one distance, so a reference this small in frame can read low
+          by more than the range above allows for. Stand so both ends sit near the edges next
+          time.
+        </Text>
+      ) : null}
 
       <Pressable
         style={styles.workingToggle}
