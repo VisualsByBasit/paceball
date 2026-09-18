@@ -650,20 +650,28 @@ test('comparison rejects missing and corrupt records instead of fabricating resu
 
 test('unusable saved marks remain accessible but cannot enter trends, comparisons or exports', async () => {
   const measured = await data.saveSession(sessionInput('player-a'));
-  const badMarks = sessionInput('player-a');
-  badMarks.calB = { ...badMarks.calA };
-  const unusable = await data.saveSession(badMarks);
-  const stored = storageValues.get(`sessions:${unusable.id}`);
+  const legacy = { ...measured, id: 'legacy-zero-ruler', calB: { ...measured.calA } };
+  const stored = JSON.stringify(legacy);
+  storageValues.set(`sessions:${legacy.id}`, stored);
+  storageValues.set('sessions:index', JSON.stringify([legacy.id, measured.id]));
 
-  const read = await data.getSession(unusable.id);
+  const read = await data.getSession(legacy.id);
   assert.equal(measurementState(read).kind, 'unusable');
   assert.deepEqual((await data.listSessions({ playerId: 'player-a' })).map((s) => s.id).sort(),
-    [unusable.id, measured.id].sort());
+    [legacy.id, measured.id].sort());
   assert.deepEqual((await data.getTrend('player-a', 'all')).points.map((p) => p.id), [measured.id]);
-  await assert.rejects(data.getComparison(measured.id, unusable.id), /measured speeds/);
-  await assert.rejects(data.getComparison(unusable.id, measured.id), /measured speeds/);
-  await assert.rejects(data.renderExport({ sessionId: unusable.id, watermark: true }), /no measured speed/);
-  assert.equal(storageValues.get(`sessions:${unusable.id}`), stored);
+  await assert.rejects(data.getComparison(measured.id, legacy.id), /measured speeds/);
+  await assert.rejects(data.getComparison(legacy.id, measured.id), /measured speeds/);
+  await assert.rejects(data.renderExport({ sessionId: legacy.id, watermark: true }), /no measured speed/);
+  assert.equal(storageValues.get(`sessions:${legacy.id}`), stored);
+});
+
+test('a new zero-length calibration is rejected before copying files', async () => {
+  const input = sessionInput('player-a');
+  input.calB = { ...input.calA, frame: input.calA.frame + 1 };
+  await assert.rejects(data.saveSession(input), /invalid/);
+  assert.deepEqual(copiedPaths, []);
+  assert.equal([...storageValues.keys()].some((key) => key.startsWith('sessions:')), false);
 });
 
 test('export rejects an unknown delivery before loading the native renderer', async () => {

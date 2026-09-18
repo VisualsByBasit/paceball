@@ -122,6 +122,15 @@ export const isSession = (value: unknown): value is Session => {
   return session.bounce.frame > session.release.frame;
 };
 
+/**
+ * A new reading cannot use a zero-length ruler. Keep isSession tolerant on read:
+ * older records with these marks must remain visible as unusable deliveries,
+ * rather than disappearing from History as corrupt storage.
+ */
+export const isSavableSession = (value: unknown): value is Session =>
+  isSession(value) &&
+  (value.calA.x !== value.calB.x || value.calA.y !== value.calB.y);
+
 export const isPlayer = (value: unknown): value is Player => {
   if (typeof value !== 'object' || value === null) {
     return false;

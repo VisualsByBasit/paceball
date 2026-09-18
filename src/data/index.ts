@@ -14,7 +14,7 @@ import {
   type SaveSessionInput,
   type SessionFilter,
 } from './schema';
-import { isPlayer, isSession } from './validation';
+import { isPlayer, isSavableSession, isSession } from './validation';
 
 const storage = createMMKV({ id: 'paceball-data' });
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -210,7 +210,7 @@ export async function saveSession(record: SaveSessionInput): Promise<Session> {
   const createdAt = Date.now();
   const candidate: Session = { ...record, id, createdAt,
     uncertaintyModelVersion: record.uncertaintyModelVersion === undefined ? 1 : record.uncertaintyModelVersion };
-  if (!isSession(candidate)) {
+  if (!isSavableSession(candidate)) {
     throw new Error('Cannot save an invalid Paceball session.');
   }
 
