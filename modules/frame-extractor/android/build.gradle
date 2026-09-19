@@ -16,3 +16,11 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+  // Match expo-video exactly. Mixing Media3 versions in one Android app can
+  // compile and then fail at runtime when a class moved between releases.
+  def androidxMedia3Version = "1.9.0"
+  implementation "androidx.media3:media3-transformer:${androidxMedia3Version}"
+  implementation "androidx.media3:media3-effect:${androidxMedia3Version}"
+}

@@ -3,14 +3,24 @@ package expo.modules.frameextractor
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.os.Build
+import expo.modules.kotlin.Promise
+import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
 import java.io.FileOutputStream
 
 class FrameExtractorModule : Module() {
+  private var videoExporter: VideoExporter? = null
+
+  private fun exporter(): VideoExporter = videoExporter ?: VideoExporter(
+      appContext.reactContext ?: throw Exceptions.ReactContextLost(),
+      progress = { sendEvent("onVideoExportProgress", it) },
+    ).also { videoExporter = it }
+
   override fun definition() = ModuleDefinition {
     Name("FrameExtractor")
+    Events("onVideoExportProgress")
 
     AsyncFunction("getVideoInfo") { path: String ->
       val r = MediaMetadataRetriever()
@@ -21,6 +31,7 @@ class FrameExtractorModule : Module() {
         val frameCount = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toIntOrNull() ?: 0
         val width = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
         val height = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+        val rotationDegrees = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
         val captureFps = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull()
 
         val derivedFps = if (durationMs > 0 && frameCount > 0)
@@ -31,6 +42,7 @@ class FrameExtractorModule : Module() {
           "durationMs" to durationMs,
           "width" to width,
           "height" to height,
+          "rotationDegrees" to rotationDegrees,
           "captureFps" to (captureFps ?: 0f),
           "derivedFps" to derivedFps
         )
@@ -107,6 +119,21 @@ class FrameExtractorModule : Module() {
       } finally {
         r.release()
       }
+    }
+
+    AsyncFunction("exportVideo") { request: VideoExportRequest, promise: Promise ->
+      exporter().start(request, promise)
+    }
+
+    AsyncFunction("cancelVideoExport") { exportId: String, promise: Promise ->
+      exporter().cancel(exportId, promise)
+    }
+
+    OnDestroy {
+      // Do not instantiate the encoder while the React context is being torn
+      // down if this app lifetime never used video export.
+      videoExporter?.destroy()
+      videoExporter = null
     }
   }
 }
