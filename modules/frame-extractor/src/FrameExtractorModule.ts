@@ -22,7 +22,7 @@ export type NativeVideoExportRequest = {
   sourceWidth: number;
   sourceHeight: number;
   sourceRotationDegrees: number;
-  /** Dimensions of the capped, display-oriented frame where marks were made. */
+  /** Full-resolution display-oriented space used by the saved session points. */
   coordinateWidth: number;
   coordinateHeight: number;
   calAX: number;

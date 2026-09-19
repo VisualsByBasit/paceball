@@ -27,16 +27,20 @@ existing PNG export path.
 ## Coordinate contract
 
 The four marks are made on display-oriented JPEG frames capped at 1280 on the
-long edge. They are not necessarily in the source MP4's encoded pixel space.
-The plan therefore carries both coordinate systems:
+long edge, then `result.tsx` scales the points into full-resolution video pixels
+before saving. The saved space remains display-oriented, so it can still be
+swapped relative to the MP4's encoded width and height when rotation metadata
+is present. The plan therefore carries both views:
 
 - `source`: the original MP4 width, height and rotation from native metadata.
-- `overlay.width` / `overlay.height`: the saved marking-frame dimensions.
+- `overlay.width` / `overlay.height`: the saved session's full-resolution,
+  display-oriented dimensions.
 
-Native code scales the marks to the actual Media3 canvas. It accepts a canvas
-in source orientation or display orientation and reports the mapping mode in
-the result. A mismatched aspect ratio fails instead of drawing in the wrong
-place.
+Native code maps the saved points to the actual Media3 canvas. It accepts a
+canvas in source orientation or display orientation and reports the mapping
+mode in the result. A mismatched aspect ratio fails instead of drawing in the
+wrong place. Keeping both sizes also makes older or malformed geometry fail
+explicitly rather than silently drawing in the wrong location.
 
 ## Device checkpoint
 
