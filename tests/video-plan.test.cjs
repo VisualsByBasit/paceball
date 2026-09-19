@@ -5,19 +5,26 @@ const { createMockSession } = require('../src/data/mockData.ts');
 const { measurementState } = require('../src/physics/measurementState.ts');
 const { planVideoExport } = require('../src/export/videoPlan.ts');
 
+const source = (durationMs) => ({ width: 1920, height: 1080, rotationDegrees: 0, durationMs });
+
 test('video plan trims the original clip around release and bounce', () => {
   const session = createMockSession('trim', 120);
   session.fps = 50;
   session.release.frame = 100;
   session.bounce.frame = 125;
-  const plan = planVideoExport(session, 4_000, { isPro: false });
+  const plan = planVideoExport(session, source(4_000), { isPro: false });
   assert.equal(plan.inputVideoPath, session.videoPath);
   assert.equal(plan.clipStartMs, 1_000);
   assert.equal(plan.clipEndMs, 3_500);
   assert.equal(plan.includeAudio, false);
   assert.equal(plan.watermark, true);
+  assert.deepEqual(plan.source, source(4_000));
+  assert.equal(plan.overlay.width, session.width);
+  assert.equal(plan.overlay.height, session.height);
   assert.deepEqual(plan.overlay.release, session.release);
   assert.deepEqual(plan.overlay.bounce, session.bounce);
+  assert.equal(plan.overlay.releaseAtMs, 1_000);
+  assert.equal(plan.overlay.bounceAtMs, 1_500);
 });
 
 test('trim padding clamps to the real video bounds', () => {
@@ -25,7 +32,7 @@ test('trim padding clamps to the real video bounds', () => {
   session.fps = 60;
   session.release.frame = 1;
   session.bounce.frame = 170;
-  const plan = planVideoExport(session, 3_000, { isPro: true, includeAudio: true });
+  const plan = planVideoExport(session, source(3_000), { isPro: true, includeAudio: true });
   assert.equal(plan.clipStartMs, 0);
   assert.equal(plan.clipEndMs, 3_000);
   assert.equal(plan.includeAudio, true);
@@ -37,7 +44,7 @@ test('the HUD carries only marked points and the recomputed measured range', () 
   session.errorKmh = 1;
   const reading = measurementState(session);
   assert.equal(reading.kind, 'measured');
-  const plan = planVideoExport(session, 5_000, { isPro: false });
+  const plan = planVideoExport(session, source(5_000), { isPro: false });
   assert.equal(plan.overlay.kind, 'mark-to-mark');
   assert.equal(plan.overlay.speedKmh, reading.speedKmh);
   assert.equal(plan.overlay.errorKmh, reading.errorKmh);
@@ -55,19 +62,21 @@ test('guessed and unusable deliveries cannot produce a share video plan', () => 
   guessed.markConfidence = 'guessed';
   guessed.speedKmh = null;
   guessed.errorKmh = null;
-  assert.throws(() => planVideoExport(guessed, 5_000, { isPro: false }), /no measured speed/);
+  assert.throws(() => planVideoExport(guessed, source(5_000), { isPro: false }), /no measured speed/);
 
   const unusable = createMockSession('unusable', 120);
   unusable.calB = { ...unusable.calA };
-  assert.throws(() => planVideoExport(unusable, 5_000, { isPro: true }), /no measured speed/);
+  assert.throws(() => planVideoExport(unusable, source(5_000), { isPro: true }), /no measured speed/);
 });
 
 test('invalid duration, out-of-video marks and implicit audio permission are rejected', () => {
   const session = createMockSession('bounds', 120);
-  assert.throws(() => planVideoExport(session, 0, { isPro: false }), /source duration/);
-  assert.throws(() => planVideoExport(session, NaN, { isPro: false }), /source duration/);
-  assert.throws(() => planVideoExport(session, 5_000.5, { isPro: false }), /source duration/);
-  assert.throws(() => planVideoExport(session, 100, { isPro: false }), /outside the source video/);
-  assert.throws(() => planVideoExport(session, 5_000, { isPro: false, includeAudio: 'yes' }), /options/);
-  assert.throws(() => planVideoExport(session, 5_000, { isPro: undefined }), /options/);
+  assert.throws(() => planVideoExport(session, source(0), { isPro: false }), /source metadata/);
+  assert.throws(() => planVideoExport(session, source(NaN), { isPro: false }), /source metadata/);
+  assert.throws(() => planVideoExport(session, source(5_000.5), { isPro: false }), /source metadata/);
+  assert.throws(() => planVideoExport(session, { ...source(5_000), width: 0 }, { isPro: false }), /source metadata/);
+  assert.throws(() => planVideoExport(session, { ...source(5_000), rotationDegrees: 45 }, { isPro: false }), /source metadata/);
+  assert.throws(() => planVideoExport(session, source(100), { isPro: false }), /outside the source video/);
+  assert.throws(() => planVideoExport(session, source(5_000), { isPro: false, includeAudio: 'yes' }), /options/);
+  assert.throws(() => planVideoExport(session, source(5_000), { isPro: undefined }), /options/);
 });
