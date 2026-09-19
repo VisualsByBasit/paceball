@@ -64,3 +64,21 @@ As of this local checkpoint, the JavaScript suite and typecheck pass, but native
 compilation and these phone checks are not complete on this PC: no Android SDK
 or `adb` is installed. Do not present the spike as device-verified until the
 matrix above has real results.
+
+## Explicit ownership exception
+
+The review-boundary script reports this branch because the spike necessarily
+touches Basit's native boundary and its existing throwaway debug screen. Basit
+explicitly approved the Media3 spike and required a real-phone checkpoint, so
+the following files are intentional review items, not accidental ownership
+drift:
+
+- `modules/frame-extractor/android/build.gradle`
+- `modules/frame-extractor/android/src/main/java/expo/modules/frameextractor/FrameExtractorModule.kt`
+- `modules/frame-extractor/android/src/main/java/expo/modules/frameextractor/VideoExporter.kt`
+- `modules/frame-extractor/src/FrameExtractorModule.ts`
+- `app/debug.tsx`
+
+No production feature screen was wired. The debug change only exposes the
+native checkpoint controls under `__DEV__`; Basit should review these files and
+must not merge until the native build and phone matrix pass.
