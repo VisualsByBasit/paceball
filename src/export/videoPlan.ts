@@ -22,9 +22,10 @@ export type SourceVideoMetadata = {
 
 /**
  * The native encoder can consume this plan without knowing about MMKV or the
- * measurement model. The points are in the capped, display-oriented marking
- * frame, while `source` describes the original MP4. Keeping both lets native
- * code scale and rotate the marks instead of treating 1280-space as 4K-space.
+ * measurement model. Saved points have already been restored from the capped
+ * marking JPEG into full-resolution, display-oriented video coordinates.
+ * `source` separately describes the MP4's encoded dimensions and rotation, so
+ * native code can map that display space onto Media3's actual canvas.
  * A later detected trajectory can be added as another overlay layer; this one
  * deliberately contains only the four points the user marked.
  */

@@ -94,20 +94,29 @@ beforeEach(() => {
 
 function session() {
   const value = createMockSession('video-export', 125);
+  // Saved sessions are restored from marking-frame pixels into the original
+  // video's full-resolution, display-oriented coordinate space.
+  const scale = 2;
+  for (const key of ['calA', 'calB', 'release', 'bounce']) {
+    value[key] = { ...value[key], x: value[key].x * scale, y: value[key].y * scale };
+  }
+  value.width *= scale;
+  value.height *= scale;
+  value.pixelsPerMetre *= scale;
   value.videoPath = 'file:///app/documents/sessions/video-export/video.mp4';
   files.set(value.videoPath, new Uint8Array(50_000));
   return value;
 }
 
-test('Media3 request keeps source and marking dimensions separate and defaults to silent', async () => {
+test('Media3 request carries source and saved display geometry and defaults to silent', async () => {
   const result = await renderSessionVideo(session(), { isPro: false });
   const request = nativeRequests[0];
   assert.equal(request.includeAudio, false);
   assert.equal(request.watermark, true);
   assert.equal(request.sourceWidth, 3840);
   assert.equal(request.sourceHeight, 2160);
-  assert.equal(request.coordinateWidth, 1920);
-  assert.equal(request.coordinateHeight, 1080);
+  assert.equal(request.coordinateWidth, 3840);
+  assert.equal(request.coordinateHeight, 2160);
   assert.equal(result.inputBytes, 50_000);
   assert.equal(result.outputBytes, 4_096);
   assert.ok(result.clipDurationMs > 0 && result.clipDurationMs < 5_000);
