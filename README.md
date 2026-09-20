@@ -10,6 +10,7 @@ The project is being built for the RevenueCat Shipaton and Next Gen. Its central
 - **No spin rate or RPM.** A normal phone recording at roughly 60 fps cannot support that measurement.
 - **No tracked flight path yet.** The current guide joins the points the user actually marked. It is labelled mark-to-mark and is not presented as automatic ball tracking.
 - **No release-speed claim.** The reported number is average speed from release to bounce; release speed would be higher because the ball slows in flight.
+- **No false confidence from poor framing.** Paceball warns when the chosen reference fills too little of the frame. That framing error is real and is not covered by the calculated uncertainty range.
 
 ## How the measurement works
 
@@ -26,7 +27,7 @@ Every measured speed is accompanied by an error range. The range combines frame-
 - Live Android video capture with frame-by-frame marking
 - Stumps, markers, ball and player-height calibration
 - Per-reading uncertainty and bounce-confidence handling
-- Multiple local player profiles
+- Per-player local storage; profile switching is not yet exposed in the app
 - Local History, Trends and delivery comparison
 - Slow-motion delivery analysis
 - Shareable PNG result cards with a watermark for free users
@@ -139,6 +140,8 @@ modules/frame-extractor/ Local Expo/Kotlin module for video metadata and frames
 tests/                   Node test suite
 docs/                    Engineering handoffs and supporting project notes
 ```
+
+The `docs/` directory records engineering handoffs, review boundaries and implementation decisions as evidence of how the project was built in public.
 
 ## Privacy
 
