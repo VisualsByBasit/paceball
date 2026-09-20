@@ -106,6 +106,38 @@ test('a cancelled touch before the delay never starts repeating', () => {
   assert.equal(clock.pending(), 0);
 });
 
+test('a cancelled touch does not swallow the next activation', () => {
+  const { clock, steps, hold } = setup();
+  hold.pressIn();
+  // Cancel: onPressOut with no onPress behind it, and then the turn ends.
+  hold.stop();
+  clock.advance(0);
+  assert.deepEqual(steps, [true], 'the cancel itself adds nothing');
+
+  // A screen reader activating the button now brings no touch of its own, so
+  // it has to step. Before the fix the cancelled touch was still standing and
+  // this press was spent clearing it, moving no frame.
+  hold.press();
+  assert.deepEqual(steps, [true, true], 'the activation still steps');
+  clock.advance(5000);
+  assert.deepEqual(steps, [true, true]);
+  assert.equal(clock.pending(), 0);
+});
+
+test('a cancelled touch leaves the touch after it clean', () => {
+  const { clock, steps, hold } = setup();
+  hold.pressIn();
+  hold.stop();
+  // A fresh touch arrives in the same turn, before the cancelled one is dropped.
+  hold.pressIn();
+  clock.advance(0);
+  hold.stop();
+  hold.press();
+  clock.advance(5000);
+  assert.deepEqual(steps, [true, true], 'one step per touch, no more');
+  assert.equal(clock.pending(), 0);
+});
+
 test('a screen reader activate with no touch still steps once', () => {
   const { clock, steps, hold } = setup();
   hold.press();

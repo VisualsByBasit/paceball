@@ -23,10 +23,11 @@ import {
   allowanceLine,
   canAnalyse,
   canRecordHighBitrate,
+  shouldShowOnboardingPaywall,
   useEntitlements,
   usePurchases,
 } from '../src/purchases';
-import { updateSettings, useSettings } from '../src/settings';
+import { getSettings, updateSettings, useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
 /**
@@ -95,13 +96,37 @@ export default function CaptureScreen() {
   );
   const { exposureBias, lastRecording } = useSettings();
   const entitlements = useEntitlements();
-  const { refreshAnalyses, isPro, allowance } = usePurchases();
+  const { refreshAnalyses, isPro, allowance, configured, loading } = usePurchases();
   const [showGuide, setShowGuide] = useState(true);
   // Re-read on focus, so a delivery saved since this screen was last open
   // counts against the week.
   useEffect(() => {
     if (isFocused) refreshAnalyses();
   }, [isFocused, refreshAnalyses]);
+
+  // The onboarding offer, one screen late. Setup does not wait for the store,
+  // so an install whose entitlement had not arrived by the end of setup was
+  // sent straight here with nothing offered and nothing marked shown. The same
+  // conditions are weighed again as soon as the store answers, against the same
+  // once ever flag, so the offer is deferred rather than lost.
+  const offered = useRef(false);
+  useEffect(() => {
+    if (offered.current) return;
+    const offer = shouldShowOnboardingPaywall({
+      shown: getSettings().onboardingPaywallShown,
+      isPro,
+      configured,
+      loading,
+    });
+    if (!offer) return;
+    offered.current = true;
+    // Recorded before it opens, so buying, skipping or closing the app on it
+    // all count as the one time it is offered.
+    updateSettings({ onboardingPaywallShown: true });
+    // Replaced rather than pushed: the paywall returns to Capture itself when
+    // it is dismissed, so pushing would leave a second Capture beneath it.
+    router.replace({ pathname: '/paywall', params: { context: 'onboarding' } });
+  }, [configured, isPro, loading, router]);
   const allowed = canAnalyse(entitlements);
   // Pro is unlimited, so Pro is told nothing about limits anywhere.
   const allowanceNote = isPro ? null : allowanceLine(allowance, weekdayOf);

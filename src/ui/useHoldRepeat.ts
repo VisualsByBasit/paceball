@@ -6,7 +6,9 @@ import { motion } from './tokens';
 /**
  * Press handlers for a step button that repeats while held. Stops on release,
  * on cancel (onPressOut fires for both), when the screen loses focus and on
- * unmount, so nothing keeps stepping once the user has gone.
+ * unmount, so nothing keeps stepping once the user has gone. A cancelled touch
+ * leaves the button exactly as a released one does, so the next activation,
+ * including a screen reader's, still steps.
  */
 export function useHoldRepeat(onStep: (first: boolean) => void) {
   const onStepRef = useRef(onStep);
