@@ -160,6 +160,10 @@ export default function SetupCameraScreen() {
       // Unwind setup before opening the camera, so Back from the camera does
       // not walk into onboarding again and offer to create a second profile.
       router.dismissAll();
+      // The store is never waited on. If it has not answered yet this offers
+      // nothing and marks nothing, and Capture weighs the same conditions
+      // again on its first mount, so a slow store defers the offer by one
+      // screen rather than losing it for the life of the install.
       const offerPro = shouldShowOnboardingPaywall({
         shown: getSettings().onboardingPaywallShown,
         isPro,

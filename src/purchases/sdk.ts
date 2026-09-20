@@ -36,8 +36,18 @@ export function purchasesConfigured(): boolean {
 export function configurePurchases(): boolean {
   if (!apiKey) return false;
   if (!configured) {
-    if (__DEV__) void Purchases.setLogLevel(LOG_LEVEL.WARN);
-    Purchases.configure({ apiKey });
+    try {
+      if (__DEV__) void Purchases.setLogLevel(LOG_LEVEL.WARN);
+      Purchases.configure({ apiKey });
+    } catch (e) {
+      // A build where react-native-purchases is not linked leaves Purchases
+      // null, and the first call on it throws. Anything that goes wrong here is
+      // treated as no store at all rather than reaching the user as a crash:
+      // the paywall falls back to the mock offering, the user is free, and
+      // every store call reports itself unavailable.
+      if (__DEV__) console.warn('Purchases could not be configured:', message(e));
+      return false;
+    }
     configured = true;
   }
   return true;
@@ -69,7 +79,10 @@ export async function readOffering(): Promise<{
 } | null> {
   if (!configurePurchases()) return null;
   const offerings = await Purchases.getOfferings();
-  const offering = offerings.all[OFFERING_ID] ?? offerings.current;
+  // The current offering first. RevenueCat's own Test Store adds an offering
+  // literally named "default" holding sandbox products, so looking the name up
+  // first would pick that over the one this account actually serves.
+  const offering = offerings.current ?? offerings.all[OFFERING_ID];
   if (!offering) return null;
   return {
     // A PurchasesPackage already satisfies PaywallPackage, so the paywall reads

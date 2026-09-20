@@ -48,20 +48,24 @@ export function createHoldRepeat({
 }: HoldRepeatOptions): HoldRepeat {
   let wait: unknown = null;
   let repeat: unknown = null;
+  // Drops an unclaimed touch once the turn it was released in has passed.
+  let settle: unknown = null;
   // Set by a touch and consumed by the press that follows it, so the touch is
   // not counted twice. A press with no touch before it steps on its own.
   let touched = false;
 
-  const stop = () => {
+  const clear = () => {
     if (wait !== null) timers.clearTimeout(wait);
     if (repeat !== null) timers.clearInterval(repeat);
+    if (settle !== null) timers.clearTimeout(settle);
     wait = null;
     repeat = null;
+    settle = null;
   };
 
   return {
     pressIn() {
-      stop();
+      clear();
       touched = true;
       onStep(true);
       wait = timers.setTimeout(() => {
@@ -70,11 +74,28 @@ export function createHoldRepeat({
       }, delay);
     },
     press() {
+      if (settle !== null) {
+        timers.clearTimeout(settle);
+        settle = null;
+      }
       if (touched) touched = false;
       else onStep(true);
     },
     stop() {
-      stop();
+      clear();
+      // A release is this stop with the press still to come, and that press
+      // claims the touch. A cancel is the same stop with no press behind it,
+      // and nothing here can tell the two apart as it happens. So the touch is
+      // left standing for the rest of the turn, for a press to claim, and
+      // dropped once the turn has passed without one. A cancel therefore ends
+      // exactly where a release does, and the next activation with no touch of
+      // its own steps rather than being swallowed.
+      if (touched) {
+        settle = timers.setTimeout(() => {
+          settle = null;
+          touched = false;
+        }, 0);
+      }
     },
     get holding() {
       return wait !== null || repeat !== null;

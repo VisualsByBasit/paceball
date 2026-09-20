@@ -34,6 +34,17 @@ test('the onboarding paywall is shown once and only once', () => {
     /if \(offerPro\) \{[\s\S]*?updateSettings\(\{ onboardingPaywallShown: true \}\);[\s\S]*?router\.push\(\{ pathname: '\/paywall', params: \{ context: 'onboarding' \} \}\);/,
   );
   assert.match(camera, /shown: getSettings\(\)\.onboardingPaywallShown,/);
+  // Capture reads and writes that same stored flag, so between the two of them
+  // it is still offered once and only once.
+  const capture = read('app/capture.tsx');
+  assert.match(capture, /shown: getSettings\(\)\.onboardingPaywallShown,/);
+  assert.match(
+    capture,
+    /updateSettings\(\{ onboardingPaywallShown: true \}\);[\s\S]*?router\.replace\(\{ pathname: '\/paywall', params: \{ context: 'onboarding' \} \}\);/,
+  );
+  // And at most once per mount, so a re-render cannot offer it twice.
+  assert.match(capture, /if \(offered\.current\) return;/);
+  assert.match(capture, /offered\.current = true;/);
   // Nothing ever sets it back.
   for (const file of ['app/paywall.tsx', 'app/settings.tsx', 'app/setup/camera.tsx', 'app/capture.tsx']) {
     assert.doesNotMatch(read(file), /onboardingPaywallShown: false/, file);
@@ -69,6 +80,11 @@ test('a Pro user never sees the onboarding paywall', () => {
   // Nor while the store has not yet said whether they are Pro.
   assert.equal(shouldShowOnboardingPaywall({ ...fresh, loading: true }), false);
   assert.match(read('app/setup/camera.tsx'), /const \{ isPro, configured, loading \} = usePurchases\(\);/);
+  // Capture asks the same provider, so the deferred offer cannot reach Pro either.
+  assert.match(
+    read('app/capture.tsx'),
+    /const \{ refreshAnalyses, isPro, allowance, configured, loading \} = usePurchases\(\);/,
+  );
 });
 
 test('the onboarding paywall is not shown when purchases are unconfigured', () => {
@@ -77,4 +93,30 @@ test('the onboarding paywall is not shown when purchases are unconfigured', () =
   assert.match(read('src/purchases/PurchasesProvider.tsx'), /const configured = purchasesConfigured\(\);/);
   // Not offered, for whatever reason, setup goes straight to the camera.
   assert.match(read('app/setup/camera.tsx'), /\} else \{\s*router\.push\('\/capture'\);/);
+  // A build with no key has nothing to sell on either screen, so the deferred
+  // check on Capture leaves it alone too.
+  assert.match(read('app/capture.tsx'), /if \(!offer\) return;/);
+});
+
+test('a store that has not answered by the end of setup offers the paywall on the first capture', () => {
+  // Setup never waits on the store. While it is still loading nothing is
+  // offered, and because nothing was offered nothing was marked shown either,
+  // so the flag is still clear when Capture opens.
+  assert.equal(shouldShowOnboardingPaywall({ ...fresh, loading: true }), false);
+  assert.equal(shouldShowOnboardingPaywall({ ...fresh, loading: false }), true);
+  const camera = read('app/setup/camera.tsx');
+  const start = camera.indexOf('const onFinish');
+  const finish = camera.slice(start, camera.indexOf('  }, [configured', start));
+  assert.ok(finish.length > 0);
+  assert.doesNotMatch(finish, /loading \?|!loading|while \(loading/, 'navigation waits on nothing');
+
+  // Capture weighs the same conditions, through the same function, one screen later.
+  const capture = read('app/capture.tsx');
+  assert.match(capture, /^  shouldShowOnboardingPaywall,$/m, 'the same check setup uses');
+  assert.match(
+    capture,
+    /const offer = shouldShowOnboardingPaywall\(\{\s*shown: getSettings\(\)\.onboardingPaywallShown,\s*isPro,\s*configured,\s*loading,\s*\}\);/,
+  );
+  // Weighed again when the store's answer lands, not only on the first render.
+  assert.match(capture, /\}, \[configured, isPro, loading, router\]\);/);
 });
