@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   BackHandler,
   FlatList,
   Image,
@@ -13,7 +14,7 @@ import {
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { frameUri } from '../src/capture/useFrames';
-import { getActivePlayer, getTrend, listSessions } from '../src/data';
+import { deleteSession, getActivePlayer, getTrend, listSessions } from '../src/data';
 import { CALIBRATION_SPECS } from '../src/physics/calibration';
 import { measurementState, type MeasurementState } from '../src/physics/measurementState';
 import { canCompare, useEntitlements } from '../src/purchases';
@@ -25,6 +26,7 @@ import {
   togglePick,
   type Selectability,
 } from '../src/ui/compareSelection';
+import { createDeliveryDelete } from '../src/ui/deleteDelivery';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, speedIn, unitLabel, unitSpoken } from '../src/ui/units';
 import type { Session, Trend, TrendPoint } from '../src/types';
@@ -256,6 +258,27 @@ export default function HistoryScreen() {
     setSelecting(true);
   }, [entitlements, router]);
 
+  // Long press a row to delete it, after a confirmation. The row leaves the list
+  // at once, and the list is then read again from storage, so the trend and the
+  // personal best follow. Never in select mode, where a press is a pick.
+  const deleteDelivery = useMemo(
+    () =>
+      createDeliveryDelete({
+        ask: (title, message, buttons) => Alert.alert(title, message, buttons),
+        remove: deleteSession,
+        onDeleted: (id) => {
+          setLoaded((current) =>
+            current.status === 'ready'
+              ? { ...current, sessions: current.sessions.filter((s) => s.id !== id) }
+              : current
+          );
+          setReload((n) => n + 1);
+        },
+        onError: (e) => Alert.alert('Could not delete this delivery', describe(e)),
+      }),
+    []
+  );
+
   const confirmCompare = useCallback(() => {
     if (picked.length !== COMPARE_COUNT || !sessions) return;
     const chosen = picked
@@ -422,6 +445,9 @@ export default function HistoryScreen() {
               </Pressable>
             ) : null}
           </View>
+          {selecting ? null : (
+            <Text style={styles.listHint}>Press and hold a delivery to delete it.</Text>
+          )}
         </>
       }
       renderItem={({ item }) => {
@@ -433,6 +459,7 @@ export default function HistoryScreen() {
             isBest={item.id === bestId}
             unit={unit}
             onOpen={open}
+            onDelete={selecting ? null : (id) => deleteDelivery(id, selecting)}
             select={
               selecting
                 ? {
@@ -735,6 +762,7 @@ function SessionRow({
   isBest,
   unit,
   onOpen,
+  onDelete,
   select,
 }: {
   session: Session;
@@ -742,6 +770,8 @@ function SessionRow({
   isBest: boolean;
   unit: SpeedUnit;
   onOpen: (id: string) => void;
+  /** Null in select mode: a press there is a pick, never a delete. */
+  onDelete: ((id: string) => void) | null;
   select: RowSelect;
 }) {
   const uri = useMemo(() => thumbFor(session), [session]);
@@ -755,7 +785,13 @@ function SessionRow({
     <Pressable
       style={[styles.row, select?.picked && styles.rowPicked, blocked && styles.off]}
       onPress={select ? select.onToggle : () => onOpen(session.id)}
+      onLongPress={onDelete ? () => onDelete(session.id) : undefined}
       disabled={blocked}
+      accessibilityHint={onDelete ? 'Press and hold to delete' : undefined}
+      accessibilityActions={onDelete ? [{ name: 'delete', label: 'Delete delivery' }] : undefined}
+      onAccessibilityAction={(event) => {
+        if (onDelete && event.nativeEvent.actionName === 'delete') onDelete(session.id);
+      }}
       accessibilityRole={select ? 'checkbox' : 'button'}
       accessibilityState={select ? { checked: select.picked, disabled: blocked } : undefined}
       accessibilityLabel={
@@ -956,6 +992,7 @@ const styles = StyleSheet.create({
   },
   listTopLabel: { ...type.label, color: colors.muted },
   listAction: { ...type.caption, color: colors.muted },
+  listHint: { ...type.caption, color: colors.muted, marginBottom: space.sm },
   compareButton: {
     borderRadius: radius.pill,
     borderWidth: stroke.hairline,
