@@ -33,6 +33,13 @@ create that variable in production. `EXPO_PUBLIC_` values are embedded in the
 app and must never contain secrets; the DSN is intentionally public. The auth
 token is private and must never use the `EXPO_PUBLIC_` prefix.
 
+Also set `EXPO_PUBLIC_SENTRY_DSN` as plain text in the `development`
+environment so the development build carries the same public project address.
+The development profile explicitly disables source-map upload, so it does not
+need the auth token, organization or project values. The installed Sentry SDK
+does not initialize while the app is connected to Metro; verify event receipt
+and symbolication with the preview release build below, not Expo's dev server.
+
 ## 3. Verify before production
 
 1. Build the `preview` profile, which is a release APK rather than Expo Go.
