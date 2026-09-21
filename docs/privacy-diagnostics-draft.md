@@ -28,8 +28,9 @@ diagnostic reports.
 
 Before publication, add the actual publisher/contact details, effective date,
 Sentry processing region, retention/deletion settings and contact process using
-verified account settings. Audit the final APK's permissions. The existing
-RECORD_AUDIO declaration and Android backup behavior remain review items.
+verified account settings. Audit the final APK's permissions. RECORD_AUDIO is
+no longer declared, and is blocked in app.json so no library merges it back;
+Android backup behavior remains a review item.
 
 Implementation status (updated 16 September 2026): Sentry is integrated on
 main, no longer an inactive template.
