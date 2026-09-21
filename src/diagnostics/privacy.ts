@@ -1,5 +1,7 @@
 // Structural input only: the privacy policy has no SDK/runtime dependency.
-// The integration adapter supplies Sentry events after Basit enables the SDK.
+// This allow-list filters JavaScript events. Native fatal events are produced
+// by Sentry's native SDK, so their limited technical context is disclosed in
+// the diagnostics screen instead of being claimed to pass through this code.
 interface StackFrame {
   filename?: string;
   lineno?: number;

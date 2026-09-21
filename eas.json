@@ -5,20 +5,23 @@
   },
   "build": {
     "base": {
-      "env": { "SENTRY_DISABLE_AUTO_UPLOAD": "true" }
+      "env": {}
     },
     "development": {
       "extends": "base",
+      "environment": "development",
       "developmentClient": true,
       "distribution": "internal"
     },
     "preview": {
       "extends": "base",
+      "environment": "preview",
       "distribution": "internal",
       "android": { "buildType": "apk" }
     },
     "production": {
       "extends": "base",
+      "environment": "production",
       "autoIncrement": true
     }
   },
