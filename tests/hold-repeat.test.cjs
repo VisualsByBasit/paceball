@@ -177,3 +177,29 @@ test('both step buttons on Mark use the hold, with release and cancel wired', ()
   // Haptic on the press, not on every repeat tick.
   assert.match(mark, /if \(first\) Haptics\.selectionAsync\(\)/);
 });
+
+test('both step buttons on Analysis use the same hold, with release and cancel wired', () => {
+  const analysis = read('app/analysis.tsx');
+  assert.match(analysis, /import \{ useHoldRepeat \} from '\.\.\/src\/ui\/useHoldRepeat';/);
+  for (const name of ['stepBack', 'stepForward']) {
+    assert.match(
+      analysis,
+      new RegExp(`onPressIn=\\{${name}\\.onPressIn\\}\\s*onPressOut=\\{${name}\\.onPressOut\\}\\s*onPress=\\{${name}\\.onPress\\}`),
+    );
+  }
+  assert.doesNotMatch(analysis, /onPress=\{\(\) => seek\(current [-+] 1\)\}/);
+  // A repeat steps from the frame it last landed on, not a stale render's.
+  assert.match(analysis, /seek\(currentRef\.current - 1\)/);
+  assert.match(analysis, /seek\(currentRef\.current \+ 1\)/);
+  assert.match(analysis, /currentRef\.current = next;\s*setCurrent\(next\);/);
+  // Reaching either end stops the repeat heading for it.
+  assert.match(analysis, /if \(current === 0\) stepBack\.stop\(\);/);
+  assert.match(analysis, /if \(current >= max\) stepForward\.stop\(\);/);
+  // Haptic on the press, not on every repeat tick.
+  assert.match(analysis, /if \(first\) Haptics\.selectionAsync\(\)/);
+  // The same delay and rate as Mark: both come from the one hook, which reads
+  // them from the motion tokens rather than taking them per screen.
+  assert.match(read('src/ui/useHoldRepeat.ts'), /delay: motion\.holdDelay,\s*interval: motion\.holdRepeat,/);
+  assert.match(analysis, /useHoldRepeat\(\s*useCallback\(/);
+  assert.doesNotMatch(analysis, /createHoldRepeat|holdDelay|holdRepeat:/);
+});

@@ -13,6 +13,7 @@ import {
 import { useEventListener } from 'expo';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listFrames } from '../src/capture/useFrames';
 import { getSession, renderExport } from '../src/data';
@@ -23,6 +24,7 @@ import { measurementState } from '../src/physics/measurementState';
 import { canExportWithoutWatermark, useEntitlements } from '../src/purchases';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
+import { useHoldRepeat } from '../src/ui/useHoldRepeat';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
@@ -163,6 +165,12 @@ function Replay({
   const max = Math.max(0, frames.length - 1);
 
   const [current, setCurrent] = useState(release.frame);
+  // Read by a held step button, which repeats faster than a render can be
+  // relied on to hand it a fresh `current`.
+  const currentRef = useRef(current);
+  useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(RATES[0].rate);
   const [playbackProblem, setPlaybackProblem] = useState<string | null>(null);
@@ -264,11 +272,31 @@ function Replay({
       videoOwnsFrame.current = false;
       player.pause();
       const next = clamp(frame);
+      currentRef.current = next;
       setCurrent(next);
       player.currentTime = next / fps;
     },
     [player, clamp, fps]
   );
+
+  // The same hold as Mark: one frame per tap, repeating while held, with one
+  // tick for the press itself and none while it repeats.
+  const tick = useCallback((first: boolean) => {
+    if (first) Haptics.selectionAsync().catch(() => undefined);
+  }, []);
+  const stepBack = useHoldRepeat(
+    useCallback((first: boolean) => { tick(first); seek(currentRef.current - 1); }, [seek, tick])
+  );
+  const stepForward = useHoldRepeat(
+    useCallback((first: boolean) => { tick(first); seek(currentRef.current + 1); }, [seek, tick])
+  );
+
+  // A button disabled under a held finger may never report the release, so
+  // reaching either end stops the repeat that was heading for it.
+  useEffect(() => {
+    if (current === 0) stepBack.stop();
+    if (current >= max) stepForward.stop();
+  }, [current, max, stepBack.stop, stepForward.stop]);
 
   const togglePlay = useCallback(() => {
     if (playing) {
@@ -501,7 +529,9 @@ function Replay({
           <Pressable
             style={[styles.stepButton, current === 0 && styles.off]}
             disabled={current === 0}
-            onPress={() => seek(current - 1)}
+            onPressIn={stepBack.onPressIn}
+            onPressOut={stepBack.onPressOut}
+            onPress={stepBack.onPress}
             hitSlop={space.sm}
             accessibilityRole="button"
             accessibilityLabel="Previous frame"
@@ -520,7 +550,9 @@ function Replay({
           <Pressable
             style={[styles.stepButton, current >= max && styles.off]}
             disabled={current >= max}
-            onPress={() => seek(current + 1)}
+            onPressIn={stepForward.onPressIn}
+            onPressOut={stepForward.onPressOut}
+            onPress={stepForward.onPress}
             hitSlop={space.sm}
             accessibilityRole="button"
             accessibilityLabel="Next frame"
