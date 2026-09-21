@@ -30,18 +30,21 @@ test('diagnostic allow-list removes names, media, measurements, logs, IDs and ar
 
 test('Sentry requires DSN and opt-in, scrubs attachments, and respects revocation/restart', async () => {
   const values = new Map();
-  const sdk = { options: null, captures: 0,
-    init(options) { sdk.options = options; },
+  const sdk = { options: null, captures: 0, closes: 0, nativeCrashes: 0,
+    init(options) { sdk.options = options; options.onReady?.({ didCallNativeInit: true }); },
     getClient() { return sdk.options ? { getOptions: () => sdk.options, flush: async () => true } : undefined; },
-    captureException() { sdk.captures++; }, wrap: x => x,
+    captureException() { sdk.captures++; },
+    nativeCrash() { sdk.nativeCrashes++; },
+    async close() { sdk.closes++; },
+    wrap: x => x,
   };
   const originalLoad = Module._load;
   const previousDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
+  const previousNativeTest = process.env.EXPO_PUBLIC_SENTRY_NATIVE_TEST_ENABLED;
   const previousDev = global.__DEV__;
   global.__DEV__ = true;
   Module._load = function (request, parent, isMain) {
     if (request === '@sentry/react-native') return sdk;
-    if (request === 'expo-constants') return { expoConfig: { version: '1.0.0' } };
     if (request === 'react-native-mmkv') return { createMMKV: () => ({ getString: key => values.get(key), set: (key, val) => values.set(key, val) }) };
     return originalLoad.call(this, request, parent, isMain);
   };
@@ -61,17 +64,27 @@ test('Sentry requires DSN and opt-in, scrubs attachments, and respects revocatio
   try {
     delete process.env.EXPO_PUBLIC_SENTRY_DSN;
     let diagnostics = loadAdapter();
-    diagnostics.setDiagnosticsConsent(true);
+    await diagnostics.setDiagnosticsConsent(true);
     assert.equal(sdk.options, null, 'No SDK initialization without DSN');
     await assert.rejects(diagnostics.sendDiagnosticTest());
     values.clear();
     process.env.EXPO_PUBLIC_SENTRY_DSN = 'https://public@example.invalid/1';
+    process.env.EXPO_PUBLIC_SENTRY_NATIVE_TEST_ENABLED = 'true';
     diagnostics = loadAdapter();
     diagnostics.initializeDiagnostics();
     assert.equal(sdk.options, null, 'No SDK initialization before opt-in');
-    diagnostics.setDiagnosticsConsent(true);
-    assert.equal(sdk.options.enableNative, false);
+    await diagnostics.setDiagnosticsConsent(true);
+    assert.equal(sdk.options.enableNative, true);
+    assert.equal(sdk.options.enableNativeCrashHandling, true);
+    assert.equal(sdk.options.autoInitializeNativeSdk, true);
+    assert.equal(sdk.options.enableNdk, true);
+    assert.equal(sdk.options.enableNdkScopeSync, false);
+    assert.equal(sdk.options.release, undefined, 'Native release and build must match uploaded source maps');
+    assert.equal(sdk.options.environment, 'preview');
     assert.equal(sdk.options.sendDefaultPii, false);
+    assert.equal(sdk.options.attachScreenshot, false);
+    assert.equal(sdk.options.attachViewHierarchy, false);
+    assert.equal(sdk.options.attachThreads, false);
     assert.equal(sdk.options.replaysOnErrorSampleRate, undefined);
     assert.equal(sdk.options.replaysSessionSampleRate, undefined);
     assert.equal(sdk.options.tracesSampleRate, undefined);
@@ -82,11 +95,15 @@ test('Sentry requires DSN and opt-in, scrubs attachments, and respects revocatio
     assert.deepEqual(hint.attachments, []);
     assert.equal(await diagnostics.sendDiagnosticTest(), true);
     assert.equal(sdk.captures, 1);
-    diagnostics.setDiagnosticsConsent(false);
+    await diagnostics.sendNativeDiagnosticTest();
+    assert.equal(sdk.nativeCrashes, 1);
+    await diagnostics.setDiagnosticsConsent(false);
     assert.equal(sdk.options.enabled, false);
+    assert.equal(sdk.closes, 1);
     assert.equal(sdk.options.beforeSend({}, {}), null);
     await assert.rejects(diagnostics.sendDiagnosticTest());
-    diagnostics.setDiagnosticsConsent(true);
+    await assert.rejects(diagnostics.sendNativeDiagnosticTest());
+    await diagnostics.setDiagnosticsConsent(true);
     assert.equal(sdk.options.enabled, true);
     diagnostics = loadAdapter();
     assert.equal(diagnostics.diagnosticsStatus().consent, true);
@@ -94,8 +111,17 @@ test('Sentry requires DSN and opt-in, scrubs attachments, and respects revocatio
     Module._load = originalLoad; global.__DEV__ = previousDev;
     if (previousDsn === undefined) delete process.env.EXPO_PUBLIC_SENTRY_DSN;
     else process.env.EXPO_PUBLIC_SENTRY_DSN = previousDsn;
+    if (previousNativeTest === undefined) delete process.env.EXPO_PUBLIC_SENTRY_NATIVE_TEST_ENABLED;
+    else process.env.EXPO_PUBLIC_SENTRY_NATIVE_TEST_ENABLED = previousNativeTest;
     delete require.cache[filename];
   }
+});
+
+test('release builds select EAS environments and allow source-map upload', () => {
+  const eas = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../eas.json'), 'utf8'));
+  assert.equal(eas.build.preview.environment, 'preview');
+  assert.equal(eas.build.production.environment, 'production');
+  assert.notEqual(eas.build.base.env?.SENTRY_DISABLE_AUTO_UPLOAD, 'true');
 });
 
 test('only reviewed static error messages survive, including each nested cause', () => {

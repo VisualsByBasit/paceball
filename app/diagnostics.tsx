@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { diagnosticsStatus, sendDiagnosticTest, setDiagnosticsConsent } from '../src/diagnostics';
+import { diagnosticsStatus, sendDiagnosticTest, sendNativeDiagnosticTest, setDiagnosticsConsent } from '../src/diagnostics';
 import { purchasesConfigured } from '../src/purchases';
 import { colors, radius, space, type } from '../src/ui/tokens';
 
@@ -22,13 +22,15 @@ export default function DiagnosticsScreen() {
       : <Text style={styles.body}>Purchases are not set up in this build, so nothing is sent to Google Play or RevenueCat.</Text>}
     <Text style={styles.title}>Optional crash reports</Text>
     <Text style={styles.body}>Off unless you turn them on below. Crash reports go to Sentry only if you opt in.</Text>
-    <Text style={styles.body}>If you enable this, Paceball sends limited JavaScript error reports to Sentry: app version, error type, time, code locations and reviewed static error messages. Reports exclude player names, recordings, marked points and speeds. Other error messages are redacted. Sentry receives your network address when a report is sent. Your bowling measurements work without crash reports. Native crash reporting is not enabled.</Text>
+    <Text style={styles.body}>If you enable this, Paceball sends limited JavaScript and native crash reports to Sentry. Reports can include the app version, event time, error or crash type, code locations, native stack traces, device model, Android version and technical crash state. JavaScript reports keep only reviewed static error messages; other messages are redacted. Paceball does not add player names, recordings, marked points or speeds, and reports have no breadcrumbs, screenshots or view hierarchy. Sentry receives your network address when a report is sent. Your bowling measurements work without crash reports.</Text>
     <View style={styles.row}>
       <Text style={styles.body}>Send crash reports</Text>
       <Switch accessibilityLabel="Send optional crash reports to Sentry" value={status.consent}
-        disabled={!status.configured} onValueChange={(value) => {
-          try { setDiagnosticsConsent(value); setStatus(diagnosticsStatus()); setNotice(value ? 'Crash reports enabled.' : 'Future reports disabled. Reports already sent are not deleted.'); }
+        disabled={!status.configured || busy} onValueChange={async (value) => {
+          setBusy(true);
+          try { await setDiagnosticsConsent(value); setStatus(diagnosticsStatus()); setNotice(value ? 'Crash reports enabled.' : 'Future reports disabled. Reports already sent are not deleted.'); }
           catch { setNotice('Could not update this preference. Try again.'); }
+          finally { setBusy(false); }
         }} />
     </View>
     {!status.configured ? <Text style={styles.note}>Crash reporting is not available in this build. No reports are sent.</Text> : null}
@@ -38,6 +40,18 @@ export default function DiagnosticsScreen() {
       catch { setNotice('Could not send the test report.'); }
       finally { setBusy(false); }
     }}><Text style={styles.body}>{busy ? 'Sending…' : 'Send development test report'}</Text></Pressable> : null}
+    {status.nativeCrashTestEnabled && status.configured && status.consent ? <Pressable style={styles.button} disabled={busy} accessibilityRole="button" onPress={() => {
+      Alert.alert('Test native crash?', 'This test build will close immediately. Reopen Paceball, then check Sentry for the native crash event.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Crash test build', style: 'destructive', onPress: () => {
+          setBusy(true);
+          void sendNativeDiagnosticTest().catch(() => {
+            setBusy(false);
+            setNotice('The native crash test could not start.');
+          });
+        } },
+      ]);
+    }}><Text style={styles.body}>Test native crash</Text></Pressable> : null}
     {notice ? <Text accessibilityLiveRegion="polite" style={styles.note}>{notice}</Text> : null}
   </ScrollView>;
 }
