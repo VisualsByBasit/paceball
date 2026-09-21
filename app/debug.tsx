@@ -207,7 +207,6 @@ export default function DebugScreen() {
 function VideoExportSpike({ session }: { session: Session }) {
   const { isPro } = usePurchases();
   const taskRef = useRef<VideoExportTask | null>(null);
-  const [includeAudio, setIncludeAudio] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [result, setResult] = useState<VideoExportResult | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -224,7 +223,7 @@ function VideoExportSpike({ session }: { session: Session }) {
     setRunning(true);
     let subscription: { remove: () => void } | null = null;
     try {
-      const task = createSessionVideoExport(session, { isPro, includeAudio });
+      const task = createSessionVideoExport(session, { isPro });
       taskRef.current = task;
       subscription = task.onProgress(setProgress);
       setResult(await task.result);
@@ -237,7 +236,7 @@ function VideoExportSpike({ session }: { session: Session }) {
       taskRef.current = null;
       setRunning(false);
     }
-  }, [includeAudio, isPro, session]);
+  }, [isPro, session]);
 
   const cancel = useCallback(async () => {
     await taskRef.current?.cancel();
@@ -260,21 +259,9 @@ function VideoExportSpike({ session }: { session: Session }) {
     <View style={styles.videoSpike}>
       <Text style={styles.overrideLabel}>MEDIA3 VIDEO SPIKE · DEVICE ONLY</Text>
       <Text style={styles.videoHelp}>
-        {isPro ? 'Pro: clean overlay' : 'Free: Paceball watermark'} ·{' '}
-        {includeAudio ? 'audio included' : 'silent export'}
+        {isPro ? 'Pro: clean overlay' : 'Free: Paceball watermark'}
       </Text>
       <View style={styles.overrideRow}>
-        <Pressable
-          style={[styles.overrideChoice, includeAudio && styles.overrideChoiceOn]}
-          onPress={() => setIncludeAudio((value) => !value)}
-          disabled={running}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: includeAudio, disabled: running }}
-        >
-          <Text style={[styles.overrideChoiceText, includeAudio && styles.overrideChoiceTextOn]}>
-            Audio {includeAudio ? 'on' : 'off'}
-          </Text>
-        </Pressable>
         <Pressable
           style={[styles.overrideChoice, styles.videoPrimary]}
           onPress={running ? cancel : start}
