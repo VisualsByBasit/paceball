@@ -120,9 +120,11 @@ test('Sentry requires DSN and opt-in, scrubs attachments, and respects revocatio
 test('release builds select EAS environments and allow source-map upload', () => {
   const eas = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../eas.json'), 'utf8'));
   const screen = fs.readFileSync(path.resolve(__dirname, '../app/diagnostics.tsx'), 'utf8');
+  assert.equal(eas.build.development.env.SENTRY_DISABLE_AUTO_UPLOAD, 'true');
   assert.equal(eas.build.preview.environment, 'preview');
   assert.equal(eas.build.production.environment, 'production');
-  assert.notEqual(eas.build.base.env?.SENTRY_DISABLE_AUTO_UPLOAD, 'true');
+  assert.notEqual(eas.build.preview.env?.SENTRY_DISABLE_AUTO_UPLOAD, 'true');
+  assert.notEqual(eas.build.production.env?.SENTRY_DISABLE_AUTO_UPLOAD, 'true');
   assert.match(screen, /__DEV__ \|\| status\.nativeCrashTestEnabled/,
     'The preview release must expose both JavaScript and native receipt checks');
 });
