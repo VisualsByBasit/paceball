@@ -23,8 +23,9 @@ export type Settings = {
   analysisAnchor: number | null;
   /**
    * What the camera actually produced last time: the recorded frame size and the
-   * frame rate read from that file. Only used to scale a Pro recording's bitrate
-   * target to this phone, never to assume anything about a clip being marked.
+   * frame rate read from that file, and the bitrate it writes on its own default.
+   * Only used to set a Pro recording's bitrate target above this phone's default,
+   * never to assume anything about a clip being marked.
    */
   lastRecording: RecordingProfile | null;
   /**
@@ -53,12 +54,18 @@ function isSpeedUnit(value: unknown): value is SpeedUnit {
   return value === 'kmh' || value === 'mph';
 }
 
-function isRecordingProfile(value: unknown): value is RecordingProfile {
-  if (typeof value !== 'object' || value === null) return false;
-  const profile = value as Record<string, unknown>;
-  return (['width', 'height', 'fps'] as const).every(
-    (key) => typeof profile[key] === 'number' && Number.isFinite(profile[key]) && profile[key] > 0
-  );
+const positive = (n: unknown): n is number =>
+  typeof n === 'number' && Number.isFinite(n) && n > 0;
+
+/**
+ * A profile saved before the default bitrate was measured has none, and reads
+ * as unmeasured: the next recording then runs at the default and measures it.
+ */
+function parseRecordingProfile(value: unknown): RecordingProfile | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { width, height, fps, defaultBitRate } = value as Record<string, unknown>;
+  if (!positive(width) || !positive(height) || !positive(fps)) return null;
+  return { width, height, fps, defaultBitRate: positive(defaultBitRate) ? defaultBitRate : null };
 }
 
 function isExposureOption(value: unknown): value is number {
@@ -85,9 +92,7 @@ export function parseSettings(raw: unknown): Settings {
       typeof value.analysisAnchor === 'number' && Number.isFinite(value.analysisAnchor)
         ? value.analysisAnchor
         : DEFAULT_SETTINGS.analysisAnchor,
-    lastRecording: isRecordingProfile(value.lastRecording)
-      ? value.lastRecording
-      : DEFAULT_SETTINGS.lastRecording,
+    lastRecording: parseRecordingProfile(value.lastRecording) ?? DEFAULT_SETTINGS.lastRecording,
     onboardingPaywallShown: value.onboardingPaywallShown === true,
   };
 }

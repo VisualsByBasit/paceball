@@ -8,7 +8,13 @@ const {
   referenceFraming,
   spanBetween,
 } = require('../src/capture/framing.ts');
-const { MAX_BIT_RATE, highBitRate, profileFrom } = require('../src/capture/bitrate.ts');
+const {
+  MAX_BIT_RATE,
+  MIN_PRO_GAIN,
+  highBitRate,
+  observedBitRate,
+  profileFrom,
+} = require('../src/capture/bitrate.ts');
 const { DEFAULT_SETTINGS, parseSettings } = require('../src/settings/settings.ts');
 
 // Normalised, because a Windows checkout converts line endings to CRLF.
@@ -69,32 +75,92 @@ test('the lens swap is covered by a fade, and is not called a zoom', () => {
   assert.doesNotMatch(read('src/capture/lenses.ts'), /zoom/i);
 });
 
-test('a Pro bitrate is scaled to what the camera produced, and falls back', () => {
-  // 1080p60 as this phone actually recorded it.
-  const profile = { width: 1920, height: 1080, fps: 59.94 };
+test('a Pro target is only ever requested clearly above what the camera produced', () => {
+  // The device result that exposed the old rule: this phone writes ~34 Mbps by
+  // default at 1080p60, and a fixed bits-per-pixel target asked for ~15.
+  const observed = 34_000_000;
+  const profile = { width: 1920, height: 1080, fps: 59.94, defaultBitRate: observed };
   const target = highBitRate(profile);
-  assert.ok(target > 0 && Number.isInteger(target));
-  assert.equal(target, Math.round(1920 * 1080 * 59.94 * 0.12));
+  assert.ok(Number.isInteger(target));
+  assert.ok(target > observed, 'never at or below the default');
+  assert.ok(target >= observed * MIN_PRO_GAIN, 'clearly above, not a rounding step');
   assert.ok(target <= MAX_BIT_RATE);
 
-  // Nothing recorded yet, or a profile that cannot be trusted: no target at all,
-  // so the camera keeps its own default rather than being asked for a number
-  // nothing supports.
+  // Across the whole range, whatever comes back is null or clearly above.
+  for (let mbps = 1; mbps <= 80; mbps += 0.5) {
+    const bps = mbps * 1_000_000;
+    const t = highBitRate({ ...profile, defaultBitRate: bps });
+    if (t !== null) {
+      assert.ok(t > bps && t >= bps * MIN_PRO_GAIN && t <= MAX_BIT_RATE, `${mbps} Mbps -> ${t}`);
+    }
+  }
+  // A default already near the cap leaves no clearly higher target: none is asked for.
+  assert.equal(highBitRate({ ...profile, defaultBitRate: 45_000_000 }), null);
+  assert.equal(highBitRate({ ...profile, defaultBitRate: MAX_BIT_RATE }), null);
+  assert.equal(highBitRate({ ...profile, defaultBitRate: 60_000_000 }), null);
+
+  // No observed value yet: no target, the camera keeps its own default.
   assert.equal(highBitRate(null), null);
   assert.equal(highBitRate(undefined), null);
-  assert.equal(highBitRate({ width: 0, height: 1080, fps: 60 }), null);
-  assert.equal(highBitRate({ width: 1920, height: 1080, fps: NaN }), null);
-  // A tiny frame gains nothing, so it is left alone too.
-  assert.equal(highBitRate({ width: 320, height: 240, fps: 30 }), null);
-  // A huge one is capped rather than asking for something absurd.
-  assert.equal(highBitRate({ width: 7680, height: 4320, fps: 120 }), MAX_BIT_RATE);
+  assert.equal(highBitRate({ ...profile, defaultBitRate: null }), null);
+  assert.equal(highBitRate({ ...profile, defaultBitRate: NaN }), null);
+  // Resolution alone no longer produces a target.
+  assert.equal(highBitRate({ width: 3840, height: 2160, fps: 60, defaultBitRate: null }), null);
+});
 
-  // The profile is read off the finished file, never assumed from the camera.
-  assert.deepEqual(profileFrom({ width: 1920, height: 1080, derivedFps: 59.94 }), profile);
-  assert.equal(profileFrom({ width: 1920, height: 1080, derivedFps: 0 }), null);
+test('the default bitrate is measured from a default recording, and only from one', () => {
+  // File size over duration: 14.12 MB over 3.3 s.
+  assert.equal(observedBitRate(14_120_000, 3300), Math.round((14_120_000 * 8) / 3.3));
+  assert.equal(observedBitRate(0, 3300), null);
+  assert.equal(observedBitRate(14_120_000, 0), null);
+  assert.equal(observedBitRate(14_120_000, 200), null);
+  assert.equal(observedBitRate(NaN, 3300), null);
+
+  const info = { width: 1920, height: 1080, derivedFps: 59.94, durationMs: 3300 };
+
+  // A fresh install: nothing stored, so nothing is requested, and that first
+  // default recording is what gets measured.
   assert.equal(DEFAULT_SETTINGS.lastRecording, null);
-  assert.deepEqual(parseSettings({ lastRecording: profile }).lastRecording, profile);
+  assert.equal(highBitRate(DEFAULT_SETTINGS.lastRecording), null);
+  const first = profileFrom(info, 14_120_000, null, null);
+  assert.deepEqual(first, {
+    width: 1920,
+    height: 1080,
+    fps: 59.94,
+    defaultBitRate: observedBitRate(14_120_000, 3300),
+  });
+  assert.ok(highBitRate(first) > first.defaultBitRate);
+
+  // A recording made at a Pro target never replaces the default it was compared
+  // against, so the target cannot ratchet itself upward.
+  const afterPro = profileFrom(info, 30_000_000, highBitRate(first), first);
+  assert.equal(afterPro.defaultBitRate, first.defaultBitRate);
+  // Nor does a size that could not be read.
+  assert.equal(profileFrom(info, null, null, first).defaultBitRate, first.defaultBitRate);
+  assert.equal(profileFrom(info, null, null, null).defaultBitRate, null);
+  assert.equal(profileFrom({ ...info, derivedFps: 0 }, 14_120_000, null, null), null);
+
+  // Stored and read back. A profile saved before this was measured reads as
+  // unmeasured, so an existing install records at the default next time.
+  assert.deepEqual(parseSettings({ lastRecording: first }).lastRecording, first);
+  assert.deepEqual(parseSettings({ lastRecording: { width: 1920, height: 1080, fps: 59.94 } }).lastRecording, {
+    width: 1920,
+    height: 1080,
+    fps: 59.94,
+    defaultBitRate: null,
+  });
   assert.equal(parseSettings({ lastRecording: { width: 1920 } }).lastRecording, null);
+});
+
+test('capture requests the target and claims Pro quality only together', () => {
+  const capture = read('app/capture.tsx');
+  // One value decides both: the target handed to the encoder, and the mark.
+  assert.match(capture, /const bitRate = canRecordHighBitrate\(entitlements\) \? highBitRate\(lastRecording\) : null;/);
+  assert.match(capture, /bitRate === null \? \{ fileType: 'mp4' \} : \{ fileType: 'mp4', targetBitRate: bitRate \}/);
+  assert.match(capture, /\{bitRate !== null \? \(\s*<View style=\{styles\.qualityMark\}>/);
+  assert.equal(capture.match(/PRO QUALITY/g).length, 1);
+  // The finished file is measured, with what was requested for it.
+  assert.match(capture, /profileFrom\(\s*info,\s*fileSize\(path\),\s*bitRate,\s*getSettings\(\)\.lastRecording\s*\)/);
 });
 
 test('bitrate changes the encode only, not what the measurement reads', () => {

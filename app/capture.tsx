@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { File } from 'expo-file-system';
 import {
   Camera,
   useCameraDevice,
@@ -47,6 +48,16 @@ const TIPS = [
 /** The day an allowance comes back, named as the phone names its weekdays. */
 function weekdayOf(t: number): string {
   return new Date(t).toLocaleDateString(undefined, { weekday: 'long' });
+}
+
+/** Bytes on disk, or null if the file cannot be read. */
+function fileSize(path: string): number | null {
+  try {
+    const file = new File(path.startsWith('file://') ? path : `file://${path}`);
+    return file.exists ? file.size : null;
+  } catch {
+    return null;
+  }
 }
 
 function formatElapsed(ms: number): string {
@@ -132,9 +143,11 @@ export default function CaptureScreen() {
   const allowanceNote = isPro ? null : allowanceLine(allowance, weekdayOf);
   const exposure = captureExposure(device, exposureBias);
 
-  // Pro records the same frames with less compression. The target is scaled to
-  // what this camera actually produced last time, and is null until it has
-  // produced anything, in which case the camera keeps its own default.
+  // Pro records the same frames with less compression. The target is set
+  // clearly above what this camera writes on its own default, measured from a
+  // real recording. It is null until that has been measured, or when no target
+  // clearly above it is possible, and then the camera keeps its own default and
+  // nothing on screen claims Pro quality.
   const bitRate = canRecordHighBitrate(entitlements) ? highBitRate(lastRecording) : null;
   const [sessionReady, setSessionReady] = useState(false);
   const [showTips, setShowTips] = useState(true);
@@ -147,7 +160,12 @@ export default function CaptureScreen() {
     ({ path, info }: CaptureResult) => {
       // What the camera really delivered, so the next Pro recording can be
       // scaled to it. Read off the file, never assumed from the camera.
-      const profile = profileFrom(info);
+      const profile = profileFrom(
+        info,
+        fileSize(path),
+        bitRate,
+        getSettings().lastRecording
+      );
       if (profile) updateSettings({ lastRecording: profile });
       router.push({
         pathname: '/mark',
@@ -164,7 +182,7 @@ export default function CaptureScreen() {
         },
       });
     },
-    [router, exposure]
+    [router, exposure, bitRate]
   );
 
   const capture = useCapture(videoOutput, { onFinished });
