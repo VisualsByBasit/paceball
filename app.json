@@ -4,6 +4,7 @@
     "slug": "paceball",
     "version": "1.0.0",
     "scheme": "paceball",
+    "orientation": "portrait",
     "android": {
       "package": "com.paceball.app",
       "blockedPermissions": [
