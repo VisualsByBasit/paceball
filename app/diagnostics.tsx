@@ -34,12 +34,12 @@ export default function DiagnosticsScreen() {
         }} />
     </View>
     {!status.configured ? <Text style={styles.note}>Crash reporting is not available in this build. No reports are sent.</Text> : null}
-    {__DEV__ && status.configured && status.consent ? <Pressable style={styles.button} disabled={busy} accessibilityRole="button" onPress={async () => {
+    {(__DEV__ || status.nativeCrashTestEnabled) && status.configured && status.consent ? <Pressable style={styles.button} disabled={busy} accessibilityRole="button" onPress={async () => {
       setBusy(true);
       try { const flushed = await sendDiagnosticTest(); setNotice(flushed ? 'SDK finished sending. Verify the event in Sentry to confirm receipt.' : 'Sending timed out. Check the connection and Sentry dashboard.'); }
       catch { setNotice('Could not send the test report.'); }
       finally { setBusy(false); }
-    }}><Text style={styles.body}>{busy ? 'Sending…' : 'Send development test report'}</Text></Pressable> : null}
+    }}><Text style={styles.body}>{busy ? 'Sending…' : 'Send test error report'}</Text></Pressable> : null}
     {status.nativeCrashTestEnabled && status.configured && status.consent ? <Pressable style={styles.button} disabled={busy} accessibilityRole="button" onPress={() => {
       Alert.alert('Test native crash?', 'This test build will close immediately. Reopen Paceball, then check Sentry for the native crash event.', [
         { text: 'Cancel', style: 'cancel' },
