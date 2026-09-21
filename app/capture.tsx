@@ -32,12 +32,16 @@ import { getSettings, updateSettings, useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
 /**
- * How long the preview takes to fade out and back in around a lens swap.
- * Swapping lenses restarts the camera session, which blinks; this covers the
- * blink so the change reads as deliberate. It is a swap between two lenses, not
- * a zoom ramp.
+ * A lens swap restarts the camera session, and on a real phone that takes far
+ * longer than any fixed fade, and a different time on every phone. So the
+ * preview fades out, stays dark under a "Switching lens" label while the session
+ * restarts, and fades back in on the new lens's first preview frame. It is a
+ * swap between two lenses, not a zoom ramp.
  */
-const LENS_FADE_MS = 200;
+const LENS_FADE_OUT_MS = 120;
+const LENS_FADE_IN_MS = 180;
+/** If the first frame is never reported, the preview comes back anyway. */
+const LENS_SWAP_TIMEOUT_MS = 2000;
 
 const TIPS = [
   'Stand side-on to the pitch, level with the bounce.',
@@ -81,29 +85,47 @@ export default function CaptureScreen() {
 
   /**
    * Swapping lenses restarts the camera session, so the preview blinks. It
-   * cannot be avoided with a device swap, so it is covered: fade out, swap, fade
+   * cannot be avoided with a device swap, so it is made deliberate: fade out,
+   * swap, hold dark under "Switching lens" until the new lens is streaming, fade
    * back in. The controls and the lens label sit outside this and stay visible.
    */
   const previewFade = useRef(new Animated.Value(1)).current;
+  const [switchingLens, setSwitchingLens] = useState(false);
+  const swapTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealPreview = useCallback(() => {
+    if (swapTimeout.current === null) return;
+    clearTimeout(swapTimeout.current);
+    swapTimeout.current = null;
+    setSwitchingLens(false);
+    Animated.timing(previewFade, {
+      toValue: 1,
+      duration: LENS_FADE_IN_MS,
+      easing: Easing.in(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [previewFade]);
   const chooseLens = useCallback(
     (next: Lens) => {
-      if (next === lens) return;
+      if (next === lens || switchingLens) return;
+      setSwitchingLens(true);
       Animated.timing(previewFade, {
         toValue: 0,
-        duration: LENS_FADE_MS / 2,
+        duration: LENS_FADE_OUT_MS,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }).start(() => {
         setLens(next);
-        Animated.timing(previewFade, {
-          toValue: 1,
-          duration: LENS_FADE_MS / 2,
-          easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
-        }).start();
+        // Waiting from here on for the new lens's first preview frame.
+        swapTimeout.current = setTimeout(revealPreview, LENS_SWAP_TIMEOUT_MS);
       });
     },
-    [lens, previewFade]
+    [lens, switchingLens, previewFade, revealPreview]
+  );
+  useEffect(
+    () => () => {
+      if (swapTimeout.current !== null) clearTimeout(swapTimeout.current);
+    },
+    []
   );
   const { exposureBias, lastRecording } = useSettings();
   const entitlements = useEntitlements();
@@ -245,9 +267,16 @@ export default function CaptureScreen() {
         exposure={isFocused && sessionReady ? exposure : undefined}
         onStarted={() => setSessionReady(true)}
         onStopped={() => setSessionReady(false)}
+        onPreviewStarted={revealPreview}
         onError={onCameraError}
       />
       </Animated.View>
+
+      {switchingLens ? (
+        <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
+          <Text style={styles.switchingText}>Switching lens</Text>
+        </View>
+      ) : null}
 
       {isProcessing ? <View style={[StyleSheet.absoluteFill, styles.scrim]} /> : null}
 
@@ -354,7 +383,7 @@ export default function CaptureScreen() {
                   ? capture.start
                   : () => router.push({ pathname: '/paywall', params: { context: 'limit' } })
             }
-            disabled={!sessionReady || isProcessing || (isRecording && !canStop)}
+            disabled={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
             accessibilityRole="button"
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
             style={styles.shutter}
@@ -593,6 +622,7 @@ const styles = StyleSheet.create({
   lensOn: { backgroundColor: colors.text, borderColor: colors.text },
   lensText: { ...type.caption, ...type.tabular, color: colors.text },
   lensTextOn: { color: colors.bg, fontWeight: '800' },
+  switchingText: { ...type.caption, color: colors.muted },
   // The allowance is worth reading at a glance once it has run out.
   hintLimit: { color: colors.warn },
 });

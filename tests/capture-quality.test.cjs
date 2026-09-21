@@ -58,16 +58,28 @@ test('capture guides the framing without claiming to have measured it', () => {
   assert.match(result, /!framing\.tight && spec!\.rulerBoundsTravel && measured/);
 });
 
-test('the lens swap is covered by a fade, and is not called a zoom', () => {
+test('the lens swap holds the preview dark until the new lens streams', () => {
   const capture = read('app/capture.tsx');
-  assert.match(capture, /const LENS_FADE_MS = 200;/);
   assert.match(capture, /onPress=\{\(\) => chooseLens\(option\)\}/);
-  // Out, swap, back in.
-  assert.match(capture, /toValue: 0,[\s\S]*?setLens\(next\);[\s\S]*?toValue: 1,/);
+  // Out, swap, then wait: the fade back in is not on a timer of its own.
+  assert.match(capture, /toValue: 0,[\s\S]*?setLens\(next\);[\s\S]*?setTimeout\(revealPreview, LENS_SWAP_TIMEOUT_MS\)/);
+  const choose = capture.slice(capture.indexOf('const chooseLens'), capture.indexOf('useEffect(', capture.indexOf('const chooseLens')));
+  assert.doesNotMatch(choose, /toValue: 1/);
+  // It comes back on the new lens's first preview frame, or after the fallback.
+  assert.match(capture, /onPreviewStarted=\{revealPreview\}/);
+  assert.match(capture, /const LENS_SWAP_TIMEOUT_MS = 2000;/);
+  const reveal = capture.slice(capture.indexOf('const revealPreview'), capture.indexOf('const chooseLens'));
+  // A preview start that is not the end of a swap (the first one on opening) does nothing.
+  assert.match(reveal, /if \(swapTimeout\.current === null\) return;/);
+  assert.match(reveal, /toValue: 1/);
   assert.match(capture, /opacity: previewFade/);
+  // While it waits the change reads as deliberate, and nothing can be recorded.
+  assert.match(capture, /\{switchingLens \? \([\s\S]*?Switching lens/);
+  assert.match(capture, /disabled=\{!sessionReady \|\| switchingLens \|\|/);
+  assert.match(capture, /if \(next === lens \|\| switchingLens\) return;/);
   // The label stays put: the picker is outside the faded preview.
   const faded = capture.slice(capture.indexOf('<Animated.View'), capture.indexOf('</Animated.View>'));
-  assert.doesNotMatch(faded, /LENS_LABEL/);
+  assert.doesNotMatch(faded, /LENS_LABEL|Switching lens/);
   // The picker calls it a lens, never a zoom: it is a swap, not a ramp. Only the
   // comment saying so may use the word.
   const picker = capture.slice(capture.indexOf('ultraWideAvailable ? ('), capture.indexOf('showTips ? ('));
