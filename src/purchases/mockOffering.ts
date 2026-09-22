@@ -9,7 +9,9 @@ import type { PaywallOffering } from './offering';
  * paywall renders whatever string the store hands it and never builds a price
  * itself, so a non-dollar mock keeps that honest while the layout is built.
  *
- * These are SAMPLE figures, not the real plan prices. Wherever they are shown,
+ * These are SAMPLE figures, not the real plan prices, and set low enough that
+ * no store would ever show them: an earlier mock matched Play's real prices
+ * exactly, so a sample paywall and a real one looked the same. Wherever they are shown,
  * the paywall says the store is not connected, because a sample price the user
  * takes for a real one is worse than no price at all.
  */
@@ -20,7 +22,7 @@ export const MOCK_OFFERING: PaywallOffering = {
       identifier: '$rc_monthly',
       product: {
         identifier: 'paceball_pro_monthly',
-        priceString: 'Rs 1,100.00',
+        priceString: 'Rs 1.00',
         subscriptionPeriod: 'P1M',
         introPrice: null,
       },
@@ -29,7 +31,7 @@ export const MOCK_OFFERING: PaywallOffering = {
       identifier: '$rc_annual',
       product: {
         identifier: 'paceball_pro_annual',
-        priceString: 'Rs 6,900.00',
+        priceString: 'Rs 2.00',
         subscriptionPeriod: 'P1Y',
         introPrice: {
           price: 0,

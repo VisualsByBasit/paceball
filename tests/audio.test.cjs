@@ -31,33 +31,113 @@ test('a denied microphone still records, video only, and is not asked again', ()
   assert.equal(parseSettings({ microphoneAsked: 'yes' }).microphoneAsked, false);
 
   const capture = read('app/capture.tsx');
-  const record = capture.slice(capture.indexOf('const record = useCallback'), capture.indexOf('const answerMicrophone'));
-  // Anything but the one-time offer goes straight to recording.
-  assert.match(record, /if \(shouldOfferMicrophone\(microphone\.status, getSettings\(\)\.microphoneAsked\)\) \{/);
-  assert.match(record, /startRecording\(\);/);
-  assert.doesNotMatch(record, /hasPermission|recordsSound/);
+  // The shutter records straight away, whatever the microphone's answer.
+  assert.match(capture, /allowed\s*\? capture\.start\s*:/);
   // Both answers mark it asked, and "Video only" never opens the system dialog.
   const answer = capture.slice(capture.indexOf('const answerMicrophone'));
   assert.match(answer, /updateSettings\(\{ microphoneAsked: true \}\);[\s\S]*if \(allow\) await microphone\.requestPermission\(\)/);
-  // The output only asks for sound when it has been granted.
-  assert.match(capture, /const enableAudio = recordsSound\(microphone\.status\);/);
+  // The output only asks for sound when it has been granted, and it is free.
+  assert.match(capture, /const enableAudio = recordsSound\(microphone\.status\) && !microphoneBusy;/);
   // The camera screen is never held back on the microphone the way it is on the camera.
   assert.doesNotMatch(capture, /!microphone\.hasPermission/);
-  // The recorder itself knows nothing about sound.
-  assert.doesNotMatch(read('src/capture/useCapture.ts'), /microphone|audio/i);
+  // The recorder never asks for or reads the permission; it is told whether sound is on.
+  assert.doesNotMatch(read('src/capture/useCapture.ts'), /useMicrophonePermission|requestPermission|microphoneAsked/);
 });
 
-test('the microphone is asked at the first capture, never at launch', () => {
+test('the microphone is offered when Capture first opens, never from the shutter', () => {
   const capture = read('app/capture.tsx');
-  // Asked from the shutter's answer, not from an effect that runs on opening.
-  const effects = capture.match(/useEffect\([\s\S]*?\n {2}\}[^\n]*\);/g) ?? [];
-  for (const effect of effects) assert.doesNotMatch(effect, /microphone/i);
+  // An effect on opening, once the camera itself is allowed, gated on the same flag.
+  const offer = capture.slice(capture.indexOf('// Offered on the first visit'), capture.indexOf('// Tearing the session down'));
+  assert.match(offer, /useEffect\(\(\) => \{\s*if \(!hasPermission\) return;\s*if \(shouldOfferMicrophone\(microphone\.status, getSettings\(\)\.microphoneAsked\)\) \{\s*setOfferingMicrophone\(true\);/);
+  assert.match(offer, /\}, \[hasPermission, microphone\.status\]\);/);
+  // Nothing on the shutter's path opens it, and the shutter never waits on it.
+  assert.equal(capture.match(/setOfferingMicrophone\(true\)/g).length, 1);
+  const shutter = capture.slice(capture.indexOf('onPress={\n              isRecording'), capture.indexOf('style={styles.shutter}'));
+  assert.ok(shutter.length > 0);
+  assert.doesNotMatch(shutter, /offeringMicrophone|shouldOfferMicrophone|\brecord\b/);
+  assert.doesNotMatch(capture, /const record = useCallback/);
+  // Hidden while recording, so answering it can never restart the session under a clip.
+  assert.match(capture, /\{offeringMicrophone && !isRecording && !isProcessing \? \(/);
+  // Never at launch: nothing before Capture asks.
   for (const file of ['app/_layout.tsx', 'app/index.tsx', 'app/setup/player.tsx', 'app/setup/camera.tsx', 'app/setup/how-it-works.tsx']) {
     assert.doesNotMatch(read(file), /useMicrophonePermission|requestMicrophonePermission/, file);
   }
-  // One line on why, shown with the offer.
+  // Same one line on why, shown with the offer.
   assert.match(microphone.MICROPHONE_OFFER_REASON, /keep the sound of the delivery/);
   assert.match(capture, /\{MICROPHONE_OFFER_REASON\}/);
+});
+
+test('the offer is never shown again once answered', () => {
+  // The first visit offers; after either answer, every later visit does not.
+  let asked = false;
+  const visit = (status) => microphone.shouldOfferMicrophone(status, asked);
+  assert.equal(visit('not-determined'), true);
+  asked = true; // "Video only", or a system dialog dismissed without granting
+  for (let n = 0; n < 5; n += 1) assert.equal(visit('not-determined'), false);
+  assert.equal(visit('denied'), false);
+  assert.equal(visit('authorized'), false);
+});
+
+test('a recording that fails on its sound is retried once without sound', () => {
+  const { afterRecordingFailure, isAudioFailure, SOUND_FALLBACK_NOTICE } = microphone;
+  // What an audio source held by a call looks like from Vision Camera.
+  const busy = 'ERROR_ENCODING_FAILED';
+  assert.deepEqual(afterRecordingFailure(busy, { withAudio: true, retrying: null }), {
+    kind: 'retry-without-sound',
+    original: busy,
+  });
+  assert.equal(isAudioFailure('java.lang.SecurityException: RECORD_AUDIO not granted'), true);
+  assert.equal(isAudioFailure('Audio source is busy'), true);
+  // The retry failing too reports the first error, as a failure always did.
+  assert.deepEqual(afterRecordingFailure('ERROR_SOURCE_INACTIVE', { withAudio: false, retrying: busy }), {
+    kind: 'report',
+    error: busy,
+  });
+  // Once only: the retry is itself without sound, so it cannot retry again.
+  assert.equal(afterRecordingFailure(busy, { withAudio: false, retrying: null }).kind, 'report');
+  assert.equal(SOUND_FALLBACK_NOTICE, 'Recorded without sound. The microphone was in use.');
+
+  // The hook routes both ways a recording fails through the one decision.
+  const hook = read('src/capture/useCapture.ts');
+  assert.match(hook, /const handleRecordingError = useCallback\(\(e: Error\) => fail\(e\), \[fail\]\);/);
+  assert.match(hook, /\} catch \(e\) \{\s*fail\(e\);\s*\}/);
+  assert.match(hook, /onAudioFailureRef\.current\?\.\(\);/);
+  // The retry runs as soon as the output without sound arrives, and says so once it records.
+  assert.match(hook, /if \(originalErrorRef\.current === null \|\| withAudio \|\| recorderRef\.current\) return;\s*void start\(\);/);
+  assert.match(hook, /if \(retrying\) setNotice\(SOUND_FALLBACK_NOTICE\);/);
+  // The screen drops sound for this visit only.
+  const capture = read('app/capture.tsx');
+  assert.match(capture, /const onAudioFailure = useCallback\(\(\) => setMicrophoneBusy\(true\), \[\]\);/);
+  assert.match(capture, /useCapture\(videoOutput, \{ onFinished, withAudio: enableAudio, onAudioFailure \}\)/);
+  assert.match(capture, /\{capture\.notice \? \(/);
+});
+
+test('a failure unrelated to sound is not retried', () => {
+  const { afterRecordingFailure } = microphone;
+  for (const error of [
+    'ERROR_INSUFFICIENT_STORAGE',
+    'ERROR_INVALID_OUTPUT_OPTIONS',
+    'ERROR_NO_VALID_DATA',
+    'ERROR_SOURCE_INACTIVE',
+    'Active recording already in progress!',
+    'Camera is not active',
+  ]) {
+    assert.deepEqual(afterRecordingFailure(error, { withAudio: true, retrying: null }), { kind: 'report', error }, error);
+  }
+  // Nor is any failure of a recording that had no sound to begin with.
+  assert.equal(afterRecordingFailure('ERROR_ENCODING_FAILED', { withAudio: false, retrying: null }).kind, 'report');
+});
+
+test('a fallback leaves the saved microphone setting alone', () => {
+  const capture = read('app/capture.tsx');
+  const hook = read('src/capture/useCapture.ts');
+  // The only write of the flag is answering the offer.
+  assert.equal(capture.match(/microphoneAsked: /g).length, 1);
+  assert.match(capture, /updateSettings\(\{ microphoneAsked: true \}\);\s*setOfferingMicrophone\(false\);/);
+  assert.doesNotMatch(hook, /updateSettings|microphoneAsked/);
+  // The busy state is component state, gone on the next visit, and not a setting.
+  assert.match(capture, /const \[microphoneBusy, setMicrophoneBusy\] = useState\(false\);/);
+  assert.doesNotMatch(read('src/settings/settings.ts'), /busy/i);
 });
 
 test('playback starts muted on every clip, with a visible switch', () => {
@@ -109,7 +189,7 @@ test('fps, frame count and dimensions are read off the video track only', () => 
 
   // Capture hands marking what the file said, with nothing about sound in it.
   const capture = read('app/capture.tsx');
-  const onFinished = capture.slice(capture.indexOf('const onFinished'), capture.indexOf('const capture = useCapture'));
+  const onFinished = capture.slice(capture.indexOf('const onFinished'), capture.indexOf('const onAudioFailure'));
   assert.match(onFinished, /fps: String\(info\.derivedFps\)/);
   assert.doesNotMatch(onFinished, /audio|microphone/i);
 });
@@ -137,6 +217,7 @@ test('new copy uses no em dashes', () => {
     ]),
     read('app/diagnostics.tsx').match(/<Text style=\{styles\.body\}>Recordings include sound[^<]*/)[0],
     read('app/setup/how-it-works.tsx').match(/Sound is recorded too[^']*/)[0],
+    microphone.SOUND_FALLBACK_NOTICE,
     'Sound off', 'Sound on', 'Open system settings', 'Microphone',
     read('app/debug.tsx').match(/'sound included' : 'silent export'/)[0],
   ];

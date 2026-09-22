@@ -83,10 +83,14 @@ export default function CaptureScreen() {
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const { hasPermission, requestPermission } = useCameraPermission();
-  // Asked on the first tap of the shutter, never at launch. Refused or not,
-  // recording goes ahead; without it the clip is simply video only.
+  // Offered the first time Capture opens, never at launch and never from the
+  // shutter. Refused or not, recording goes ahead; without it the clip is
+  // simply video only.
   const microphone = useMicrophonePermission();
   const [offeringMicrophone, setOfferingMicrophone] = useState(false);
+  // The microphone was held by something else (a call, a voice note) and a
+  // recording fell back to video only. Kept for this visit, never saved.
+  const [microphoneBusy, setMicrophoneBusy] = useState(false);
   const defaultDevice = useCameraDevice('back');
   // The whole pitch fits from closer on an ultra-wide, where the phone has one.
   // The option is only offered when such a camera really exists: the device
@@ -189,7 +193,7 @@ export default function CaptureScreen() {
 
   // Sound is a second track in the same file. fps, frame count and dimensions
   // are read off the video track alone, so it cannot move a reading.
-  const enableAudio = recordsSound(microphone.status);
+  const enableAudio = recordsSound(microphone.status) && !microphoneBusy;
   const videoOutput = useVideoOutput(
     bitRate === null
       ? { fileType: 'mp4', enableAudio }
@@ -225,18 +229,18 @@ export default function CaptureScreen() {
     [router, exposure, bitRate]
   );
 
-  const capture = useCapture(videoOutput, { onFinished });
+  const onAudioFailure = useCallback(() => setMicrophoneBusy(true), []);
+  const capture = useCapture(videoOutput, { onFinished, withAudio: enableAudio, onAudioFailure });
 
-  // The first recording offers the microphone once. Every other tap records
-  // straight away, with or without it.
-  const startRecording = capture.start;
-  const record = useCallback(() => {
+  // Offered on the first visit, once the camera itself is allowed so two system
+  // dialogs never stack. Answering it restarts the session for sound, which is
+  // why it happens here and not while a bowler is running in.
+  useEffect(() => {
+    if (!hasPermission) return;
     if (shouldOfferMicrophone(microphone.status, getSettings().microphoneAsked)) {
       setOfferingMicrophone(true);
-      return;
     }
-    startRecording();
-  }, [microphone.status, startRecording]);
+  }, [hasPermission, microphone.status]);
 
   const answerMicrophone = useCallback(
     async (allow: boolean) => {
@@ -388,7 +392,9 @@ export default function CaptureScreen() {
         </View>
 
         <View style={styles.bottom} pointerEvents="box-none">
-          {offeringMicrophone ? (
+          {/* Out of the way while recording: answering it mid-clip would restart
+              the session under the recording. It comes back afterwards. */}
+          {offeringMicrophone && !isRecording && !isProcessing ? (
             <View style={styles.micCard}>
               <Text style={styles.guideTitle}>{MICROPHONE_OFFER_TITLE}</Text>
               <Text style={styles.guideBody}>{MICROPHONE_OFFER_REASON}</Text>
@@ -409,6 +415,17 @@ export default function CaptureScreen() {
                 </Pressable>
               </View>
             </View>
+          ) : null}
+
+          {capture.notice ? (
+            <Pressable
+              style={styles.noticeCard}
+              onPress={capture.clearNotice}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss notice"
+            >
+              <Text style={styles.noticeText}>{capture.notice}</Text>
+            </Pressable>
           ) : null}
 
           {error ? (
@@ -442,10 +459,10 @@ export default function CaptureScreen() {
                 : // The limit is checked at the moment of recording, so the clip
                   // is never taken and then refused.
                   allowed
-                  ? record
+                  ? capture.start
                   : () => router.push({ pathname: '/paywall', params: { context: 'limit' } })
             }
-            disabled={!sessionReady || switchingLens || offeringMicrophone || isProcessing || (isRecording && !canStop)}
+            disabled={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
             accessibilityRole="button"
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
             style={styles.shutter}
@@ -578,6 +595,16 @@ const styles = StyleSheet.create({
     marginBottom: space.md,
   },
   errorText: { ...type.caption, color: colors.danger },
+  // A fallback that worked, so it reads as information rather than an error.
+  noticeCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    padding: space.md,
+    marginBottom: space.md,
+  },
+  noticeText: { ...type.caption, color: colors.text },
 
   timerRow: {
     flexDirection: 'row',

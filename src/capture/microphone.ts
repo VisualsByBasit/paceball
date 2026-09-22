@@ -33,3 +33,36 @@ export function microphoneSettingLine(status: MicrophoneStatus, asked: boolean):
   }
   return 'Off. Recordings are video only, and speeds are measured the same way.';
 }
+
+/** Shown after a recording that fell back to video only. The saved setting is untouched. */
+export const SOUND_FALLBACK_NOTICE = 'Recorded without sound. The microphone was in use.';
+
+/**
+ * Whether a recording failure could have come from the sound track. Vision
+ * Camera hands back CameraX's code without the cause, and an audio encoder that
+ * cannot start (the microphone held by a call or a voice note) arrives as
+ * ERROR_ENCODING_FAILED. A missing permission names the microphone itself.
+ * Storage, output options, too-short clips and an inactive session are never
+ * sound's fault, so they are not retried.
+ */
+export function isAudioFailure(message: string): boolean {
+  return /audio|microphone|RECORD_AUDIO|ERROR_ENCODING_FAILED/i.test(message);
+}
+
+export type FailureOutcome =
+  | { kind: 'retry-without-sound'; original: string }
+  | { kind: 'report'; error: string };
+
+/**
+ * What a failed recording leads to. Only a recording with sound, failing on
+ * its sound, is retried, and only once: a retry that fails too reports the
+ * error the first attempt failed on, as a failure without sound always did.
+ */
+export function afterRecordingFailure(
+  error: string,
+  { withAudio, retrying }: { withAudio: boolean; retrying: string | null }
+): FailureOutcome {
+  if (retrying !== null) return { kind: 'report', error: retrying };
+  if (withAudio && isAudioFailure(error)) return { kind: 'retry-without-sound', original: error };
+  return { kind: 'report', error };
+}

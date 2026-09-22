@@ -343,8 +343,11 @@ test('the sample prices are plainly samples, and not dollars', () => {
   const mock = read('src/purchases/mockOffering.ts');
   // Non-dollar, so a price the paywall renders is visibly the store's text and
   // never something the screen built.
-  assert.match(mock, /priceString: 'Rs 1,100\.00'/);
-  assert.match(mock, /priceString: 'Rs 6,900\.00'/);
+  // Set where no real store would price a plan, so a sample paywall can never
+  // pass for the real one.
+  assert.match(mock, /priceString: 'Rs 1\.00'/);
+  assert.match(mock, /priceString: 'Rs 2\.00'/);
+  assert.doesNotMatch(mock, /1,100|6,900/);
   assert.match(mock, /priceString: 'Rs 0\.00'/);
   // No dollar (or other symbol) price. The bare $ in RevenueCat's own package
   // identifiers, like $rc_monthly, is not a price.

@@ -3,6 +3,7 @@ import type { CameraVideoOutput, Recorder } from 'react-native-vision-camera';
 import FrameExtractor, {
   type VideoInfo,
 } from '../../modules/frame-extractor/src/FrameExtractorModule';
+import { afterRecordingFailure, SOUND_FALLBACK_NOTICE } from './microphone';
 
 /** Frame rate we ask the session for. fps is still read per-file, never assumed. */
 export const CAPTURE_FPS = 60;
@@ -23,6 +24,13 @@ export type CaptureResult = {
 type UseCaptureOptions = {
   /** Called once the file is written and its VideoInfo has been read. */
   onFinished: (result: CaptureResult) => void;
+  /** Whether `videoOutput` records sound. */
+  withAudio?: boolean;
+  /**
+   * Called when a recording with sound failed on its sound. The screen swaps
+   * in an output without sound, and the recording is retried on it once.
+   */
+  onAudioFailure?: () => void;
 };
 
 function message(e: unknown): string {
@@ -48,11 +56,24 @@ function withTimeout<T>(promise: Promise<T>, ms: number, reason: string): Promis
 
 export function useCapture(
   videoOutput: CameraVideoOutput,
-  { onFinished }: UseCaptureOptions
+  { onFinished, withAudio = false, onAudioFailure }: UseCaptureOptions
 ) {
   const [status, setStatus] = useState<CaptureStatus>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /**
+   * The error a recording with sound failed on, while its retry without sound
+   * is pending or running. If the retry fails too, this is what is reported.
+   */
+  const originalErrorRef = useRef<string | null>(null);
+  const withAudioRef = useRef(withAudio);
+  const onAudioFailureRef = useRef(onAudioFailure);
+  useEffect(() => {
+    withAudioRef.current = withAudio;
+    onAudioFailureRef.current = onAudioFailure;
+  }, [withAudio, onAudioFailure]);
 
   const recorderRef = useRef<Recorder | null>(null);
   const startedAtRef = useRef(0);
@@ -80,6 +101,7 @@ export function useCapture(
 
   const handleRecordingFinished = useCallback(async (path: string) => {
     recorderRef.current = null;
+    originalErrorRef.current = null;
     setStatus('processing');
     try {
       const info = await withTimeout(
@@ -95,15 +117,37 @@ export function useCapture(
     }
   }, []);
 
-  const handleRecordingError = useCallback((e: Error) => {
+  /**
+   * One place for a recording that failed to start or failed while running.
+   * A failure on the sound track is retried once without sound; anything else,
+   * or a retry that fails too, is reported, the original error first.
+   */
+  const fail = useCallback((e: unknown) => {
     recorderRef.current = null;
+    const outcome = afterRecordingFailure(message(e), {
+      withAudio: withAudioRef.current && onAudioFailureRef.current !== undefined,
+      retrying: originalErrorRef.current,
+    });
+    if (outcome.kind === 'retry-without-sound') {
+      // Still 'recording' to the screen: the retry starts as soon as the
+      // output without sound replaces this one.
+      originalErrorRef.current = outcome.original;
+      onAudioFailureRef.current?.();
+      return;
+    }
+    originalErrorRef.current = null;
+    setNotice(null);
     setStatus('idle');
-    setError(message(e));
+    setError(outcome.error);
   }, []);
+
+  const handleRecordingError = useCallback((e: Error) => fail(e), [fail]);
 
   const start = useCallback(async () => {
     if (recorderRef.current) return;
+    const retrying = originalErrorRef.current !== null;
     setError(null);
+    if (!retrying) setNotice(null);
     setElapsedMs(0);
     // Provisional — the timer effect starts on this flip and would otherwise read a stale ref.
     startedAtRef.current = Date.now();
@@ -115,12 +159,18 @@ export function useCapture(
       // The clock starts when frames do, so the 3 s floor is 3 s of footage.
       startedAtRef.current = Date.now();
       await recorder.startRecording(handleRecordingFinished, handleRecordingError);
+      if (retrying) setNotice(SOUND_FALLBACK_NOTICE);
     } catch (e) {
-      recorderRef.current = null;
-      setStatus('idle');
-      setError(message(e));
+      fail(e);
     }
-  }, [videoOutput, handleRecordingFinished, handleRecordingError]);
+  }, [videoOutput, handleRecordingFinished, handleRecordingError, fail]);
+
+  // The retry: once the output without sound is in place, record again on it.
+  // CameraX holds a recording started before its output is bound until it is.
+  useEffect(() => {
+    if (originalErrorRef.current === null || withAudio || recorderRef.current) return;
+    void start();
+  }, [videoOutput, withAudio, start]);
 
   const stop = useCallback(async () => {
     const recorder = recorderRef.current;
@@ -145,6 +195,9 @@ export function useCapture(
     canStop: status === 'recording' && remainingMs === 0,
     error,
     clearError: useCallback(() => setError(null), []),
+    /** Said once a recording has fallen back to video only. Not an error. */
+    notice,
+    clearNotice: useCallback(() => setNotice(null), []),
     start,
     stop,
   };
