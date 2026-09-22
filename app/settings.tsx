@@ -10,7 +10,9 @@ import {
 } from 'react-native';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
+import { useMicrophonePermission } from 'react-native-vision-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { microphoneSettingLine } from '../src/capture/microphone';
 import { CALIBRATION_ORDER, CALIBRATION_SPECS } from '../src/physics/calibration';
 import {
   allowanceLine,
@@ -76,6 +78,8 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const settings = useSettings();
   const { isPro, pro, allowance, restore: restorePurchases } = usePurchases();
+  // Read only. Asking happens on Capture; changing it afterwards is the system's.
+  const microphone = useMicrophonePermission();
 
   const [restore, setRestore] = useState<RestoreState>({ status: 'idle' });
   const [licenceOpen, setLicenceOpen] = useState(false);
@@ -229,6 +233,18 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+
+        <Text style={[styles.rowTitle, styles.rowGap]}>Microphone</Text>
+        <Text style={styles.rowDetail}>
+          {microphoneSettingLine(microphone.status, settings.microphoneAsked)}
+        </Text>
+        <Pressable
+          style={styles.button}
+          onPress={() => Linking.openSettings()}
+          accessibilityRole="link"
+        >
+          <Text style={styles.buttonText}>Open system settings</Text>
+        </Pressable>
       </Section>
 
       <Section title="PURCHASES">

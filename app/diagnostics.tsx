@@ -16,6 +16,8 @@ export default function DiagnosticsScreen() {
     <Pressable onPress={() => router.back()} accessibilityRole="button" style={styles.button}><Text style={styles.body}>Back</Text></Pressable>
     <Text style={styles.title}>Privacy and crash reports</Text>
     <Text style={styles.body}>Your videos and measurements stay on this phone. Paceball never uploads your videos or measurements, and there is no account. Android's own backup can copy app data to your backup, and images you save to your gallery or share can remain after uninstalling.</Text>
+    <Text style={styles.title}>Sound</Text>
+    <Text style={styles.body}>Recordings include sound if you allow the microphone. Recordings stay on this phone, with or without sound. Shared videos are silent unless you choose to include sound. Speeds are measured from the picture alone, so sound never changes a reading.</Text>
     <Text style={styles.title}>Purchases</Text>
     {purchasesConfigured()
       ? <Text style={styles.body}>Paceball Pro is sold through Google Play and RevenueCat. When the app opens, it asks RevenueCat whether this phone has Pro and what the plans cost. When you subscribe or restore, your purchase goes through Google Play and RevenueCat. They receive the purchase, an anonymous ID and device details such as the Android and app version. They never receive your videos, names or speeds.</Text>

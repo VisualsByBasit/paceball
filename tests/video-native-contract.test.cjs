@@ -36,8 +36,7 @@ test('native export fails closed around files, bad coordinates and partial outpu
 test('the device spike is reachable only through the existing development debug route', () => {
   const debug = read('app/debug.tsx');
   assert.match(debug, /__DEV__ \? <VideoExportSpike session=\{session\} \/> : null/);
-  // Recordings have no audio track, so there is nothing for a toggle to keep.
-  assert.doesNotMatch(debug, /includeAudio|setIncludeAudio|Audio (on|off)/);
-  assert.match(debug, /createSessionVideoExport\(session, \{ isPro \}\)/);
+  // Recordings can carry sound now, so the export offers it, off by default.
+  assert.match(debug, /createSessionVideoExport\(session, \{ isPro, includeAudio: withAudio \}\)/);
   assert.match(debug, /isPro \? 'Pro: clean overlay' : 'Free: Paceball watermark'/);
 });

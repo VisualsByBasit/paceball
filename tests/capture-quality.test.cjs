@@ -168,7 +168,7 @@ test('capture requests the target and claims Pro quality only together', () => {
   const capture = read('app/capture.tsx');
   // One value decides both: the target handed to the encoder, and the mark.
   assert.match(capture, /const bitRate = canRecordHighBitrate\(entitlements\) \? highBitRate\(lastRecording\) : null;/);
-  assert.match(capture, /bitRate === null \? \{ fileType: 'mp4' \} : \{ fileType: 'mp4', targetBitRate: bitRate \}/);
+  assert.match(capture, /bitRate === null\s*\? \{ fileType: 'mp4', enableAudio \}\s*: \{ fileType: 'mp4', targetBitRate: bitRate, enableAudio \}/);
   assert.match(capture, /\{bitRate !== null \? \(\s*<View style=\{styles\.qualityMark\}>/);
   assert.equal(capture.match(/PRO QUALITY/g).length, 1);
   // The finished file is measured, with what was requested for it.
@@ -182,7 +182,7 @@ test('bitrate changes the encode only, not what the measurement reads', () => {
   assert.match(capture, /width: String\(info\.width\)/);
   assert.match(capture, /height: String\(info\.height\)/);
   // targetBitRate is the only thing the gate adds, and only when there is one.
-  assert.match(capture, /bitRate === null \? \{ fileType: 'mp4' \} : \{ fileType: 'mp4', targetBitRate: bitRate \}/);
+  assert.match(capture, /bitRate === null\s*\? \{ fileType: 'mp4', enableAudio \}\s*: \{ fileType: 'mp4', targetBitRate: bitRate, enableAudio \}/);
   // Nothing about resolution or frame rate is touched by it.
   const bitrate = read('src/capture/bitrate.ts');
   assert.doesNotMatch(bitrate, /targetResolution|CAPTURE_FPS|constraints/);

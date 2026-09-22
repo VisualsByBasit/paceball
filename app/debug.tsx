@@ -207,6 +207,10 @@ export default function DebugScreen() {
 function VideoExportSpike({ session }: { session: Session }) {
   const { isPro } = usePurchases();
   const taskRef = useRef<VideoExportTask | null>(null);
+  // Off until switched on, and back off after every export: a shared file is
+  // silent unless sound was chosen for that one.
+  const [includeAudio, setIncludeAudio] = useState(false);
+  const [exportedWithAudio, setExportedWithAudio] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [result, setResult] = useState<VideoExportResult | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -222,11 +226,15 @@ function VideoExportSpike({ session }: { session: Session }) {
     setProgress(0);
     setRunning(true);
     let subscription: { remove: () => void } | null = null;
+    const withAudio = includeAudio;
+    setIncludeAudio(false);
     try {
-      const task = createSessionVideoExport(session, { isPro });
+      const task = createSessionVideoExport(session, { isPro, includeAudio: withAudio });
       taskRef.current = task;
       subscription = task.onProgress(setProgress);
-      setResult(await task.result);
+      const done = await task.result;
+      setExportedWithAudio(withAudio);
+      setResult(done);
       setProgress(100);
     } catch (error) {
       setExportError(message(error));
@@ -236,7 +244,7 @@ function VideoExportSpike({ session }: { session: Session }) {
       taskRef.current = null;
       setRunning(false);
     }
-  }, [isPro, session]);
+  }, [includeAudio, isPro, session]);
 
   const cancel = useCallback(async () => {
     await taskRef.current?.cancel();
@@ -259,9 +267,22 @@ function VideoExportSpike({ session }: { session: Session }) {
     <View style={styles.videoSpike}>
       <Text style={styles.overrideLabel}>MEDIA3 VIDEO SPIKE · DEVICE ONLY</Text>
       <Text style={styles.videoHelp}>
-        {isPro ? 'Pro: clean overlay' : 'Free: Paceball watermark'}
+        {isPro ? 'Pro: clean overlay' : 'Free: Paceball watermark'} ·{' '}
+        {includeAudio ? 'sound included' : 'silent export'}
       </Text>
       <View style={styles.overrideRow}>
+        <Pressable
+          style={[styles.overrideChoice, includeAudio && styles.overrideChoiceOn]}
+          onPress={() => setIncludeAudio((value) => !value)}
+          disabled={running}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: includeAudio, disabled: running }}
+          accessibilityLabel="Include sound in this export"
+        >
+          <Text style={[styles.overrideChoiceText, includeAudio && styles.overrideChoiceTextOn]}>
+            Sound {includeAudio ? 'on' : 'off'}
+          </Text>
+        </Pressable>
         <Pressable
           style={[styles.overrideChoice, styles.videoPrimary]}
           onPress={running ? cancel : start}
@@ -280,7 +301,8 @@ function VideoExportSpike({ session }: { session: Session }) {
             {formatBytes(result.inputBytes)} → {formatBytes(result.outputBytes)} ·{' '}
             {(result.elapsedMs / 1_000).toFixed(1)}s encode · {result.clipDurationMs}ms clip{`\n`}
             canvas {result.canvasWidth}×{result.canvasHeight} · source rotation{' '}
-            {result.sourceRotationDegrees}° · {result.coordinateMode}
+            {result.sourceRotationDegrees}° · {result.coordinateMode} ·{' '}
+            {exportedWithAudio ? 'with sound' : 'silent'}
           </Text>
           <Pressable style={styles.checkButton} onPress={share} accessibilityRole="button">
             <Text style={styles.checkButtonText}>Open exported MP4 in share sheet</Text>

@@ -8,6 +8,7 @@ import {
   useCameraDevice,
   useCameraDevices,
   useCameraPermission,
+  useMicrophonePermission,
   useVideoOutput,
 } from 'react-native-vision-camera';
 import {
@@ -20,6 +21,14 @@ import { Screen } from '../src/ui/Screen';
 import { captureExposure } from '../src/capture/exposure';
 import { highBitRate, profileFrom } from '../src/capture/bitrate';
 import { deviceForLens, hasUltraWide, LENS_LABEL, type Lens } from '../src/capture/lenses';
+import {
+  MICROPHONE_OFFER_ALLOW,
+  MICROPHONE_OFFER_REASON,
+  MICROPHONE_OFFER_SKIP,
+  MICROPHONE_OFFER_TITLE,
+  recordsSound,
+  shouldOfferMicrophone,
+} from '../src/capture/microphone';
 import {
   allowanceLine,
   canAnalyse,
@@ -74,6 +83,10 @@ export default function CaptureScreen() {
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const { hasPermission, requestPermission } = useCameraPermission();
+  // Asked on the first tap of the shutter, never at launch. Refused or not,
+  // recording goes ahead; without it the clip is simply video only.
+  const microphone = useMicrophonePermission();
+  const [offeringMicrophone, setOfferingMicrophone] = useState(false);
   const defaultDevice = useCameraDevice('back');
   // The whole pitch fits from closer on an ultra-wide, where the phone has one.
   // The option is only offered when such a camera really exists: the device
@@ -174,8 +187,13 @@ export default function CaptureScreen() {
   const [sessionReady, setSessionReady] = useState(false);
   const [showTips, setShowTips] = useState(true);
 
+  // Sound is a second track in the same file. fps, frame count and dimensions
+  // are read off the video track alone, so it cannot move a reading.
+  const enableAudio = recordsSound(microphone.status);
   const videoOutput = useVideoOutput(
-    bitRate === null ? { fileType: 'mp4' } : { fileType: 'mp4', targetBitRate: bitRate }
+    bitRate === null
+      ? { fileType: 'mp4', enableAudio }
+      : { fileType: 'mp4', targetBitRate: bitRate, enableAudio }
   );
 
   const onFinished = useCallback(
@@ -208,6 +226,27 @@ export default function CaptureScreen() {
   );
 
   const capture = useCapture(videoOutput, { onFinished });
+
+  // The first recording offers the microphone once. Every other tap records
+  // straight away, with or without it.
+  const startRecording = capture.start;
+  const record = useCallback(() => {
+    if (shouldOfferMicrophone(microphone.status, getSettings().microphoneAsked)) {
+      setOfferingMicrophone(true);
+      return;
+    }
+    startRecording();
+  }, [microphone.status, startRecording]);
+
+  const answerMicrophone = useCallback(
+    async (allow: boolean) => {
+      // Recorded before the dialog, so closing the app on it still counts as asked.
+      updateSettings({ microphoneAsked: true });
+      setOfferingMicrophone(false);
+      if (allow) await microphone.requestPermission().catch(() => false);
+    },
+    [microphone]
+  );
 
   // Tearing the session down on navigation rejects any in-flight control write.
   // That is expected; anything else is a real session error and stays loud.
@@ -349,6 +388,29 @@ export default function CaptureScreen() {
         </View>
 
         <View style={styles.bottom} pointerEvents="box-none">
+          {offeringMicrophone ? (
+            <View style={styles.micCard}>
+              <Text style={styles.guideTitle}>{MICROPHONE_OFFER_TITLE}</Text>
+              <Text style={styles.guideBody}>{MICROPHONE_OFFER_REASON}</Text>
+              <View style={styles.micActions}>
+                <Pressable
+                  style={styles.micSkip}
+                  onPress={() => answerMicrophone(false)}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.micSkipText}>{MICROPHONE_OFFER_SKIP}</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.micAllow}
+                  onPress={() => answerMicrophone(true)}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.micAllowText}>{MICROPHONE_OFFER_ALLOW}</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
           {error ? (
             <Pressable
               style={styles.errorCard}
@@ -380,10 +442,10 @@ export default function CaptureScreen() {
                 : // The limit is checked at the moment of recording, so the clip
                   // is never taken and then refused.
                   allowed
-                  ? capture.start
+                  ? record
                   : () => router.push({ pathname: '/paywall', params: { context: 'limit' } })
             }
-            disabled={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
+            disabled={!sessionReady || switchingLens || offeringMicrophone || isProcessing || (isRecording && !canStop)}
             accessibilityRole="button"
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
             style={styles.shutter}
@@ -623,6 +685,32 @@ const styles = StyleSheet.create({
   lensText: { ...type.caption, ...type.tabular, color: colors.text },
   lensTextOn: { color: colors.bg, fontWeight: '800' },
   switchingText: { ...type.caption, color: colors.muted },
+  micCard: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    padding: space.md,
+    marginBottom: space.md,
+  },
+  micActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: space.md },
+  micSkip: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    marginRight: space.sm,
+  },
+  micSkipText: { ...type.caption, color: colors.text },
+  micAllow: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+  },
+  micAllowText: { ...type.caption, color: colors.bg, fontWeight: '800' },
   // The allowance is worth reading at a glance once it has run out.
   hintLimit: { color: colors.warn },
 });

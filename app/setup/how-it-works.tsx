@@ -14,7 +14,7 @@ import { colors, radius, space, stroke, type } from '../../src/ui/tokens';
 const STEPS = [
   {
     title: 'Record side-on',
-    body: 'Stand level with where the ball will pitch, with both sets of stumps in frame for the whole delivery. Three seconds minimum.',
+    body: 'Stand level with where the ball will pitch, with both sets of stumps in frame for the whole delivery. Three seconds minimum. Sound is recorded too if you allow the microphone.',
   },
   {
     title: 'Mark the pitch',

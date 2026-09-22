@@ -23,19 +23,50 @@ function sources(dir) {
   });
 }
 
-test('the microphone permission is not declared while nothing asks for audio', () => {
-  // How Vision Camera records sound: an audio-enabled output, or asking for the
-  // microphone. Captured MP4s have no audio track because nothing here does either.
-  const asksForAudio = /enableAudio\s*:\s*true|useMicrophonePermission|requestMicrophonePermission|RECORD_AUDIO/;
-  const requesters = [...sources('app'), ...sources('src')].filter((file) =>
-    asksForAudio.test(fs.readFileSync(path.join(root, file), 'utf8'))
-  );
-  assert.deepEqual(requesters, [], 'something asks for audio; declare the permission deliberately');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
+/** Asks the system for the microphone, as opposed to only reading its status. */
+const requestsMicrophone = /microphone\.requestPermission\(|requestMicrophonePermission\(/;
+
+/**
+ * The permission and the capture code have to agree. Declared without capture
+ * asking for audio, the app claims a microphone it never uses. Capture asking
+ * without it declared, Android refuses every time and clips are silent.
+ */
+function audioProblem({ declared, blocked, captureAsks }) {
+  if (declared && blocked) return 'RECORD_AUDIO is declared and blocked at once';
+  if (declared && !captureAsks) return 'RECORD_AUDIO is declared but capture never requests audio';
+  if (!declared && captureAsks) return 'capture requests audio but RECORD_AUDIO is not declared';
+  return null;
+}
+
+test('the audio check fails in both directions, not only one', () => {
+  assert.equal(audioProblem({ declared: true, blocked: false, captureAsks: true }), null);
+  assert.equal(audioProblem({ declared: false, blocked: true, captureAsks: false }), null);
+  assert.match(audioProblem({ declared: true, blocked: false, captureAsks: false }), /never requests audio/);
+  assert.match(audioProblem({ declared: false, blocked: false, captureAsks: true }), /not declared/);
+  assert.match(audioProblem({ declared: true, blocked: true, captureAsks: true }), /blocked/);
+});
+
+test('the microphone permission is declared exactly because capture records sound', () => {
   const android = appJson().android;
-  const declared = android.permissions ?? [];
-  assert.ok(!declared.includes('android.permission.RECORD_AUDIO'), 'RECORD_AUDIO is declared');
-  assert.ok(!declared.includes('RECORD_AUDIO'), 'RECORD_AUDIO is declared');
-  // Blocked too, so no library can merge it back into the built manifest.
-  assert.ok(android.blockedPermissions.includes('android.permission.RECORD_AUDIO'));
+  const declared = (android.permissions ?? []).includes('android.permission.RECORD_AUDIO');
+  const blocked = (android.blockedPermissions ?? []).includes('android.permission.RECORD_AUDIO');
+
+  // How Vision Camera records sound: ask for the microphone, then an output
+  // with audio enabled. Capture has to do both.
+  const capture = read('app/capture.tsx');
+  const captureAsks =
+    /useMicrophonePermission\(\)/.test(capture) &&
+    requestsMicrophone.test(capture) &&
+    /enableAudio\b/.test(capture);
+
+  assert.equal(audioProblem({ declared, blocked, captureAsks }), null);
+  assert.ok(declared, 'recordings are meant to carry the delivery sound');
+
+  // Capture is the only place that asks. Settings may read the status, never request it.
+  const requesters = [...sources('app'), ...sources('src')].filter((file) =>
+    requestsMicrophone.test(read(file))
+  );
+  assert.deepEqual(requesters, [path.join('app', 'capture.tsx')]);
 });

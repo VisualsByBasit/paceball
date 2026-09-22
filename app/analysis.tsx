@@ -140,6 +140,8 @@ export default function AnalysisScreen() {
 
   return (
     <Replay
+      // A fresh player per delivery, so every clip starts muted.
+      key={loaded.session.id}
       session={loaded.session}
       frames={loaded.frames}
       framesProblem={loaded.framesProblem}
@@ -173,6 +175,9 @@ function Replay({
   }, [current]);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(RATES[0].rate);
+  // Every clip starts muted, and the choice is never saved: turning sound on
+  // for one delivery does not turn it on for the next.
+  const [muted, setMuted] = useState(true);
   const [playbackProblem, setPlaybackProblem] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState<{ w: number; h: number } | null>(null);
   const [stage, setStage] = useState({ w: 0, h: 0 });
@@ -184,7 +189,7 @@ function Replay({
    * where a decode is paid once per action rather than sixty times a second.
    */
   const player = useVideoPlayer(session.videoPath, (p) => {
-    // A delivery is watched, not listened to, and the clip carries field noise.
+    // Muted until asked: a clip recorded with sound carries field noise too.
     p.muted = true;
     p.playbackRate = RATES[0].rate;
     // Enough to carry the playhead without churning state through playback.
@@ -320,6 +325,12 @@ function Replay({
     },
     [player]
   );
+
+  const toggleSound = useCallback(() => {
+    const next = !muted;
+    setMuted(next);
+    player.muted = next;
+  }, [muted, player]);
 
   const spec = CALIBRATION_SPECS[session.calibrationMethod];
   const marks = useMemo(
@@ -585,6 +596,17 @@ function Replay({
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={toggleSound}
+            style={[styles.rate, styles.sound, !muted && styles.rateOn]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: !muted }}
+            accessibilityLabel="Sound"
+          >
+            <Text style={[styles.rateText, styles.soundText, !muted && styles.rateTextOn]}>
+              {muted ? 'Sound off' : 'Sound on'}
+            </Text>
+          </Pressable>
         </View>
       </View>
 
@@ -917,6 +939,9 @@ const styles = StyleSheet.create({
     marginHorizontal: space.xs,
   },
   rateOn: { backgroundColor: colors.text, borderColor: colors.text },
+  sound: { marginLeft: space.md },
+  // Readable at a glance while off, so the switch is found without hunting.
+  soundText: { color: colors.text },
   rateText: { ...type.caption, color: colors.muted },
   rateTextOn: { color: colors.bg, fontWeight: '800' },
 

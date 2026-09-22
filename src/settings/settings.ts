@@ -34,6 +34,12 @@ export type Settings = {
    * is offered at most once per install.
    */
   onboardingPaywallShown: boolean;
+  /**
+   * Whether Capture has offered the microphone once. Android reports a single
+   * denial as still askable, so the system status alone would ask again on
+   * every recording. Set when the offer is answered either way, never cleared.
+   */
+  microphoneAsked: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -43,6 +49,7 @@ export const DEFAULT_SETTINGS: Settings = {
   analysisAnchor: null,
   lastRecording: null,
   onboardingPaywallShown: false,
+  microphoneAsked: false,
 };
 
 export const SPEED_UNITS: SpeedUnit[] = ['kmh', 'mph'];
@@ -94,5 +101,6 @@ export function parseSettings(raw: unknown): Settings {
         : DEFAULT_SETTINGS.analysisAnchor,
     lastRecording: parseRecordingProfile(value.lastRecording) ?? DEFAULT_SETTINGS.lastRecording,
     onboardingPaywallShown: value.onboardingPaywallShown === true,
+    microphoneAsked: value.microphoneAsked === true,
   };
 }
