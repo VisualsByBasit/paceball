@@ -11,7 +11,7 @@
  * testing, Testers, "Join on the web"). Never link to it without the group
  * step beside it: see lib/beta.ts.
  */
-export const BETA_GROUP_URL = "";
+export const BETA_GROUP_URL = "https://groups.google.com/g/paceball-testers";
 export const BETA_URL = "https://play.google.com/apps/testing/com.paceball.app";
 
 export const CONTACT_EMAIL = "paceballpro@gmail.com";
