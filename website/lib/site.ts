@@ -27,7 +27,7 @@ export const SOCIAL = {
   instagram: "https://www.instagram.com/paceballpro/",
   github: "https://github.com/VisualsByBasit/paceball",
   /** Left empty until the first HackerNoon story is live. The card shows without a link until then. */
-  hackernoon: "",
+  hackernoon: "https://hackernoon.com/u/abdulbasitso019?tab=stories",
 } as const;
 
 export const NAV = [
