@@ -25,6 +25,8 @@ const changed = new Set([
   ...git('diff', '--name-only', base, '--').split('\n'),
   ...git('ls-files', '--others', '--exclude-standard').split('\n'),
 ].filter(Boolean));
+// Mustafa's half. Everything else, including Abdulbasit's app/, src/ui/ and
+// website/, is out of bounds for a review branch.
 const allowed = ['src/data/', 'src/export/', 'src/diagnostics/', 'tests/', 'docs/'];
 const forbidden = [...changed].filter((file) =>
   file !== 'scripts/check-review-boundary.cjs' && !allowed.some((prefix) => file.startsWith(prefix)));
@@ -32,5 +34,5 @@ if (forbidden.length) {
   console.error('Review boundary FAILED. Unexpected changes:', forbidden.join(', '));
   process.exitCode = 1;
 } else {
-  console.log(`Review boundary PASS against ${base}: ${changed.size} changed/new files, no AB app, capture, UI, physics, types, native module or build/config changes.`);
+  console.log(`Review boundary PASS against ${base}: ${changed.size} changed/new files, no AB app, website, capture, UI, physics, types, native module or build/config changes.`);
 }

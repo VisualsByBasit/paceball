@@ -106,13 +106,26 @@ corrupt one.
 
 ## Ownership
 
-- AB owns: app/, src/ui/, src/capture/, src/physics/, src/types/,
+- AB owns: app/, website/, src/ui/, src/capture/, src/physics/, src/types/,
   src/settings/, src/purchases/, modules/frame-extractor/
 - MU owns: src/data/, src/export/, src/diagnostics/
 
 Stay in your half. If a change genuinely requires touching the other
 side — wiring a feature into a screen, fixing an integration bug —
 that's fine, but say so explicitly and explain why.
+
+## Website
+
+website/ is the public site (landing, privacy policy, terms): a separate
+Next.js project with its own package.json and lockfile, deployed on Vercel
+with website as the root directory. The app never imports from it, nor it
+from the app. Metro blocks it, the root tsconfig excludes it, .easignore
+keeps it out of EAS uploads, and tests/website.test.cjs holds all of that in
+place. BETA_URL and the contact address live in website/lib/site.ts.
+
+The privacy policy there must match what the app does. When the app starts
+sending something new, or asks for a new permission, update
+website/app/privacy/page.tsx in the same change.
 
 ## Stack
 

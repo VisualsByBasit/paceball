@@ -1,0 +1,31 @@
+# EAS reads this file instead of .gitignore when it exists, so everything
+# .gitignore ignores is repeated here. Keep the two in step.
+
+# dependencies
+node_modules/
+
+# expo
+.expo/
+dist/
+
+# native
+/android/
+/ios/
+
+# environment
+.env
+.env.*
+
+# signing
+*.keystore
+*.jks
+
+# misc
+.DS_Store
+*.log
+.agents/
+.claude/
+skills-lock.json
+
+# The public website is a separate Next.js project. The app build never needs it.
+/website/
