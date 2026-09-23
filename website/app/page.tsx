@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { BetaSteps } from "@/components/BetaSteps";
 import { CircuitTrace } from "@/components/CircuitTrace";
 import { Wordmark } from "@/components/Wordmark";
-import { BETA_URL, SOCIAL } from "@/lib/site";
+import { betaFlow } from "@/lib/beta";
+import { SOCIAL } from "@/lib/site";
 
 const STEPS = [
   {
@@ -66,6 +68,9 @@ export default function Home() {
   return (
     <>
       <Hero />
+      <Section id="beta" eyebrow="Join the beta" title={betaFlow().kind === "steps" ? "Two steps to the beta" : "Ask to join the beta"}>
+        <BetaSteps />
+      </Section>
       <Section id="how-it-works" eyebrow="How it works" title="Four marks, one reading">
         <ol className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2">
           {STEPS.map((step, index) => (
@@ -149,12 +154,12 @@ function Hero() {
             style={{ animationDelay: "240ms" }}
           >
             <a
-              href={BETA_URL}
+              href="#beta"
               className="inline-flex items-center rounded-full bg-accent px-6 py-3 font-semibold text-bg transition-opacity hover:opacity-90"
             >
               Join the beta
             </a>
-            <span className="text-sm text-muted">Android, through Google Play</span>
+            <span className="text-sm text-muted">Android only</span>
           </div>
         </div>
         <CircuitTrace className="hidden w-full md:block" />

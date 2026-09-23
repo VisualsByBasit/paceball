@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
+import { FALLBACK_ICON_SRC, HAS_LOGO, LOGO_SIZE, LOGO_SRC } from "@/lib/logo";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -23,6 +24,13 @@ export const metadata: Metadata = {
   },
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
+  // The logo when it is there; the generated mark only if it is missing.
+  icons: HAS_LOGO
+    ? {
+        icon: [{ url: LOGO_SRC, type: "image/png", sizes: `${LOGO_SIZE}x${LOGO_SIZE}` }],
+        apple: [{ url: LOGO_SRC, type: "image/png", sizes: `${LOGO_SIZE}x${LOGO_SIZE}` }],
+      }
+    : { icon: [{ url: FALLBACK_ICON_SRC, type: "image/svg+xml" }] },
   openGraph: {
     type: "website",
     siteName: SITE_NAME,

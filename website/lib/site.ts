@@ -1,9 +1,17 @@
+/** Everything the site links to or quotes, in one place. */
+
 /**
- * Everything the site links to or quotes, in one place.
+ * The beta is two steps. Closed testing admits members of a Google Group, so a
+ * visitor joins the group first, then opts in on Google Play with the same
+ * Google account. The opt-in page refuses anyone who is not in the group.
  *
- * BETA_URL is the Google Play closed testing opt-in link. Fill it with the
- * link from Play Console (Testing, Closed testing, Testers, "Join on the web").
+ * BETA_GROUP_URL is the Google Group's join page. While it is empty, the site
+ * shows a single "Request access" email instead of a link that would fail.
+ * BETA_URL is the Play opt-in link, from Play Console (Testing, Closed
+ * testing, Testers, "Join on the web"). Never link to it without the group
+ * step beside it: see lib/beta.ts.
  */
+export const BETA_GROUP_URL = "";
 export const BETA_URL = "https://play.google.com/apps/testing/com.paceball.app";
 
 export const CONTACT_EMAIL = "paceballpro@gmail.com";
@@ -26,7 +34,7 @@ export const SOCIAL = {
   x: "https://x.com/paceballpro",
   instagram: "https://www.instagram.com/paceballpro/",
   github: "https://github.com/VisualsByBasit/paceball",
-  /** Left empty until the first HackerNoon story is live. The card shows without a link until then. */
+  /** An empty link shows the card without one. */
   hackernoon: "https://hackernoon.com/u/abdulbasitso019?tab=stories",
 } as const;
 
