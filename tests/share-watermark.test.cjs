@@ -14,3 +14,16 @@ test('the share card is branded unless the caller says the entitlement allows ot
   assert.match(actions, /renderExport\(\{ sessionId, watermark \}\)/);
   assert.doesNotMatch(actions, /watermark: false/);
 });
+
+test('Result shares a clean card for Pro and a branded one for everyone else', () => {
+  const result = read('app/result.tsx');
+  // The gate decides, read from the entitlement when the card is made.
+  assert.match(result, /<SessionActions\s+sessionId=\{savedId\}\s+watermark=\{!canExportWithoutWatermark\(entitlements\)\}\s*\/>/);
+  assert.match(result, /const entitlements = useEntitlements\(\);/);
+  // Still only for a measured delivery.
+  assert.match(result, /\{savedId && measured \? \(/);
+  // Analysis keeps its branded card beside the separate clean export.
+  const analysis = read('app/analysis.tsx');
+  const actions = analysis.slice(analysis.indexOf('<SessionActions'), analysis.indexOf('/>', analysis.indexOf('<SessionActions')));
+  assert.doesNotMatch(actions, /watermark/);
+});

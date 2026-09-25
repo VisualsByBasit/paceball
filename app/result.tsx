@@ -27,6 +27,7 @@ import {
 } from '../src/physics/computeSpeed';
 import { referenceFraming, spanBetween } from '../src/capture/framing';
 import { measurementState } from '../src/physics/measurementState';
+import { canExportWithoutWatermark, useEntitlements } from '../src/purchases';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
@@ -125,6 +126,8 @@ export default function ResultScreen() {
 
   // Display only. The reading is computed and saved in km/h whatever this says.
   const { unit } = useSettings();
+  // Read when the card is made, never stored with the delivery.
+  const entitlements = useEntitlements();
 
   const videoPath = first(params.videoPath);
   const framesDir = first(params.framesDir);
@@ -510,8 +513,14 @@ export default function ResultScreen() {
       ) : null}
 
       <View style={styles.footer}>
-        {/* Nothing to put on a share card without a measured speed. */}
-        {savedId && measured ? <SessionActions sessionId={savedId} /> : null}
+        {/* Nothing to put on a share card without a measured speed. Pro's card
+            is clean, as it is in Analysis; everyone else's carries the mark. */}
+        {savedId && measured ? (
+          <SessionActions
+            sessionId={savedId}
+            watermark={!canExportWithoutWatermark(entitlements)}
+          />
+        ) : null}
         {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
 
         <Pressable
