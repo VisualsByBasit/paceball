@@ -49,19 +49,48 @@ export function isAudioFailure(message: string): boolean {
   return /audio|microphone|RECORD_AUDIO|ERROR_ENCODING_FAILED/i.test(message);
 }
 
+/** Said when a recording fails after it had started. Nothing from it is kept. */
+export const RECORD_AGAIN =
+  'The recording failed partway through, so it was not kept. Record the delivery again.';
+
+/** Added when that failure could have been the sound track's. */
+export const RECORD_AGAIN_WITHOUT_SOUND =
+  `${RECORD_AGAIN} The next recording is video only, in case the microphone was the cause.`;
+
 export type FailureOutcome =
   | { kind: 'retry-without-sound'; original: string }
-  | { kind: 'report'; error: string };
+  | { kind: 'report'; error: string }
+  /**
+   * The recording had already started. Its partial file is discarded, nothing
+   * is retried, and the user is asked to record the delivery again.
+   * `dropSound` turns the microphone off for the next recording.
+   */
+  | { kind: 'record-again'; error: string; dropSound: boolean };
 
 /**
- * What a failed recording leads to. Only a recording with sound, failing on
- * its sound, is retried, and only once: a retry that fails too reports the
- * error the first attempt failed on, as a failure without sound always did.
+ * What a failed recording leads to.
+ *
+ * Before the recording's start event nothing has been filmed, so a recording
+ * with sound that failed on its sound is retried once without it. A retry that
+ * fails too reports the error the first attempt failed on.
+ *
+ * After the start event the delivery was being filmed, and by the time the
+ * failure arrives it is over. Retrying then would film the empty pitch
+ * afterwards and hand that on as the delivery, so nothing is ever retried: the
+ * partial clip is thrown away and the user is told to record again.
  */
 export function afterRecordingFailure(
   error: string,
-  { withAudio, retrying }: { withAudio: boolean; retrying: string | null }
+  { withAudio, retrying, started }: { withAudio: boolean; retrying: string | null; started: boolean }
 ): FailureOutcome {
+  if (started) {
+    const dropSound = withAudio && isAudioFailure(error);
+    return {
+      kind: 'record-again',
+      error: dropSound ? RECORD_AGAIN_WITHOUT_SOUND : RECORD_AGAIN,
+      dropSound,
+    };
+  }
   if (retrying !== null) return { kind: 'report', error: retrying };
   if (withAudio && isAudioFailure(error)) return { kind: 'retry-without-sound', original: error };
   return { kind: 'report', error };

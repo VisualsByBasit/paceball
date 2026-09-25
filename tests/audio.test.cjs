@@ -78,33 +78,31 @@ test('the offer is never shown again once answered', () => {
   assert.equal(visit('authorized'), false);
 });
 
-test('a recording that fails on its sound is retried once without sound', () => {
+test('a recording that fails on its sound before it starts is retried once without sound', () => {
   const { afterRecordingFailure, isAudioFailure, SOUND_FALLBACK_NOTICE } = microphone;
   // What an audio source held by a call looks like from Vision Camera.
   const busy = 'ERROR_ENCODING_FAILED';
-  assert.deepEqual(afterRecordingFailure(busy, { withAudio: true, retrying: null }), {
+  assert.deepEqual(afterRecordingFailure(busy, { withAudio: true, retrying: null, started: false }), {
     kind: 'retry-without-sound',
     original: busy,
   });
   assert.equal(isAudioFailure('java.lang.SecurityException: RECORD_AUDIO not granted'), true);
   assert.equal(isAudioFailure('Audio source is busy'), true);
   // The retry failing too reports the first error, as a failure always did.
-  assert.deepEqual(afterRecordingFailure('ERROR_SOURCE_INACTIVE', { withAudio: false, retrying: busy }), {
+  assert.deepEqual(afterRecordingFailure('ERROR_SOURCE_INACTIVE', { withAudio: false, retrying: busy, started: false }), {
     kind: 'report',
     error: busy,
   });
   // Once only: the retry is itself without sound, so it cannot retry again.
-  assert.equal(afterRecordingFailure(busy, { withAudio: false, retrying: null }).kind, 'report');
+  assert.equal(afterRecordingFailure(busy, { withAudio: false, retrying: null, started: false }).kind, 'report');
   assert.equal(SOUND_FALLBACK_NOTICE, 'Recorded without sound. The microphone was in use.');
 
-  // The hook routes both ways a recording fails through the one decision.
+  // The hook hands the camera, the clock and the filesystem to the flow, which
+  // tests/capture-recording.test.cjs drives through both failure paths.
   const hook = read('src/capture/useCapture.ts');
-  assert.match(hook, /const handleRecordingError = useCallback\(\(e: Error\) => fail\(e\), \[fail\]\);/);
-  assert.match(hook, /\} catch \(e\) \{\s*fail\(e\);\s*\}/);
-  assert.match(hook, /onAudioFailureRef\.current\?\.\(\);/);
-  // The retry runs as soon as the output without sound arrives, and says so once it records.
-  assert.match(hook, /if \(originalErrorRef\.current === null \|\| withAudio \|\| recorderRef\.current\) return;\s*void start\(\);/);
-  assert.match(hook, /if \(retrying\) setNotice\(SOUND_FALLBACK_NOTICE\);/);
+  assert.match(hook, /createCaptureFlow\(\{/);
+  assert.match(hook, /onAudioFailure: \(\) => onAudioFailureRef\.current\?\.\(\)/);
+  assert.match(hook, /flow\.setOutput\(videoOutput, canDropSound\);/);
   // The screen drops sound for this visit only.
   const capture = read('app/capture.tsx');
   assert.match(capture, /const onAudioFailure = useCallback\(\(\) => setMicrophoneBusy\(true\), \[\]\);/);
@@ -122,10 +120,32 @@ test('a failure unrelated to sound is not retried', () => {
     'Active recording already in progress!',
     'Camera is not active',
   ]) {
-    assert.deepEqual(afterRecordingFailure(error, { withAudio: true, retrying: null }), { kind: 'report', error }, error);
+    assert.deepEqual(afterRecordingFailure(error, { withAudio: true, retrying: null, started: false }), { kind: 'report', error }, error);
   }
   // Nor is any failure of a recording that had no sound to begin with.
-  assert.equal(afterRecordingFailure('ERROR_ENCODING_FAILED', { withAudio: false, retrying: null }).kind, 'report');
+  assert.equal(afterRecordingFailure('ERROR_ENCODING_FAILED', { withAudio: false, retrying: null, started: false }).kind, 'report');
+});
+
+test('a failure after the recording started is never retried, whatever it was', () => {
+  const { afterRecordingFailure, RECORD_AGAIN, RECORD_AGAIN_WITHOUT_SOUND } = microphone;
+  // By the time a mid-clip error arrives the delivery is over. A retry would
+  // film the empty pitch afterwards, so the answer is always to record again.
+  assert.deepEqual(afterRecordingFailure('ERROR_ENCODING_FAILED', { withAudio: true, retrying: null, started: true }), {
+    kind: 'record-again',
+    error: RECORD_AGAIN_WITHOUT_SOUND,
+    dropSound: true,
+  });
+  assert.deepEqual(afterRecordingFailure('ERROR_INSUFFICIENT_STORAGE', { withAudio: true, retrying: null, started: true }), {
+    kind: 'record-again',
+    error: RECORD_AGAIN,
+    dropSound: false,
+  });
+  // Even while a retry from an earlier, pre-start failure is running.
+  assert.equal(afterRecordingFailure('ERROR_ENCODING_FAILED', { withAudio: false, retrying: 'x', started: true }).kind, 'record-again');
+  for (const line of [RECORD_AGAIN, RECORD_AGAIN_WITHOUT_SOUND]) {
+    assert.match(line, /Record the delivery again\./);
+    assert.doesNotMatch(line, /—/);
+  }
 });
 
 test('a fallback leaves the saved microphone setting alone', () => {
