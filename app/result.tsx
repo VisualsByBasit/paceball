@@ -332,7 +332,7 @@ export default function ResultScreen() {
         <Text style={styles.fallbackBody}>
           {'error' in reading ? reading.error : 'Something went wrong.'}
         </Text>
-        <Pressable style={styles.primaryButton} onPress={() => router.back()}>
+        <Pressable style={styles.primaryButton} onPress={() => router.back()} accessibilityRole="button">
           <Text style={styles.primaryButtonText}>Back to marking</Text>
         </Pressable>
       </View>
@@ -381,7 +381,12 @@ export default function ResultScreen() {
         {/* Saving moves the clip and its frames out of the cache, so going back
             to re-mark is no longer possible once it has been saved. */}
         {saveStatus === 'saved' ? null : (
-          <Pressable disabled={saveStatus === 'saving'} onPress={() => router.back()} hitSlop={space.md}>
+          <Pressable
+            disabled={saveStatus === 'saving'}
+            onPress={() => router.back()}
+            hitSlop={space.md}
+            accessibilityRole="button"
+          >
             <Text style={styles.headerAction}>Back</Text>
           </Pressable>
         )}

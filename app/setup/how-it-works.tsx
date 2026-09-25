@@ -65,7 +65,7 @@ export default function HowItWorksScreen() {
         ]}
       >
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={space.md}>
+          <Pressable onPress={() => router.back()} hitSlop={space.md} accessibilityRole="button">
             <Text style={styles.headerAction}>Back</Text>
           </Pressable>
           {isOnboarding ? <Text style={styles.headerStep}>2 OF 3</Text> : null}

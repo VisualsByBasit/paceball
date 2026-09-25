@@ -129,7 +129,7 @@ export function CalibrationStep({
         ]}
       >
         <View style={styles.header}>
-          <Pressable onPress={onBack} hitSlop={space.md}>
+          <Pressable onPress={onBack} hitSlop={space.md} accessibilityRole="button">
             <Text style={styles.headerAction}>Retake</Text>
           </Pressable>
           <Text style={styles.headerStep}>SCALE</Text>

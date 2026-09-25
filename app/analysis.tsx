@@ -131,7 +131,7 @@ export default function AnalysisScreen() {
       <View style={[styles.screen, styles.center, { paddingTop: insets.top }]}>
         <Text style={styles.fallbackTitle}>{loaded.title}</Text>
         <Text style={styles.fallbackBody}>{loaded.body}</Text>
-        <Pressable style={styles.primaryButton} onPress={() => router.back()}>
+        <Pressable style={styles.primaryButton} onPress={() => router.back()} accessibilityRole="button">
           <Text style={styles.primaryButtonText}>Back</Text>
         </Pressable>
       </View>
@@ -371,7 +371,7 @@ function Replay({
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={onBack} hitSlop={space.md}>
+        <Pressable onPress={onBack} hitSlop={space.md} accessibilityRole="button">
           <Text style={styles.headerAction}>Back</Text>
         </Pressable>
         <Text style={styles.headerMeta}>
@@ -388,7 +388,7 @@ function Replay({
             <Pressable
               style={[styles.shareButton, sharing && styles.shareButtonOn]}
               onPress={() => setSharing((open) => !open)}
-              hitSlop={space.sm}
+              hitSlop={space.md}
               accessibilityRole="button"
               accessibilityState={{ expanded: sharing }}
               accessibilityLabel="Share this delivery"
@@ -587,6 +587,7 @@ function Replay({
               <Pressable
                 key={r.rate}
                 onPress={() => changeRate(r.rate)}
+                hitSlop={{ top: space.md, bottom: space.sm }}
                 style={[styles.rate, on && styles.rateOn]}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
@@ -598,6 +599,7 @@ function Replay({
           })}
           <Pressable
             onPress={toggleSound}
+            hitSlop={{ top: space.md, bottom: space.sm }}
             style={[styles.rate, styles.sound, !muted && styles.rateOn]}
             accessibilityRole="switch"
             accessibilityState={{ checked: !muted }}

@@ -487,12 +487,12 @@ export default function MarkScreen() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={space.md}>
+        <Pressable onPress={() => router.back()} hitSlop={space.md} accessibilityRole="button">
           <Text style={styles.headerAction}>Retake</Text>
         </Pressable>
         <Pressable
           onPress={() => setCalibrating(true)}
-          hitSlop={space.sm}
+          hitSlop={space.md}
           accessibilityRole="button"
           accessibilityLabel="Change the scale reference"
         >
@@ -514,6 +514,7 @@ export default function MarkScreen() {
             onPress={place}
             disabled={activeStep === null}
             style={[styles.frameBox, { width: fit.w, height: fit.h }]}
+            accessibilityRole="button"
             accessibilityLabel={
               activeStep ? `Tap to place ${activeStep.label}` : 'All points placed'
             }
@@ -567,6 +568,9 @@ export default function MarkScreen() {
               <Pressable
                 key={s.key}
                 onPress={() => setSelected(s.key)}
+                hitSlop={{ top: space.md, bottom: space.sm }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
                 style={[
                   styles.chip,
                   isActive && (s.ball ? styles.chipActiveBall : styles.chipActive),
@@ -611,6 +615,7 @@ export default function MarkScreen() {
                   <Pressable
                     key={option.key}
                     onPress={() => setMarkConfidence(option.key)}
+                    hitSlop={{ top: space.md, bottom: space.sm }}
                     style={[styles.confidenceOption, on && styles.confidenceOptionOn]}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: on }}
@@ -653,6 +658,7 @@ export default function MarkScreen() {
             disabled={current === 0}
             hitSlop={space.sm}
             style={[styles.stepButton, current === 0 && styles.stepButtonOff]}
+            accessibilityRole="button"
             accessibilityLabel="Previous frame"
           >
             <Text style={styles.stepButtonText}>−</Text>
@@ -673,6 +679,7 @@ export default function MarkScreen() {
             disabled={current >= scrubMax}
             hitSlop={space.sm}
             style={[styles.stepButton, current >= scrubMax && styles.stepButtonOff]}
+            accessibilityRole="button"
             accessibilityLabel="Next frame"
           >
             <Text style={styles.stepButtonText}>+</Text>
@@ -697,6 +704,7 @@ export default function MarkScreen() {
             onPress={undo}
             disabled={history.length === 0}
             style={[styles.secondaryButton, history.length === 0 && styles.buttonOff]}
+            accessibilityRole="button"
             accessibilityLabel="Undo last point"
           >
             <Text style={styles.secondaryButtonText}>Undo</Text>
@@ -706,6 +714,7 @@ export default function MarkScreen() {
             onPress={onNext}
             disabled={!canContinue}
             style={[styles.primaryButton, !canContinue && styles.buttonOff]}
+            accessibilityRole="button"
             accessibilityLabel="Continue to the result"
           >
             <Text style={styles.primaryButtonText}>Next</Text>
@@ -733,11 +742,11 @@ function Fallback({
     <View style={[styles.screen, styles.fallback, { paddingTop: insets }]}>
       <Text style={styles.fallbackTitle}>{title}</Text>
       <Text style={styles.fallbackBody}>{body}</Text>
-      <Pressable style={styles.primaryButton} onPress={action.onPress}>
+      <Pressable style={styles.primaryButton} onPress={action.onPress} accessibilityRole="button">
         <Text style={styles.primaryButtonText}>{action.label}</Text>
       </Pressable>
       {secondary ? (
-        <Pressable style={styles.fallbackSecondary} onPress={secondary.onPress}>
+        <Pressable style={styles.fallbackSecondary} onPress={secondary.onPress} accessibilityRole="button">
           <Text style={styles.secondaryButtonText}>{secondary.label}</Text>
         </Pressable>
       ) : null}

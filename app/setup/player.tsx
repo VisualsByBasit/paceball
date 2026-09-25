@@ -49,7 +49,7 @@ export default function SetupPlayerScreen() {
         ]}
       >
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={space.md}>
+          <Pressable onPress={() => router.back()} hitSlop={space.md} accessibilityRole="button">
             <Text style={styles.headerAction}>Back</Text>
           </Pressable>
           <Text style={styles.headerStep}>1 OF 3</Text>

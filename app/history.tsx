@@ -406,6 +406,8 @@ export default function HistoryScreen() {
                 <Pressable
                   key={r.key}
                   onPress={() => setRange(r.key)}
+                  // Downwards only: the personal best above is a button too.
+                  hitSlop={{ top: space.xs, bottom: space.md }}
                   style={[styles.range, on && styles.rangeOn]}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: on }}
@@ -437,7 +439,7 @@ export default function HistoryScreen() {
               <Pressable
                 style={styles.compareButton}
                 onPress={startCompare}
-                hitSlop={space.sm}
+                hitSlop={space.md}
                 accessibilityRole="button"
                 accessibilityLabel="Compare two deliveries"
               >

@@ -367,6 +367,7 @@ export default function CaptureScreen() {
                     key={option}
                     style={[styles.lens, on && styles.lensOn]}
                     onPress={() => chooseLens(option)}
+                    hitSlop={{ top: space.md, bottom: space.sm }}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: on }}
                     accessibilityLabel={
@@ -391,6 +392,7 @@ export default function CaptureScreen() {
                 <Pressable
                   onPress={() => setShowTips(false)}
                   hitSlop={space.md}
+                  accessibilityRole="button"
                   accessibilityLabel="Hide tips"
                 >
                   <Text style={styles.tipsToggleText}>Hide</Text>
@@ -407,6 +409,7 @@ export default function CaptureScreen() {
             <Pressable
               style={styles.tipsPill}
               onPress={() => setShowTips(true)}
+              accessibilityRole="button"
               accessibilityLabel="Show tips"
             >
               <Text style={styles.tipsToggleText}>Tips</Text>

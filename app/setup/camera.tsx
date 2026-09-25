@@ -194,7 +194,7 @@ export default function SetupCameraScreen() {
         ]}
       >
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={space.md}>
+          <Pressable onPress={() => router.back()} hitSlop={space.md} accessibilityRole="button">
             <Text style={styles.headerAction}>Back</Text>
           </Pressable>
           {isOnboarding ? <Text style={styles.headerStep}>3 OF 3</Text> : null}

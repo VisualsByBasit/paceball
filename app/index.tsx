@@ -130,7 +130,7 @@ export default function Index() {
 
         {/* THROWAWAY — goes with app/debug.tsx once History exists. */}
         {__DEV__ ? (
-          <Pressable onPress={() => router.push('/debug')} hitSlop={space.sm}>
+          <Pressable onPress={() => router.push('/debug')} hitSlop={space.sm} accessibilityRole="button">
             <Text style={styles.debugLink}>Debug · saved sessions</Text>
           </Pressable>
         ) : null}
