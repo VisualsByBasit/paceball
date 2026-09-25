@@ -24,17 +24,18 @@ Every measured speed is accompanied by an error range. The range combines frame-
 
 ## Current features
 
-- Live Android video capture with frame-by-frame marking
+- Live Android video capture with frame-by-frame marking, on the standard or ultra-wide lens where the phone has one
+- Sound recorded with the video when the microphone is allowed; declining records video only and measures exactly the same way
 - Stumps, markers, ball and player-height calibration
 - Per-reading uncertainty and bounce-confidence handling
 - Per-player local storage; profile switching is not yet exposed in the app
 - Local History, Trends and delivery comparison
-- Slow-motion delivery analysis
-- Shareable PNG result cards with a watermark for free users
-- Weekly free-use allowance and a RevenueCat-backed Pro entitlement
-- Optional, consent-gated and privacy-scrubbed JavaScript crash reports
+- Slow-motion delivery replay, muted by default on every clip, with a sound switch
+- Shareable PNG result cards: watermarked for free users, clean for Pro
+- A weekly free allowance and a RevenueCat-backed Pro entitlement
+- Optional, consent-gated JavaScript and native crash reports through Sentry
 
-Video export with a burned-in replay HUD is experimental work and is not part of the current supported export flow.
+Video export with a burned-in replay HUD is a development-only spike on the debug screen, not part of the supported export flow. Its exports are silent by default and carry sound only when it is switched on for that export.
 
 ## Requirements
 
@@ -92,7 +93,7 @@ Leave `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` unset. Paceball then:
 - renders a clearly labelled mock offering so judges can inspect the paywall; and
 - disables purchasing and reports that the store is not connected.
 
-The mock offering is presentation data only. It never fabricates a successful purchase or Pro entitlement.
+The mock offering is presentation data only. It never fabricates a successful purchase or Pro entitlement, and it never appears in a build that has a key: there the paywall shows the store's own offering, or says the plans could not be loaded.
 
 For a build connected to the real store, provide RevenueCat's **public Android SDK key** through the build environment:
 
@@ -104,13 +105,17 @@ Real purchase testing also requires the matching Google Play application, produc
 
 ## Optional Sentry diagnostics
 
-Crash reporting is off unless both a public DSN is configured and the user opts in inside the app:
+JavaScript and native crash reports are supported. Both are off by default, and nothing is sent unless the build carries a public DSN and the user opts in inside the app:
 
 ```text
 EXPO_PUBLIC_SENTRY_DSN=...
 ```
 
-The current integration sends scrubbed JavaScript errors only. Native crash handling, screenshots, view hierarchy, breadcrumbs, performance traces and replay are disabled. Source-map upload is disabled in `eas.json` until a Sentry project and private build credentials are configured outside the repository.
+- JavaScript reports pass through the privacy scrubber in `src/diagnostics/privacy.ts`, which builds a new event from an allow-list: reviewed static error messages only, no names, paths, breadcrumbs, screenshots or view hierarchy.
+- Native reports come from Sentry's native SDK and may contain limited technical device and crash state that the app cannot filter. The in-app privacy screen says so.
+- Development builds do not upload source maps (`SENTRY_DISABLE_AUTO_UPLOAD` in `eas.json`). Preview and production builds upload them when the private build credentials (`SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`) are set in the EAS environment. None belongs in the repository.
+
+`docs/sentry-setup.md` walks through setting up the project and checking a preview build end to end.
 
 ## Tests
 
@@ -122,6 +127,17 @@ npm run typecheck
 ```
 
 The test total changes as coverage grows, so this README intentionally does not pin a count. A successful run ends with zero failed tests, and typecheck completes without emitting files.
+
+## Website
+
+`website/` is the public site, live at <https://paceballpro.vercel.app>: the landing page, the privacy policy and the terms. It is a separate Next.js project with its own `package.json`, deployed on Vercel with `website` as the root directory. The app never imports from it, and Metro, the root typecheck and the EAS upload all leave it out.
+
+```bash
+cd website
+npm ci
+npm run lint
+npm run build
+```
 
 ## Repository layout
 
@@ -137,17 +153,30 @@ src/settings/            Local app preferences
 src/types/               Shared domain contracts
 src/ui/                  Design tokens and reusable interface components
 modules/frame-extractor/ Local Expo/Kotlin module for video metadata and frames
+website/                 Public site: landing page, privacy policy and terms
 tests/                   Node test suite
-docs/                    Engineering handoffs and supporting project notes
+docs/                    Engineering handoffs, the audit and the device test plan
+scripts/                 Review tooling
 ```
 
 The `docs/` directory records engineering handoffs, review boundaries and implementation decisions as evidence of how the project was built in public.
 
 ## Privacy
 
-Paceball never uploads videos or measurements and does not require an account. Recordings, extracted frames, player profiles and readings live in app storage. Android's own backup may copy app data to the user's backup, and media a user explicitly saves or shares can remain outside the app.
+Paceball never uploads videos or measurements and does not require an account. Recordings, the sound recorded with them, extracted frames, player profiles and readings live in app storage, and the measurement runs on the phone. Android's own backup may copy app data to the user's backup, and anything a user explicitly saves or shares can remain outside the app.
 
-When configured, RevenueCat receives the anonymous purchase information needed to resolve Pro status. Sentry receives a limited, scrubbed JavaScript error only after the user opts in. Neither integration is given videos, player names, marked points or speeds by Paceball.
+What can leave the phone, and when:
+
+- **RevenueCat and Google Play, on every launch** of a build with a RevenueCat key: the app asks RevenueCat whether this phone has Pro, and Google Play for the plans, their prices and any existing purchase. This check is not optional, and it is named as such.
+- **Google Play and RevenueCat, when subscribing or restoring:** the purchase, an anonymous app user ID and device details such as the Android and app version.
+- **Sentry, only after opting in:** crash reports, as described above.
+- **Whatever the user chooses to share,** such as a result card.
+
+None of these is given videos, sound, player names, marked points or speeds by Paceball.
+
+Permissions: the camera, to record; the microphone, optional, to keep the sound of the delivery (recording works without it); and permission to add an image to the gallery when saving one, where Android asks. Reading the gallery is blocked in the manifest.
+
+The in-app privacy screen (Settings, Privacy and crash reports) and the website's privacy policy, <https://paceballpro.vercel.app/privacy>, say the same thing, and tests hold both to it.
 
 Deleting a delivery removes its private video, extracted frames and stored record. Uninstalling removes app-private data, subject to Android backup and copies the user previously saved or shared.
 
