@@ -30,7 +30,7 @@ import { measurementState } from '../src/physics/measurementState';
 import { canExportWithoutWatermark, useEntitlements } from '../src/purchases';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
+import { errorIn, formatSpeed, unitLabel, unitSpoken } from '../src/ui/units';
 import { errorMessage } from '../src/ui/format';
 import { finiteNumber, first, positiveNumber } from '../src/ui/routeParams';
 import type { CalibrationMethod, MarkConfidence, MarkerSource, Point } from '../src/types';
@@ -415,7 +415,13 @@ export default function ResultScreen() {
           </Pressable>
         </View>
       ) : (
-        <View style={styles.hero}>
+        <View
+          style={styles.hero}
+          // One stop for a screen reader, with the range said in words: read
+          // apart, the ± can be skipped and the range lost from the number.
+          accessible
+          accessibilityLabel={`Average speed to bounce, ${formatSpeed(state.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(state.errorKmh, unit)}`}
+        >
           <Text style={styles.heroLabel}>AVG SPEED TO BOUNCE</Text>
           <Text
             style={styles.heroNumber}

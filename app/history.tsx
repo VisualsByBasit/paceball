@@ -484,7 +484,9 @@ function TrendFailure({ range, state }: { range: Range; state: TrendState }) {
   if (state.status !== 'threw') return null;
   return (
     <View style={styles.failure}>
-      <Text style={styles.failureTitle}>{`getTrend('${range}') threw`}</Text>
+      <Text style={styles.failureTitle}>
+        {range === 'all' ? 'Could not read your deliveries for the trend' : `Could not read this ${range}'s deliveries`}
+      </Text>
       <Text style={styles.failureBody} selectable>
         {state.message}
       </Text>

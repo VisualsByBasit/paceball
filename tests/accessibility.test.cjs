@@ -62,3 +62,18 @@ test('the small chips reach 48 dp under the finger without changing how they loo
   // The picked point says so, not only by colour.
   assert.match(mark, /accessibilityState=\{\{ selected: isActive \}\}/);
 });
+
+test('the reading on Result is one stop for a screen reader, range included', () => {
+  const result = read('app/result.tsx');
+  assert.match(result, /accessibilityLabel=\{`Average speed to bounce, \$\{formatSpeed\(state\.speedKmh, unit\)\} \$\{unitSpoken\(unit\)\}, plus or minus \$\{errorIn\(state\.errorKmh, unit\)\}`\}/);
+  // Only on the measured branch: nothing is read out for a delivery without a speed.
+  const hero = result.slice(result.indexOf('<View\n          style={styles.hero}'));
+  assert.ok(result.indexOf("state.kind === 'not-seen'") < result.indexOf('<View\n          style={styles.hero}'));
+  assert.ok(hero.length > 0);
+});
+
+test('a trend that cannot be read says so in words, not as a function call', () => {
+  const history = read('app/history.tsx');
+  assert.doesNotMatch(history, /threw`\}<\/Text>/);
+  assert.match(history, /Could not read your deliveries for the trend/);
+});
