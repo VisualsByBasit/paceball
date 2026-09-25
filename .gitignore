@@ -17,6 +17,14 @@ dist/
 *.keystore
 *.jks
 
+# credentials: EAS local credentials, Play service accounts, keys and certificates
+credentials.json
+*service-account*.json
+*.pem
+*.p12
+*.p8
+*.key
+
 # misc
 .DS_Store
 *.log

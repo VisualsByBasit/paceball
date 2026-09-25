@@ -110,3 +110,34 @@ test('no env file or service account file is tracked', () => {
   });
   assert.deepEqual(forbidden, [], `these must not be committed:\n${forbidden.join('\n')}`);
 });
+
+test('credential files are ignored by git, and so by the EAS upload', () => {
+  // .easignore replaces .gitignore for EAS and carries every rule in it
+  // (tests/website.test.cjs holds that), so git's answer covers both.
+  for (const name of [
+    '.env',
+    '.env.production',
+    'release.keystore',
+    'upload.jks',
+    'credentials.json',
+    'google-service-account.json',
+    'play-service-account-key.json',
+    'server.pem',
+    'cert.p12',
+    'AuthKey_ABC123.p8',
+    'private.key',
+  ]) {
+    const ignored = execFileSync('git', ['check-ignore', '--no-index', '-v', name], { cwd: ROOT, encoding: 'utf8' });
+    assert.ok(ignored.trim().length > 0, `${name} is ignored`);
+  }
+  // And the rules do not swallow the app's own files.
+  for (const name of ['app.json', 'eas.json', 'package.json', 'src/purchases/links.ts']) {
+    let ignored = true;
+    try {
+      execFileSync('git', ['check-ignore', '--no-index', '-q', name], { cwd: ROOT });
+    } catch {
+      ignored = false;
+    }
+    assert.equal(ignored, false, `${name} is not ignored`);
+  }
+});
