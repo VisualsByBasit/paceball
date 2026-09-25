@@ -136,16 +136,6 @@ export default function DebugScreen() {
         </Pressable>
       </View>
 
-      {/* THROWAWAY — goes with app/practice.tsx. */}
-      <Pressable
-        onPress={() => router.push('/practice')}
-        style={styles.practiceLink}
-        accessibilityRole="button"
-        accessibilityLabel="Open the Reanimated practice screen"
-      >
-        <Text style={styles.practiceLinkText}>Reanimated practice →</Text>
-      </Pressable>
-
       {/* Development only. __DEV__ is a compile-time constant, so this whole
           block is stripped from a production bundle and the override cannot be
           reached there; the provider also refuses to honour or set it. */}
@@ -389,16 +379,6 @@ const styles = StyleSheet.create({
   },
   headerAction: { ...type.caption, color: colors.muted },
   headerTitle: { ...type.label, color: colors.muted },
-
-  practiceLink: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingVertical: space.sm,
-    alignItems: 'center',
-    marginBottom: space.md,
-  },
-  practiceLinkText: { ...type.caption, color: colors.text },
 
   loading: { marginTop: space.xl },
   empty: { ...type.body, color: colors.muted, marginTop: space.xl },
