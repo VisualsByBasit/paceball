@@ -113,6 +113,42 @@ function readCached(dir: Directory): Map<number, string> {
   }
 }
 
+/** Whether a file URI sits inside the app's cache, the only place a clip is discarded from. */
+function inCache(uri: string): boolean {
+  const relative = Paths.relative(Paths.cache, uri);
+  return (
+    relative !== '' &&
+    relative !== '..' &&
+    !relative.startsWith('../') &&
+    !relative.startsWith('..\\') &&
+    !Paths.isAbsolute(relative)
+  );
+}
+
+/**
+ * Deletes a clip that is not going to be saved, with the frames extracted from
+ * it. Saving copies both out of the cache and deletes the originals, so after a
+ * save this finds nothing. The video is only touched inside the cache; nothing
+ * here can throw.
+ */
+export function discardClip(videoPath: string): void {
+  if (!videoPath) return;
+  try {
+    const dir = framesDirFor(videoPath);
+    if (dir.exists) dir.delete();
+  } catch {
+    // Left for the OS to clear with the rest of the cache.
+  }
+  try {
+    const uri = videoPath.startsWith('file://') ? videoPath : `file://${videoPath}`;
+    if (!inCache(uri)) return;
+    const file = new File(uri);
+    if (file.exists) file.delete();
+  } catch {
+    // Likewise.
+  }
+}
+
 /**
  * The frames a saved session kept, by index. Read off the disk rather than
  * assumed from the frame count, so a gap shows as a gap. Unlike the cache
@@ -130,7 +166,19 @@ export function listFrames(dirUri: string): Map<number, string> {
  * fail wholesale, so it is proven to return a real, non-empty JPEG path before
  * the UI commits to it.
  */
-export function useFrames(videoPath: string, frameCount: number) {
+export function useFrames(
+  videoPath: string,
+  frameCount: number,
+  {
+    discardOnLeave = false,
+  }: {
+    /**
+     * Delete the clip and its frames when the screen goes, once any batch still
+     * decoding has returned. For a clip that is only kept by being saved.
+     */
+    discardOnLeave?: boolean;
+  } = {}
+) {
   const [state, setState] = useState<FramesState>(() => ({
     status: 'probing',
     frames: new Array<string | null>(Math.max(0, frameCount)).fill(null),
@@ -141,6 +189,9 @@ export function useFrames(videoPath: string, frameCount: number) {
   }));
 
   const runRef = useRef(0);
+  // The latest run, so leaving can wait for a native batch still in flight
+  // rather than deleting a directory it is about to write into.
+  const inFlight = useRef<Promise<void>>(Promise.resolve());
 
   const extract = useCallback(async () => {
     const run = ++runRef.current;
@@ -309,14 +360,23 @@ export function useFrames(videoPath: string, frameCount: number) {
     });
   }, [videoPath, frameCount]);
 
+  const run = useCallback(() => {
+    const running = extract();
+    inFlight.current = running;
+    return running;
+  }, [extract]);
+
   useEffect(() => {
-    extract();
+    void run();
     // Bumping the run id strands the in-flight loop rather than letting it
     // keep decoding for a screen that has gone away.
     return () => {
       runRef.current += 1;
+      if (!discardOnLeave) return;
+      const discard = () => discardClip(videoPath);
+      inFlight.current.then(discard, discard);
     };
-  }, [extract]);
+  }, [run, discardOnLeave, videoPath]);
 
-  return { ...state, retry: extract };
+  return { ...state, retry: run };
 }

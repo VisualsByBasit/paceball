@@ -144,7 +144,10 @@ export default function MarkScreen() {
   const fps = positiveNumber(params.fps);
   const frameCount = positiveNumber(params.frameCount);
 
-  const extraction = useFrames(videoPath, frameCount ?? 0);
+  // A clip only lives on by being saved, which moves it out of the cache. Any
+  // way off this screen without saving (Retake, Back, Record again) leaves it
+  // behind for good, so it is deleted rather than left to fill the cache.
+  const extraction = useFrames(videoPath, frameCount ?? 0, { discardOnLeave: true });
   const { frames, total, decoded, status } = extraction;
 
   const [current, setCurrent] = useState(0);
@@ -443,7 +446,12 @@ export default function MarkScreen() {
         title="Could not read the frames"
         body={extraction.error ?? 'The clip produced no frames.'}
         action={{ label: 'Try again', onPress: extraction.retry }}
-        secondary={{ label: 'Record again', onPress: () => router.replace('/capture') }}
+        // Mark is pushed from Capture, so going back is recording again.
+        // Replacing would stack a second Capture, and a second camera.
+        secondary={{
+          label: 'Record again',
+          onPress: () => (router.canGoBack() ? router.back() : router.replace('/capture')),
+        }}
       />
     );
   }

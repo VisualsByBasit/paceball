@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { File } from 'expo-file-system';
@@ -82,7 +82,7 @@ export default function CaptureScreen() {
   const router = useRouter();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  const { hasPermission, requestPermission } = useCameraPermission();
+  const { hasPermission, requestPermission, canRequestPermission } = useCameraPermission();
   // Offered the first time Capture opens, never at launch and never from the
   // shutter. Refused or not, recording goes ahead; without it the clip is
   // simply video only.
@@ -109,6 +109,9 @@ export default function CaptureScreen() {
   const previewFade = useRef(new Animated.Value(1)).current;
   const [switchingLens, setSwitchingLens] = useState(false);
   const swapTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The fade-out finishes 120 ms after a tap, possibly after the screen has
+  // gone, and must not start the reveal timer then.
+  const mounted = useRef(true);
   const revealPreview = useCallback(() => {
     if (swapTimeout.current === null) return;
     clearTimeout(swapTimeout.current);
@@ -131,6 +134,7 @@ export default function CaptureScreen() {
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }).start(() => {
+        if (!mounted.current) return;
         setLens(next);
         // Waiting from here on for the new lens's first preview frame.
         swapTimeout.current = setTimeout(revealPreview, LENS_SWAP_TIMEOUT_MS);
@@ -138,12 +142,13 @@ export default function CaptureScreen() {
     },
     [lens, switchingLens, previewFade, revealPreview]
   );
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       if (swapTimeout.current !== null) clearTimeout(swapTimeout.current);
-    },
-    []
-  );
+    };
+  }, []);
   const { exposureBias, lastRecording } = useSettings();
   const entitlements = useEntitlements();
   const { refreshAnalyses, isPro, allowance, configured, loading } = usePurchases();
@@ -260,8 +265,8 @@ export default function CaptureScreen() {
   }, []);
 
   useEffect(() => {
-    if (!hasPermission) requestPermission();
-  }, [hasPermission, requestPermission]);
+    if (!hasPermission && canRequestPermission) void requestPermission().catch(() => false);
+  }, [hasPermission, canRequestPermission, requestPermission]);
 
   if (!hasPermission) {
     return (
@@ -271,8 +276,26 @@ export default function CaptureScreen() {
           Paceball measures from video recorded on this phone, and never uploads
           your videos or measurements.
         </Text>
-        <Pressable style={styles.primaryButton} onPress={requestPermission}>
-          <Text style={styles.primaryButtonText}>Grant access</Text>
+        {/* Once Android stops showing its dialog, asking again does nothing.
+            The camera can then only be allowed from the system settings,
+            which come back here with the permission re-read. */}
+        {canRequestPermission ? null : (
+          <Text style={[styles.body, styles.settingsNote]}>
+            Android will not ask again. Allow the camera for Paceball in the phone's settings.
+          </Text>
+        )}
+        <Pressable
+          style={styles.primaryButton}
+          onPress={() =>
+            void (canRequestPermission
+              ? requestPermission().catch(() => false)
+              : Linking.openSettings().catch(() => undefined))
+          }
+          accessibilityRole="button"
+        >
+          <Text style={styles.primaryButtonText}>
+            {canRequestPermission ? 'Grant access' : 'Open settings'}
+          </Text>
         </Pressable>
       </Screen>
     );
@@ -546,6 +569,7 @@ const styles = StyleSheet.create({
 
   h2: { ...type.h2, color: colors.text, marginBottom: space.sm },
   body: { ...type.body, color: colors.muted, textAlign: 'center' },
+  settingsNote: { marginTop: space.md },
   label: { ...type.label, color: colors.muted },
 
   primaryButton: {
