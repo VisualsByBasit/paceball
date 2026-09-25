@@ -25,6 +25,7 @@ import { getSettings } from '../src/settings';
 import { CalibrationStep } from '../src/ui/CalibrationStep';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
+import { errorMessage } from '../src/ui/format';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { useHoldRepeat } from '../src/ui/useHoldRepeat';
 import { first, positiveNumber } from '../src/ui/routeParams';
@@ -201,9 +202,7 @@ export default function MarkScreen() {
         .then(setPlayer)
         .catch((e: unknown) => {
           setShoeProblem(
-            `Used for this delivery, but could not be saved to your profile: ${
-              e instanceof Error ? e.message : String(e)
-            }`
+            `Used for this delivery, but could not be saved to your profile: ${errorMessage(e)}`
           );
         });
     },

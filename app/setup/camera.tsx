@@ -13,6 +13,7 @@ import { createPlayer } from '../../src/data';
 import { PITCH_LENGTH_M } from '../../src/physics/computeSpeed';
 import { shouldShowOnboardingPaywall, usePurchases } from '../../src/purchases';
 import { getSettings, updateSettings } from '../../src/settings';
+import { errorMessage } from '../../src/ui/format';
 import { colors, opacity, radius, space, stroke, type } from '../../src/ui/tokens';
 
 const REQUIREMENTS = [
@@ -123,10 +124,6 @@ function Diagram() {
   );
 }
 
-function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
 /**
  * Setup 03 — where to stand, and how to frame the shot.
  *
@@ -181,7 +178,7 @@ export default function SetupCameraScreen() {
       }
     } catch (e) {
       setSaving(false);
-      setError(message(e));
+      setError(errorMessage(e));
     }
   }, [configured, isOnboarding, isPro, loading, name, router]);
 
