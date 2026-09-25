@@ -17,9 +17,10 @@ const MAX_NAME_LENGTH = 40;
 /**
  * Setup 01 — who is bowling.
  *
- * Only the name is collected. Height and shoe size exist on the Player type for
- * calibration methods that are not built yet, and asking for data the app
- * cannot use would be a question with no purpose.
+ * Only the name is collected here. A shoe is asked for on the scale step, where
+ * a paced markers distance needs one. Height calibration reads the profile,
+ * which no shipped screen can set yet, so asking for it here would be a
+ * question with no use.
  *
  * The player is not created here. It is created at the end of setup, so backing
  * out of the next screen does not leave an orphan profile behind.

@@ -128,7 +128,7 @@ export default function Index() {
           <Text style={styles.settingsLink}>Settings</Text>
         </Pressable>
 
-        {/* THROWAWAY — goes with app/debug.tsx once History exists. */}
+        {/* Development only. The route itself redirects home in a release build. */}
         {__DEV__ ? (
           <Pressable onPress={() => router.push('/debug')} hitSlop={space.sm} accessibilityRole="button">
             <Text style={styles.debugLink}>Debug · saved sessions</Text>

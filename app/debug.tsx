@@ -23,9 +23,10 @@ import { colors, radius, space, stroke, type } from '../src/ui/tokens';
 import type { Session } from '../src/types';
 
 /**
- * THROWAWAY. Delete this file once screen 08 History exists — it is a window
- * onto stored sessions while there is no real one, not a screen anyone ships.
- * It follows the tokens only so it stays readable on a dark phone.
+ * Development tool: every saved session's raw fields and file paths, the
+ * Media3 export spike and the Pro override. Not a screen anyone ships; release
+ * builds redirect away from the route. It follows the tokens only so it stays
+ * readable on a dark phone.
  */
 
 /** The fields worth eyeballing while the calibration work settles. */
@@ -200,7 +201,7 @@ function DebugScreen() {
 }
 
 /**
- * THROWAWAY device checkpoint for the Media3 spike. It intentionally lives on
+ * Device checkpoint for the Media3 spike. It intentionally lives on
  * the existing debug route and is stripped from production UI. The generated
  * MP4 stays in cache unless the tester opens the system share sheet.
  */
@@ -314,7 +315,7 @@ function VideoExportSpike({ session }: { session: Session }) {
 }
 
 /**
- * THROWAWAY, and development only. Forces the Pro entitlement on or off so the
+ * Development only. Forces the Pro entitlement on or off so the
  * gates and the paywall can be exercised without a store account. It is only
  * rendered under __DEV__, and the provider ignores the override outside __DEV__
  * as well, so a production build has no path to it.
