@@ -143,3 +143,12 @@ test('renders genuine PNGs with Skia for both orientations and watermark variant
   }
   typeface.dispose(); fontData.dispose();
 });
+
+test('the card says where its range comes from', () => {
+  // The range is recomputed from the marks by measurementState, not read off
+  // the record, so the card must not credit the saved reading with it.
+  const card = fs.readFileSync(path.join(__dirname, '..', 'src', 'export', 'drawCard.ts'), 'utf8');
+  assert.doesNotMatch(card, /Speed and uncertainty from the saved reading/);
+  assert.match(card, /range recomputed from its marks/);
+  assert.match(card, /const reading = measurementState\(session\);/);
+});

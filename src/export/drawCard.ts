@@ -38,7 +38,7 @@ export function drawCard(
     text('Release-to-bounce marks · not a tracked flight path', 48, 905, 23, colors.muted);
     text(`${session.travelMetres.toFixed(2)} m  ·  ${session.fps.toFixed(2)} fps`, 48, 964, 30);
     text(`Calibration: ${session.calibrationMethod} · ${session.calRealMetres.toFixed(3)} m`, 48, 1014, 25, colors.muted);
-    text('Release frame shown. Speed and uncertainty from the saved reading.', 48, 1064, 22, colors.muted);
+    text('Release frame shown. Speed from the saved reading; range recomputed from its marks.', 48, 1064, 22, colors.muted);
     if (watermark) text('PACEBALL', 48, 1150, 40, colors.accent);
   } finally {
     paint.dispose();
