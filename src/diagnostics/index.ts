@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import * as Sentry from '@sentry/react-native';
 import { createMMKV } from 'react-native-mmkv';
 import { scrubDiagnosticEvent } from './privacy';
@@ -90,4 +91,15 @@ export async function sendNativeDiagnosticTest(): Promise<void> {
   Sentry.nativeCrash();
 }
 
-export { wrap } from '@sentry/react-native';
+/**
+ * Sentry.wrap mounts a profiler that expects Sentry.init to have run, and warns
+ * "App Start Span could not be finished" on every launch when it has not.
+ * index.js initialises before the router loads the root, so by the time the
+ * root is wrapped this knows whether it did. Without a DSN and consent the root
+ * is returned untouched: breadcrumbs, tracing and app-start tracking are all off,
+ * so the wrapper would have sent nothing extra. Opting in later starts Sentry
+ * without it, and errors are still caught by the SDK's global handlers.
+ */
+export function wrap<P extends Record<string, unknown>>(RootComponent: ComponentType<P>): ComponentType<P> {
+  return initialized ? Sentry.wrap(RootComponent) : RootComponent;
+}
