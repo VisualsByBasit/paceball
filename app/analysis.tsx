@@ -637,7 +637,7 @@ function Replay({
                 </Pressable>
               </View>
               <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
-                <CleanExport sessionId={session.id} />
+                <CleanExport sessionId={session.id} onLeave={() => setSharing(false)} />
                 <SessionActions
                   sessionId={session.id}
                   onDeleted={() => {
@@ -663,7 +663,7 @@ function Replay({
  * clean render is made here through the same renderExport his component uses,
  * with the flag it already accepts.
  */
-function CleanExport({ sessionId }: { sessionId: string }) {
+function CleanExport({ sessionId, onLeave }: { sessionId: string; onLeave: () => void }) {
   const router = useRouter();
   const entitlements = useEntitlements();
   const [busy, setBusy] = useState(false);
@@ -687,7 +687,12 @@ function CleanExport({ sessionId }: { sessionId: string }) {
     return (
       <Pressable
         style={styles.cleanLocked}
-        onPress={() => router.push({ pathname: '/paywall', params: { context: 'export' } })}
+        onPress={() => {
+          // The sheet is a Modal, drawn above every screen. Left open, it
+          // would hide the paywall this opens until it was closed.
+          onLeave();
+          router.push({ pathname: '/paywall', params: { context: 'export' } });
+        }}
         accessibilityRole="button"
         accessibilityLabel="Export without the watermark, with Paceball Pro"
       >

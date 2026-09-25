@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Directory, File } from 'expo-file-system';
 import { isAvailableAsync as canShare, shareAsync } from 'expo-sharing';
@@ -86,7 +86,17 @@ function checkDirectory(label: string, uri: string): PathCheck {
   }
 }
 
-export default function DebugScreen() {
+/**
+ * A route in every build, because expo-router routes are files. Outside
+ * development it only redirects home, so a paceball://debug link from another
+ * app cannot open saved recordings' paths or delete controls in a release.
+ */
+export default function DebugRoute() {
+  if (!__DEV__) return <Redirect href="/" />;
+  return <DebugScreen />;
+}
+
+function DebugScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 

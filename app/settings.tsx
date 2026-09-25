@@ -124,7 +124,7 @@ export default function SettingsScreen() {
             </Text>
             <Pressable
               style={styles.button}
-              onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL)}
+              onPress={() => void Linking.openURL(MANAGE_SUBSCRIPTION_URL).catch(() => undefined)}
               accessibilityRole="link"
             >
               <Text style={styles.buttonText}>Manage subscription</Text>
@@ -240,7 +240,7 @@ export default function SettingsScreen() {
         </Text>
         <Pressable
           style={styles.button}
-          onPress={() => Linking.openSettings()}
+          onPress={() => void Linking.openSettings().catch(() => undefined)}
           accessibilityRole="link"
         >
           <Text style={styles.buttonText}>Open system settings</Text>
