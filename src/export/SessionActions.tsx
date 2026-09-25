@@ -4,8 +4,15 @@ import { deleteSession, renderExport } from '../data';
 import { colors, opacity, radius, space, type } from '../ui/tokens';
 import { saveExportToGallery, shareExport } from './deliveryActions';
 
-/** Free exports always carry branding; entitlement-controlled clean UI is later. */
-export function SessionActions({ sessionId, onDeleted }: { sessionId: string; onDeleted?: () => void }) {
+/**
+ * Free exports always carry branding. The caller passes watermark={false} only
+ * when the Pro entitlement allows a clean card; left out, the card is branded.
+ */
+export function SessionActions({ sessionId, onDeleted, watermark = true }: {
+  sessionId: string;
+  onDeleted?: () => void;
+  watermark?: boolean;
+}) {
   const lock = useRef(false);
   const [busy, setBusy] = useState(false);
   const [imagePath, setImagePath] = useState<string | null>(null);
@@ -22,7 +29,7 @@ export function SessionActions({ sessionId, onDeleted }: { sessionId: string; on
     } finally { lock.current = false; setBusy(false); }
   };
   const generate = () => run(async () => {
-    const result = await renderExport({ sessionId, watermark: true });
+    const result = await renderExport({ sessionId, watermark });
     setImagePath(result.imagePath);
   });
   const confirmDelete = () => {
