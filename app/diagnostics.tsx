@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { diagnosticsStatus, sendDiagnosticTest, sendNativeDiagnosticTest, setDiagnosticsConsent } from '../src/diagnostics';
 import { purchasesConfigured } from '../src/purchases';
+import { PRIVACY_URL } from '../src/purchases/links';
 import { colors, radius, space, type } from '../src/ui/tokens';
 
 export default function DiagnosticsScreen() {
@@ -16,6 +17,7 @@ export default function DiagnosticsScreen() {
     <Pressable onPress={() => router.back()} accessibilityRole="button" style={styles.button}><Text style={styles.body}>Back</Text></Pressable>
     <Text style={styles.title}>Privacy and crash reports</Text>
     <Text style={styles.body}>Your videos and measurements stay on this phone. Paceball never uploads your videos or measurements, and there is no account. Android's own backup can copy app data to your backup, and images you save to your gallery or share can remain after uninstalling.</Text>
+    <Pressable onPress={() => void Linking.openURL(PRIVACY_URL).catch(() => undefined)} accessibilityRole="link" style={[styles.button, styles.link]}><Text style={styles.body}>Read the full privacy policy</Text></Pressable>
     <Text style={styles.title}>Sound</Text>
     <Text style={styles.body}>Recordings include sound if you allow the microphone. Recordings stay on this phone, with or without sound. Shared videos are silent unless you choose to include sound. Speeds are measured from the picture alone, so sound never changes a reading.</Text>
     <Text style={styles.title}>Purchases</Text>
@@ -64,4 +66,5 @@ const styles = StyleSheet.create({
   body: { ...type.body, color: colors.text }, note: { ...type.caption, color: colors.muted, marginVertical: space.md },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: space.md },
   button: { padding: space.md, backgroundColor: colors.surface, borderRadius: radius.md },
+  link: { marginTop: space.md },
 });

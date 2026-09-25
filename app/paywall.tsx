@@ -19,7 +19,7 @@ import {
   type PurchaseOutcome,
   type RestoreOutcome,
 } from '../src/purchases';
-import { TERMS_URL } from '../src/purchases/links';
+import { PRIVACY_URL, TERMS_URL } from '../src/purchases/links';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 
 /** What sent the user here. Same layout; the headline speaks to what they just tried. */
@@ -311,15 +311,20 @@ export default function PaywallScreen() {
             <Text style={styles.linkText}>Restore purchases</Text>
           )}
         </Pressable>
-        {TERMS_URL ? (
-          <Pressable
-            onPress={() => Linking.openURL(TERMS_URL!)}
-            accessibilityRole="link"
-            hitSlop={space.sm}
-          >
-            <Text style={styles.linkText}>Terms</Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={() => void Linking.openURL(TERMS_URL).catch(() => undefined)}
+          accessibilityRole="link"
+          hitSlop={space.sm}
+        >
+          <Text style={styles.linkText}>Terms</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => void Linking.openURL(PRIVACY_URL).catch(() => undefined)}
+          accessibilityRole="link"
+          hitSlop={space.sm}
+        >
+          <Text style={styles.linkText}>Privacy</Text>
+        </Pressable>
       </View>
       {note ? (
         <Text
