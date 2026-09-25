@@ -361,7 +361,7 @@ export default function HistoryScreen() {
         <View style={styles.center}>
           <Text style={styles.centerTitle}>No deliveries yet</Text>
           <Text style={styles.centerBody}>
-            Save a reading on the result screen and it lands here — its speed, its error range,
+            Save a reading on the result screen and it lands here: its speed, its error range,
             and the frame the ball left the hand.
           </Text>
         </View>
@@ -625,7 +625,7 @@ function TrendCard({
     <View style={styles.card}>
       <Text style={styles.cardTitle}>AVG SPEED TO BOUNCE, BY DELIVERY</Text>
       <Text style={styles.cardNote}>
-        One dot per delivery, oldest to newest. The line through each is its error range — a
+        One dot per delivery, oldest to newest. The line through each is its error range. A
         change smaller than that is not a change.
       </Text>
       {body}
@@ -798,8 +798,8 @@ function SessionRow({
         reading.kind === 'measured'
           ? `${formatWhen(session.createdAt)}, ${formatSpeed(reading.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(reading.errorKmh, unit)}${isBest ? ', personal best' : ''}`
           : reading.kind === 'not-seen'
-            ? `${formatWhen(session.createdAt)}, no speed — the bounce was not seen`
-            : `${formatWhen(session.createdAt)}, no speed — it can't be measured from what was saved`
+            ? `${formatWhen(session.createdAt)}, no speed, the bounce was not seen`
+            : `${formatWhen(session.createdAt)}, no speed, it can't be measured from what was saved`
       }
     >
       <Thumb uri={uri} />

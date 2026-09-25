@@ -402,18 +402,18 @@ function Replay({
         <View style={styles.statRow}>
           <Stat
             label="SPEED"
-            value={state.kind === 'measured' ? formatSpeed(state.speedKmh, unit) : '—'}
+            value={state.kind === 'measured' ? formatSpeed(state.speedKmh, unit) : '–'}
             unit={measured ? unitLabel(unit) : 'not measured'}
             hero
           />
           <Stat
             label="ERROR"
-            value={state.kind === 'measured' ? `± ${errorIn(state.errorKmh, unit)}` : '—'}
+            value={state.kind === 'measured' ? `± ${errorIn(state.errorKmh, unit)}` : '–'}
             unit={measured ? unitLabel(unit) : ''}
           />
           <Stat
             label="TRAVEL"
-            value={measured ? session.travelMetres.toFixed(2) : '—'}
+            value={measured ? session.travelMetres.toFixed(2) : '–'}
             unit={measured ? 'm' : 'not measured'}
           />
           {/* The clip's own frame rate is a property of the recording, not of
@@ -421,7 +421,7 @@ function Replay({
           <Stat label="FPS" value={fps.toFixed(2)} unit="read from file" />
           <Stat
             label="FRAME Δ"
-            value={measured ? String(frameDelta) : '—'}
+            value={measured ? String(frameDelta) : '–'}
             unit={measured ? 'frames' : ''}
           />
         </View>
@@ -429,7 +429,7 @@ function Replay({
           <Text style={styles.note}>
             This delivery can't be measured from what was saved. Its marks don't
             hold enough to put an error range on a speed, and a speed without its
-            range is not a reading — so no speed, flight time, frame delta or
+            range is not a reading, so no speed, flight time, frame delta or
             distance travelled is shown. The clip and the marks are kept, and the
             delivery is left out of your trend.
           </Text>
@@ -437,7 +437,7 @@ function Replay({
         {state.kind === 'not-seen' ? (
           <Text style={styles.note}>
             The bounce was marked without the ball being visible in that frame, so
-            this delivery carries no speed — and no flight time, frame delta or
+            this delivery carries no speed, and no flight time, frame delta or
             distance travelled either, since all of them are measured from that
             mark. The clip and the marks are kept, and everything stays saved;
             none of it is invented, and the delivery stays out of your trend.

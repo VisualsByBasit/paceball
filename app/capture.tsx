@@ -398,7 +398,7 @@ export default function CaptureScreen() {
               </View>
               {TIPS.map((tip) => (
                 <View key={tip} style={styles.tipRow}>
-                  <Text style={styles.tipBullet}>—</Text>
+                  <Text style={styles.tipBullet}>–</Text>
                   <Text style={styles.tipText}>{tip}</Text>
                 </View>
               ))}

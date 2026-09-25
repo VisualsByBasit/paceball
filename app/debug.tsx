@@ -69,7 +69,7 @@ function checkFile(label: string, uri: string): PathCheck {
     if (!file.exists) return { label, uri, exists: false, detail: 'missing' };
     return { label, uri, exists: true, detail: formatBytes(file.size) };
   } catch (e) {
-    return { label, uri, exists: false, detail: `error — ${message(e)}` };
+    return { label, uri, exists: false, detail: `error: ${message(e)}` };
   }
 }
 
@@ -82,7 +82,7 @@ function checkDirectory(label: string, uri: string): PathCheck {
     const bytes = size === null ? 'size unreadable' : formatBytes(size);
     return { label, uri, exists: true, detail: `${bytes} · ${entries} entries` };
   } catch (e) {
-    return { label, uri, exists: false, detail: `error — ${message(e)}` };
+    return { label, uri, exists: false, detail: `error: ${message(e)}` };
   }
 }
 

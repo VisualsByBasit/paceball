@@ -16,7 +16,7 @@ import { getSettings, updateSettings } from '../../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../../src/ui/tokens';
 
 const REQUIREMENTS = [
-  'Perpendicular to the pitch, square on — not standing down the line of it.',
+  'Perpendicular to the pitch, square on, not standing down the line of it.',
   'Level with where the ball pitches, not level with either set of stumps.',
   'Both sets of stumps in frame for the whole delivery.',
 ];
@@ -203,7 +203,7 @@ export default function SetupCameraScreen() {
         <Text style={styles.title}>Stand side-on to the pitch</Text>
         <Text style={styles.sub}>
           Paceball measures how far the ball travels and how long it takes. The pitch
-          is the ruler — the {PITCH_LENGTH_M} m between the wickets is what turns
+          is the ruler: the {PITCH_LENGTH_M} m between the wickets is what turns
           pixels into metres. Filming from an angle distorts that ruler, so the number
           comes out wrong.
         </Text>
@@ -214,7 +214,7 @@ export default function SetupCameraScreen() {
           <Text style={styles.cardLabel}>BEFORE YOU RECORD</Text>
           {REQUIREMENTS.map((line) => (
             <View key={line} style={styles.cardRow}>
-              <Text style={styles.cardBullet}>—</Text>
+              <Text style={styles.cardBullet}>–</Text>
               <Text style={styles.cardText}>{line}</Text>
             </View>
           ))}

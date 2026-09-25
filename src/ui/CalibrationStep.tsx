@@ -143,7 +143,7 @@ export function CalibrationStep({
           <Text style={styles.title}>What is the ruler?</Text>
           <Text style={styles.sub}>
             Speed is scaled from one known distance in shot. Pick what you can see
-            in the clip — the next two taps measure across it.
+            in the clip. The next two taps measure across it.
           </Text>
 
           <View style={styles.options}>
@@ -186,7 +186,7 @@ export function CalibrationStep({
                   </View>
                   <Text style={styles.optionDetail}>
                     {disabled
-                      ? 'Add a height to the player profile to measure against it.'
+                      ? 'No height on the player profile yet, and this version cannot add one.'
                       : option.detail}
                   </Text>
                 </Pressable>
@@ -281,7 +281,7 @@ export function CalibrationStep({
                     <Text style={styles.inputUnit}>m</Text>
                   </View>
                   <Text style={styles.customHint}>
-                    Measure it as carefully as you can — this number scales every
+                    Measure it as carefully as you can. This number scales every
                     speed you record against it.
                   </Text>
                 </>
@@ -295,7 +295,7 @@ export function CalibrationStep({
                   <Text style={styles.customHint}>
                     {needsSize
                       ? 'Paces are scaled by the outer length of your shoe, worked out from your size.'
-                      : `Stand the shoe along the long edge of a sheet of A4 — that edge is ${A4_LONG_EDGE_MM} mm. Measure heel to toe, on the outside of the sole.`}
+                      : `Stand the shoe along the long edge of a sheet of A4. That edge is ${A4_LONG_EDGE_MM} mm. Measure heel to toe, on the outside of the sole.`}
                   </Text>
                   <View style={styles.customRow}>
                     <TextInput
@@ -339,7 +339,7 @@ export function CalibrationStep({
                   accessibilityLabel="Measure your shoe instead, for a five times tighter error range"
                 >
                   <Text style={styles.upgrade}>
-                    Measure the shoe against an A4 sheet instead — five times
+                    Measure the shoe against an A4 sheet instead: five times
                     tighter, and it only has to be done once.
                   </Text>
                 </Pressable>

@@ -111,7 +111,7 @@ const BOUNCE_CONFIDENCE: { key: MarkConfidence; label: string; hint: string }[] 
   {
     key: 'guessed',
     label: 'No',
-    hint: 'Not visible — the frame came from context. No speed will be measured.',
+    hint: 'Not visible. The frame came from context, so no speed will be measured.',
   },
 ];
 
@@ -353,13 +353,13 @@ export default function MarkScreen() {
       const dx = calB.x - calA.x;
       const dy = calB.y - calA.y;
       if (Math.hypot(dx, dy) < 1) {
-        return `${spec.a.label} and ${spec.b.label} are on the same spot — the scale reference has to have length on screen.`;
+        return `${spec.a.label} and ${spec.b.label} are on the same spot. The scale reference has to have length on screen.`;
       }
       // Stumps and markers stay put between frames. A ball in the hand and a
       // standing bowler do not, so measuring across two frames of those would
       // measure the wrong thing.
       if (spec.sameFrame && calA.frame !== calB.frame) {
-        return `${spec.a.label} and ${spec.b.label} have to be marked on the same frame — they are on ${calA.frame} and ${calB.frame}.`;
+        return `${spec.a.label} and ${spec.b.label} have to be marked on the same frame. They are on frames ${calA.frame} and ${calB.frame}.`;
       }
     }
     if (release && bounce && bounce.frame <= release.frame) {
@@ -497,7 +497,7 @@ export default function MarkScreen() {
           accessibilityLabel="Change the scale reference"
         >
           <Text style={styles.headerScale}>
-            {spec.short} · {calRealMetres === null ? '—' : formatMetres(calRealMetres)}
+            {spec.short} · {calRealMetres === null ? '–' : formatMetres(calRealMetres)}
           </Text>
         </Pressable>
         <Text style={styles.headerCount}>
@@ -681,7 +681,7 @@ export default function MarkScreen() {
 
         {status === 'extracting' ? (
           <Text style={styles.progress}>
-            Decoding {decoded} of {total} frames — you can start marking now
+            Decoding {decoded} of {total} frames. You can start marking now.
           </Text>
         ) : null}
 

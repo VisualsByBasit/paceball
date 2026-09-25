@@ -413,7 +413,7 @@ export default function ResultScreen() {
           </Text>
           <Text style={styles.unmeasuredBody}>
             Go back and re-mark it if you can find the frame the ball lands on. You
-            can still save the delivery to keep the clip and the marks — it will
+            can still save the delivery to keep the clip and the marks. It will
             carry no speed, and it stays out of your trend.
           </Text>
           <Pressable
@@ -501,12 +501,12 @@ export default function ResultScreen() {
           ) : (
             <Text style={styles.workingFootnote}>
               {state.kind === 'not-seen'
-                ? 'Frame delta, flight time and distance travelled are not shown. Each is measured from the bounce mark, and that frame was guessed — they would be as invented as the speed. All three are still saved with the delivery.'
+                ? 'Frame delta, flight time and distance travelled are not shown. Each is measured from the bounce mark, and that frame was guessed, so they would be as invented as the speed. All three are still saved with the delivery.'
                 : 'Frame delta, flight time and distance travelled are not shown. They come from the same marks that cannot produce a reading, so they are worth no more than the speed would be.'}
             </Text>
           )}
           <Text style={styles.workingFootnote}>
-            Scaled against {formatMetres(calRealMetres!)} — {spec!.detail.toLowerCase()} The
+            Scaled against {formatMetres(calRealMetres!)}: {spec!.detail.toLowerCase()} The
             ball's own travel is measured with that scale, not assumed from it.
           </Text>
         </View>
@@ -628,8 +628,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderTopWidth: stroke.hairline,
+    borderBottomWidth: stroke.hairline,
     borderColor: colors.line,
     paddingVertical: space.md,
   },

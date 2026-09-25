@@ -27,8 +27,8 @@ const STEPS = [
 ];
 
 const HONESTY = [
-  'You get the average speed to the bounce — not release speed, which is 5–8% quicker off the hand.',
-  'Every reading shows an estimated timing error range. It varies with flight time and frame rate; calibration and marking can add further error.',
+  'You get the average speed to the bounce, not release speed, which is 5–8% quicker off the hand.',
+  'Every reading shows its own error range, combining the frame timing, the reference length and how precisely each point was marked. Filming the reference small in frame can add error the range does not cover.',
   'No spin rate, no revolutions. They cannot be measured from 60 fps video, so they are not shown.',
   'Paceball never uploads your videos or measurements, and there is no account. What can leave the phone: crash reports if you turn them on, which carry no videos, names or speeds; a check with RevenueCat when the app opens, for whether you have Pro; your purchase, through Google Play and RevenueCat, if you subscribe or restore; and any card you choose to share.',
 ];
@@ -89,7 +89,7 @@ export default function HowItWorksScreen() {
           <Text style={styles.cardLabel}>WHAT YOU GET, AND WHAT YOU DON'T</Text>
           {HONESTY.map((line) => (
             <View key={line} style={styles.cardRow}>
-              <Text style={styles.cardBullet}>—</Text>
+              <Text style={styles.cardBullet}>–</Text>
               <Text style={styles.cardText}>{line}</Text>
             </View>
           ))}
