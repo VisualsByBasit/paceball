@@ -9,11 +9,10 @@ import {
   type ReactNode,
 } from 'react';
 import type { PurchasesPackage } from 'react-native-purchases';
-import { getActivePlayer, listSessions } from '../data';
+import { listSessions } from '../data';
 import { proStatus, type ProStatus, type PurchaseOutcome, type RestoreOutcome } from './entitlement';
-import { FREE_ANALYSES_PER_PERIOD } from './freeLimit';
-import { allowanceIn, resolveAnchor, type Allowance } from './freeLimit';
-import { MOCK_OFFERING } from './mockOffering';
+import { FREE_ANALYSES_PER_PERIOD, readAllowance, type Allowance } from './freeLimit';
+import { offeringOnScreen } from './mockOffering';
 import { getSettings, updateSettings } from '../settings';
 import type { PaywallOffering, PaywallPackage } from './offering';
 import {
@@ -30,7 +29,10 @@ export type Purchases = {
   isPro: boolean;
   /** Renewal detail for a Pro user, for the status line in Settings. */
   pro: ProStatus;
-  /** The offering to render. The store's when configured, the mock when not. */
+  /**
+   * The offering to render. The store's when configured, and empty until the
+   * store has answered with one; the sample offering only when not configured.
+   */
   offering: PaywallOffering;
   /** True while the first customer info and offering are still being read. */
   loading: boolean;
@@ -38,10 +40,12 @@ export type Purchases = {
   configured: boolean;
   /** Whether the offering on screen is the stand-in rather than the store's. */
   mocked: boolean;
-  /** This player's saved deliveries inside the current period, and what is left. */
+  /** Every saved delivery inside the current period, whoever bowled it, and what is left. */
   allowance: Allowance;
   /** Re-reads the saved deliveries, so the limit reflects a delivery just saved. */
   refreshAnalyses: () => void;
+  /** Asks the store for the offering again, after a launch that could not reach it. */
+  reloadOffering: () => Promise<void>;
   purchase: (pkg: PaywallPackage) => Promise<PurchaseOutcome>;
   restore: () => Promise<RestoreOutcome>;
   /**
@@ -55,12 +59,13 @@ export type Purchases = {
 const FREE: Purchases = {
   isPro: false,
   pro: { active: false },
-  offering: MOCK_OFFERING,
+  offering: offeringOnScreen(false, null),
   loading: false,
   configured: false,
   mocked: true,
   allowance: { used: 0, left: FREE_ANALYSES_PER_PERIOD, periodStart: null, nextReset: null },
   refreshAnalyses: () => {},
+  reloadOffering: async () => {},
   purchase: async () => ({ status: 'unavailable' }),
   restore: async () => ({ status: 'unavailable' }),
   devOverride: null,
@@ -87,6 +92,27 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
   // object rather than the slice the paywall renders.
   const packages = useRef<Map<string, PurchasesPackage>>(new Map());
 
+  // Cleared on unmount, so nothing the store answers after the provider has
+  // gone is applied.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const loadOffering = useCallback(async () => {
+    try {
+      const live = await readOffering();
+      if (!mounted.current || !live) return;
+      packages.current = new Map(live.packages.map((p) => [p.identifier, p]));
+      setOffering(live.offering);
+    } catch {
+      // Left as it was: no plans on screen, or the ones already loaded.
+    }
+  }, []);
+
   useEffect(() => {
     if (!configured) return;
     let alive = true;
@@ -102,18 +128,11 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
         const info = await readCustomerInfo();
         if (alive && info) setPro(proStatus(info));
       } catch {
-        // No entitlement until the store says otherwise. Free is the safe read.
-        if (alive) setPro({ active: false });
+        // No entitlement until the store says otherwise, which is what state
+        // already holds. Left alone rather than set, so a failed read cannot
+        // undo an entitlement the listener delivered in the meantime.
       }
-      try {
-        const live = await readOffering();
-        if (alive && live) {
-          packages.current = new Map(live.packages.map((p) => [p.identifier, p]));
-          setOffering(live.offering);
-        }
-      } catch {
-        if (alive) setOffering(null);
-      }
+      await loadOffering();
       if (alive) setLoading(false);
     })();
 
@@ -121,7 +140,12 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
       alive = false;
       unwatch();
     };
-  }, [configured]);
+  }, [configured, loadOffering]);
+
+  const reloadOffering = useCallback(async () => {
+    if (!configured) return;
+    await loadOffering();
+  }, [configured, loadOffering]);
 
   const refreshAnalyses = useCallback(() => {
     let alive = true;
@@ -129,14 +153,13 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
       try {
         // Every delivery on the phone, whoever bowled it: the allowance and its
         // anchor both belong to the phone, so they count the same deliveries.
-        const player = await getActivePlayer();
-        const sessions = player ? await listSessions({ playerId: player.id }) : [];
-        // The anchor is the first ever analysis. Written once, on the first
-        // refresh that finds any delivery, and never moved after that.
-        const stored = getSettings().analysisAnchor;
-        const anchor = resolveAnchor(stored, sessions);
-        if (anchor !== null && stored === null) updateSettings({ analysisAnchor: anchor });
-        if (alive) setAllowance(allowanceIn(sessions, anchor, Date.now()));
+        const next = await readAllowance({
+          deliveries: () => listSessions(),
+          storedAnchor: () => getSettings().analysisAnchor,
+          saveAnchor: (anchor) => updateSettings({ analysisAnchor: anchor }),
+          now: Date.now,
+        });
+        if (alive) setAllowance(next);
       } catch {
         // An unreadable list must not hand out free analyses, so the count
         // stands where it was rather than falling back to zero.
@@ -161,10 +184,24 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
     // No live package means the mock offering is on screen, so there is nothing
     // to buy. Said plainly rather than failing somewhere deeper.
     if (!live) return { status: 'unavailable' };
-    return purchaseWithStore(live);
+    const outcome = await purchaseWithStore(live);
+    // Read off the customer info that came back with the purchase, so Pro is on
+    // the moment the store grants it rather than whenever the listener fires.
+    if (outcome.status === 'purchased' && mounted.current) {
+      setPro({ active: true, expiresAt: outcome.expiresAt, willRenew: outcome.willRenew });
+    }
+    return outcome;
   }, []);
 
-  const restore = useCallback(() => restorePurchases(), []);
+  const restore = useCallback(async (): Promise<RestoreOutcome> => {
+    const outcome = await restorePurchases();
+    // The same for a restore. One that found nothing changes nothing here: an
+    // entitlement ending is the listener's to report.
+    if (outcome.status === 'restored' && mounted.current) {
+      setPro({ active: true, expiresAt: outcome.expiresAt, willRenew: outcome.willRenew });
+    }
+    return outcome;
+  }, []);
 
   const value = useMemo((): Purchases => {
     const override = __DEV__ ? devOverride : null;
@@ -174,12 +211,13 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
       // apart from a real subscription.
       isPro: override ?? pro.active,
       pro,
-      offering: offering ?? MOCK_OFFERING,
+      offering: offeringOnScreen(configured, offering),
       loading,
       configured,
-      mocked: offering === null,
+      mocked: !configured,
       allowance,
       refreshAnalyses,
+      reloadOffering,
       purchase,
       restore,
       devOverride: __DEV__ ? devOverride : null,
@@ -194,6 +232,7 @@ export function PurchasesProvider({ children }: { children: ReactNode }) {
     pro,
     purchase,
     refreshAnalyses,
+    reloadOffering,
     restore,
     setDevOverride,
   ]);

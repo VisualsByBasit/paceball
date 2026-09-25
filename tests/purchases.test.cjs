@@ -10,8 +10,11 @@ const {
   allowanceLine,
   nextReset,
   periodIndex,
+  readAllowance,
   resolveAnchor,
 } = require('../src/purchases/freeLimit.ts');
+const { plansIn, selectedPlan } = require('../src/purchases/offering.ts');
+const { MOCK_OFFERING, offeringOnScreen } = require('../src/purchases/mockOffering.ts');
 const { DEFAULT_SETTINGS, parseSettings } = require('../src/settings/settings.ts');
 const {
   canAddPlayer,
@@ -55,9 +58,107 @@ test('the anchor is the first ever analysis, set once and never moved', () => {
   assert.equal(DEFAULT_SETTINGS.analysisAnchor, null);
   assert.equal(parseSettings({ analysisAnchor: first }).analysisAnchor, first);
   assert.equal(parseSettings({ analysisAnchor: 'soon' }).analysisAnchor, null);
+  // The provider reads the allowance through readAllowance, driven below.
   const provider = read('src/purchases/PurchasesProvider.tsx');
-  assert.match(provider, /const anchor = resolveAnchor\(stored, sessions\);/);
-  assert.match(provider, /if \(anchor !== null && stored === null\) updateSettings\(\{ analysisAnchor: anchor \}\);/);
+  assert.match(provider, /readAllowance\(\{[\s\S]*?storedAnchor: \(\) => getSettings\(\)\.analysisAnchor,\s*saveAnchor: \(anchor\) => updateSettings\(\{ analysisAnchor: anchor \}\),/);
+});
+
+test('reading the allowance writes the anchor once, from the oldest delivery, and never moves it', async () => {
+  const first = Date.UTC(2026, 8, 1, 9, 30);
+  const saved = [at(0, 'me', first + DAY), at(0, 'me', first)];
+  let stored = null;
+  const writes = [];
+  const read = () =>
+    readAllowance({
+      deliveries: async () => saved,
+      storedAnchor: () => stored,
+      saveAnchor: (anchor) => {
+        writes.push(anchor);
+        stored = anchor;
+      },
+      now: () => first + 2 * DAY,
+    });
+
+  assert.equal((await read()).used, 2);
+  assert.deepEqual(writes, [first], 'written once, from the oldest delivery');
+  // An older record turning up later does not move it.
+  saved.push(at(0, 'me', first - 30 * DAY));
+  await read();
+  assert.deepEqual(writes, [first]);
+  assert.equal(stored, first);
+
+  // Nothing saved yet: no anchor, nothing written, the whole allowance left.
+  const none = await readAllowance({
+    deliveries: async () => [],
+    storedAnchor: () => null,
+    saveAnchor: () => assert.fail('no anchor without a delivery'),
+    now: () => first,
+  });
+  assert.equal(none.left, FREE_ANALYSES_PER_PERIOD);
+});
+
+test('a second profile does not bring a second allowance', async () => {
+  const anchor = Date.UTC(2026, 8, 1, 9, 30);
+  // Two deliveries by one player and one by another, in the same period.
+  const saved = [at(0, 'me', anchor), at(0, 'me', anchor + MINUTE), at(0, 'them', anchor + 2 * MINUTE)];
+  const allowance = await readAllowance({
+    deliveries: async () => saved,
+    storedAnchor: () => anchor,
+    saveAnchor: () => {},
+    now: () => anchor + DAY,
+  });
+  assert.equal(allowance.used, 3);
+  assert.equal(canAnalyse({ isPro: false, analysesThisPeriod: allowance.used }), false, 'switching player cannot reset it');
+
+  // And the provider hands it every delivery, with no player filter.
+  const provider = read('src/purchases/PurchasesProvider.tsx');
+  assert.match(provider, /deliveries: \(\) => listSessions\(\),/);
+  assert.doesNotMatch(provider, /listSessions\(\{ playerId/);
+});
+
+test('a build with a store never shows the sample offering, loading or not', () => {
+  // No key: the sample, which the paywall labels as such and cannot buy from.
+  assert.equal(offeringOnScreen(false, null), MOCK_OFFERING);
+  // A key: the store's offering, or nothing. Never a price the app wrote.
+  const live = { identifier: 'live', availablePackages: [MOCK_OFFERING.availablePackages[0]] };
+  assert.equal(offeringOnScreen(true, live), live);
+  assert.deepEqual(offeringOnScreen(true, null).availablePackages, [], 'still loading, or the store said nothing');
+  assert.notEqual(offeringOnScreen(true, null), MOCK_OFFERING);
+  // So the trial headline cannot come from the sample either.
+  const plans = plansIn(offeringOnScreen(true, null));
+  assert.deepEqual(plans, {});
+
+  const provider = read('src/purchases/PurchasesProvider.tsx');
+  assert.match(provider, /offering: offeringOnScreen\(configured, offering\),/);
+  assert.doesNotMatch(provider, /offering \?\? MOCK_OFFERING/);
+  // With nothing to render, the paywall says so and asks the store again.
+  const paywall = read('app/paywall.tsx');
+  assert.match(paywall, /reloadOffering\(\)/);
+  assert.doesNotMatch(paywall, /stand-in prices/);
+});
+
+test('the purchase button always speaks for a plan the offering actually carries', () => {
+  const order = ['annual', 'monthly'];
+  const both = plansIn(MOCK_OFFERING);
+  const monthlyOnly = { monthly: both.monthly };
+  // Annual by default, whenever it is offered.
+  assert.equal(selectedPlan(both, order, null), 'annual');
+  // A pick stands while the offering carries it.
+  assert.equal(selectedPlan(both, order, 'monthly'), 'monthly');
+  // An offering that arrives without the default still leaves a plan to buy.
+  assert.equal(selectedPlan(monthlyOnly, order, null), 'monthly');
+  assert.equal(selectedPlan(monthlyOnly, order, 'annual'), 'monthly');
+  assert.equal(selectedPlan({}, order, 'annual'), null);
+  assert.match(read('app/paywall.tsx'), /const selected = selectedPlan\(plans, PLAN_ORDER, picked\);/);
+});
+
+test('a purchase or restore that grants Pro turns it on straight away', () => {
+  const provider = read('src/purchases/PurchasesProvider.tsx');
+  // Read off the customer info the store returned with the call.
+  assert.match(provider, /if \(outcome\.status === 'purchased' && mounted\.current\) \{\s*setPro\(\{ active: true, expiresAt: outcome\.expiresAt, willRenew: outcome\.willRenew \}\);/);
+  assert.match(provider, /if \(outcome\.status === 'restored' && mounted\.current\) \{\s*setPro\(\{ active: true, expiresAt: outcome\.expiresAt, willRenew: outcome\.willRenew \}\);/);
+  // And a failed read at launch never switches off an entitlement already delivered.
+  assert.doesNotMatch(provider, /setPro\(\{ active: false \}\)/);
 });
 
 test('the count resets at the period boundary and not before', () => {

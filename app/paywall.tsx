@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   plansIn,
+  selectedPlan,
   trialDays,
   usePurchases,
   type PaywallPackage,
@@ -138,9 +139,9 @@ export default function PaywallScreen() {
     isPro,
     offering,
     loading,
-    mocked,
     configured,
     purchase,
+    reloadOffering,
     restore: restoreWithStore,
   } = usePurchases();
   // No key in this build means the prices on screen are the stand-in's. Nothing
@@ -148,16 +149,37 @@ export default function PaywallScreen() {
   // paywall with odd prices.
   const sample = !configured;
 
-  // The store's offering when there is one, otherwise the stand-in. Either way
-  // every figure on screen is the store's own price text, never written here.
+  // The store's offering when there is one, the stand-in only in a build with
+  // no store, and nothing at all while a store has not answered. Every figure on
+  // screen is the store's own price text, never written here.
   const plans = useMemo(() => plansIn(offering), [offering]);
   const available = PLAN_ORDER.filter((period) => plans[period] !== undefined);
 
-  // Annual is the default, whenever the store offers it.
-  const [selected, setSelected] = useState<PlanPeriod | null>(available[0] ?? null);
+  // Annual is the default, whenever the store offers it. Worked out on every
+  // render, so plans arriving after the first render still leave one selected.
+  const [picked, setPicked] = useState<PlanPeriod | null>(null);
+  const selected = selectedPlan(plans, PLAN_ORDER, picked);
   const [restore, setRestore] = useState<RestoreState>({ status: 'idle' });
   const [notice, setNotice] = useState<string | null>(null);
   const [buying, setBuying] = useState(false);
+
+  // A launch that could not reach the store left no plans. Opening the paywall
+  // asks again, so coming back online and returning here is enough to buy.
+  const [reloading, setReloading] = useState(false);
+  const missingPlans = configured && !loading && available.length === 0;
+  useEffect(() => {
+    if (!missingPlans) return;
+    let alive = true;
+    setReloading(true);
+    reloadOffering().finally(() => {
+      if (alive) setReloading(false);
+    });
+    return () => {
+      alive = false;
+    };
+    // Once per visit. A reload that fails leaves missingPlans as it was.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missingPlans]);
 
   const chosen = selected ? (plans[selected] ?? null) : null;
   const chosenTrial = chosen ? trialDays(chosen) : null;
@@ -224,11 +246,11 @@ export default function PaywallScreen() {
         ))}
       </View>
 
-      {loading ? (
+      {loading || reloading ? (
         <ActivityIndicator color={colors.muted} style={styles.plansLoading} />
       ) : available.length === 0 ? (
         <Text style={styles.problem}>
-          The plans could not be loaded. Check the connection and try again.
+          The plans could not be loaded. Check the connection, then open this page again.
         </Text>
       ) : (
         <View accessibilityRole="radiogroup">
@@ -239,7 +261,7 @@ export default function PaywallScreen() {
               pkg={plans[period]!}
               selected={selected === period}
               onSelect={() => {
-                setSelected(period);
+                setPicked(period);
                 setNotice(null);
               }}
             />
@@ -268,11 +290,6 @@ export default function PaywallScreen() {
             <Text style={styles.ctaText}>{cta}</Text>
           )}
         </Pressable>
-      ) : null}
-      {mocked && !sample && !restored ? (
-        <Text style={styles.ctaNote}>
-          These are stand-in prices: the store did not return an offering.
-        </Text>
       ) : null}
       {chosenTrial !== null && !restored ? (
         <Text style={styles.ctaNote}>

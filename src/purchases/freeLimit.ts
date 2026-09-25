@@ -119,3 +119,29 @@ export function allowanceLine(
   }
   return `All ${FREE_ANALYSES_PER_PERIOD} come back on ${weekday(allowance.nextReset)}`;
 }
+
+/**
+ * Reads the allowance from what is saved. Every delivery on the phone counts,
+ * whoever bowled it: the allowance and its anchor are the phone's, so they
+ * count the same deliveries, and a second profile never brings a second
+ * allowance. The anchor is written once, the first time any delivery is found,
+ * and never moved after that.
+ */
+export async function readAllowance({
+  deliveries,
+  storedAnchor,
+  saveAnchor,
+  now,
+}: {
+  /** Every saved delivery, for every player. */
+  deliveries: () => Promise<readonly CountableDelivery[]>;
+  storedAnchor: () => number | null;
+  saveAnchor: (anchor: number) => void;
+  now: () => number;
+}): Promise<Allowance> {
+  const sessions = await deliveries();
+  const stored = storedAnchor();
+  const anchor = resolveAnchor(stored, sessions);
+  if (anchor !== null && stored === null) saveAnchor(anchor);
+  return allowanceIn(sessions, anchor, now());
+}

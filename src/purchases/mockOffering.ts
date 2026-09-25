@@ -1,4 +1,4 @@
-import type { PaywallOffering } from './offering';
+import { NO_OFFERING, type PaywallOffering } from './offering';
 
 /**
  * STAND-IN until the SDK's getOfferings() is wired. Shaped exactly as RevenueCat
@@ -45,3 +45,15 @@ export const MOCK_OFFERING: PaywallOffering = {
     },
   ],
 };
+
+/**
+ * The offering the paywall renders. The sample one appears only in a build with
+ * no RevenueCat key, where the paywall says so and cannot buy. A build with a
+ * key shows the store's offering or none at all: while the store is loading, or
+ * after it failed to answer, a sample price or trial on screen would read as
+ * the store's own.
+ */
+export function offeringOnScreen(configured: boolean, live: PaywallOffering | null): PaywallOffering {
+  if (!configured) return MOCK_OFFERING;
+  return live ?? NO_OFFERING;
+}

@@ -55,3 +55,23 @@ export function plansIn(offering: PaywallOffering): Partial<Record<PlanPeriod, P
   }
   return plans;
 }
+
+/**
+ * What a build with a store shows until the store has answered, or when it
+ * answered with nothing: no plans, so no price the app wrote itself.
+ */
+export const NO_OFFERING: PaywallOffering = { identifier: 'none', availablePackages: [] };
+
+/**
+ * The plan the purchase button speaks for. The one the user picked while the
+ * offering still carries it, otherwise the first in `order`, so an offering
+ * that arrives without the default plan still leaves something to buy.
+ */
+export function selectedPlan(
+  plans: Partial<Record<PlanPeriod, PaywallPackage>>,
+  order: readonly PlanPeriod[],
+  picked: PlanPeriod | null
+): PlanPeriod | null {
+  if (picked !== null && plans[picked] !== undefined) return picked;
+  return order.find((period) => plans[period] !== undefined) ?? null;
+}

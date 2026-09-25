@@ -131,3 +131,12 @@ test('the new copy uses no em dashes', () => {
   const compareCopy = paywall.slice(paywall.indexOf('  compare: {'), paywall.indexOf('};', paywall.indexOf('  compare: {')));
   assert.doesNotMatch(compareCopy, /—/);
 });
+
+test('compare waits for the store at launch before deciding a user is not Pro', () => {
+  const compare = read('app/compare.tsx');
+  const screen = compare.slice(compare.indexOf('export default function CompareScreen'), compare.indexOf('function Comparison'));
+  const wait = screen.indexOf('if (loading) {');
+  const gate = screen.indexOf('if (!canCompare(entitlements)) {');
+  assert.ok(wait > -1 && gate > wait, 'the loading check comes before the gate');
+  assert.doesNotMatch(screen.slice(wait, gate), /Redirect/, 'and sends nobody anywhere while it waits');
+});
