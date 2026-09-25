@@ -6,11 +6,11 @@ import {
   createCaptureFlow,
   IDLE,
   MIN_RECORDING_MS,
-  withTimeout,
   type CaptureFlow,
   type CaptureResult,
   type CaptureSnapshot,
 } from './recording';
+import { withTimeout } from './timeout';
 
 export { MIN_RECORDING_MS, type CaptureResult, type CaptureStatus } from './recording';
 

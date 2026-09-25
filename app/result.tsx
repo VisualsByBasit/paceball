@@ -31,23 +31,11 @@ import { canExportWithoutWatermark, useEntitlements } from '../src/purchases';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
+import { errorMessage } from '../src/ui/format';
+import { finiteNumber, first, positiveNumber } from '../src/ui/routeParams';
 import type { CalibrationMethod, MarkConfidence, MarkerSource, Point } from '../src/types';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
-}
-
-function finiteNumber(value: string | string[] | undefined): number | null {
-  const n = Number(first(value));
-  return Number.isFinite(n) ? n : null;
-}
-
-function positiveNumber(value: string | string[] | undefined): number | null {
-  const n = finiteNumber(value);
-  return n !== null && n > 0 ? n : null;
-}
 
 function parsePoint(value: string | string[] | undefined): Point | null {
   const raw = first(value);
@@ -85,10 +73,6 @@ function parseMarkerSource(
   return raw === 'measured' || raw === 'paced-measured-shoe' || raw === 'paced-shoe-size'
     ? raw
     : null;
-}
-
-function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }
 
 /**
@@ -189,7 +173,7 @@ export default function ResultScreen() {
         }),
       };
     } catch (e) {
-      return { error: message(e) };
+      return { error: errorMessage(e) };
     }
   }, [
     fps,
@@ -301,7 +285,7 @@ export default function ResultScreen() {
       setSaveStatus('saved');
     } catch (e) {
       setSaveStatus('error');
-      setSaveError(message(e));
+      setSaveError(errorMessage(e));
     } finally {
       savingRef.current = false;
     }

@@ -1,5 +1,7 @@
 import type { VideoInfo } from '../../modules/frame-extractor/src/FrameExtractorModule';
+import { errorMessage } from '../ui/format';
 import { afterRecordingFailure, SOUND_FALLBACK_NOTICE } from './microphone';
+import { withTimeout } from './timeout';
 
 /** Shorter clips give unreliable fps, so stop is locked until this has passed. */
 export const MIN_RECORDING_MS = 3000;
@@ -72,27 +74,6 @@ export type CaptureFlow = {
 
 export const IDLE: CaptureSnapshot = { status: 'idle', startedAt: null, error: null, notice: null };
 
-function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-/** Rejects if `promise` has not settled in `ms`. The original promise is left to its fate. */
-export function withTimeout<T>(promise: Promise<T>, ms: number, reason: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const id = setTimeout(() => reject(new Error(reason)), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(id);
-        resolve(value);
-      },
-      (e) => {
-        clearTimeout(id);
-        reject(e);
-      }
-    );
-  });
-}
-
 /**
  * One recording at a time, from the shutter to a readable file.
  *
@@ -125,7 +106,7 @@ export function createCaptureFlow(options: CaptureFlowOptions): CaptureFlow {
   const failBeforeStart = (e: unknown) => {
     recorder = null;
     started = false;
-    const outcome = afterRecordingFailure(message(e), {
+    const outcome = afterRecordingFailure(errorMessage(e), {
       withAudio,
       retrying: retryingAfter,
       started: false,
@@ -150,7 +131,7 @@ export function createCaptureFlow(options: CaptureFlowOptions): CaptureFlow {
     recorder = null;
     started = false;
     retryingAfter = null;
-    const outcome = afterRecordingFailure(message(e), { withAudio, retrying: null, started: true });
+    const outcome = afterRecordingFailure(errorMessage(e), { withAudio, retrying: null, started: true });
     // CameraX has usually finalised the file by the time the error arrives, in
     // which case the cancel is refused and only the discard does anything.
     cancel(target);
@@ -180,7 +161,7 @@ export function createCaptureFlow(options: CaptureFlowOptions): CaptureFlow {
     } catch (e) {
       // A clip whose metadata cannot be read cannot be marked either.
       options.discard(path);
-      set({ status: 'idle', startedAt: null, error: `Could not read the video: ${message(e)}` });
+      set({ status: 'idle', startedAt: null, error: `Could not read the video: ${errorMessage(e)}` });
       return;
     }
     if (disposed) {
@@ -255,7 +236,7 @@ export function createCaptureFlow(options: CaptureFlowOptions): CaptureFlow {
       try {
         await target.stopRecording();
       } catch (e) {
-        set({ error: message(e) });
+        set({ error: errorMessage(e) });
       }
     },
     clearError() {

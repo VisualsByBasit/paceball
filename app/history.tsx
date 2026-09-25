@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { frameUri } from '../src/capture/useFrames';
+import { releaseFrameUri } from '../src/capture/useFrames';
 import { deleteSession, getActivePlayer, getTrend, listSessions } from '../src/data';
 import { CALIBRATION_SPECS } from '../src/physics/calibration';
 import { measurementState, type MeasurementState } from '../src/physics/measurementState';
@@ -29,6 +29,7 @@ import {
 import { createDeliveryDelete } from '../src/ui/deleteDelivery';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, speedIn, unitLabel, unitSpoken } from '../src/ui/units';
+import { formatWhen } from '../src/ui/format';
 import type { Session, Trend, TrendPoint } from '../src/types';
 
 type Range = 'week' | 'month' | 'all';
@@ -113,22 +114,6 @@ function readTrend(state: TrendState, states: Map<string, MeasurementState>): Tr
 
 function formatDay(t: number): string {
   return new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-}
-
-function formatWhen(t: number): string {
-  const d = new Date(t);
-  const day = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  return `${day} · ${time}`;
-}
-
-/** The release frame — the one the export card uses, and the one worth recognising. */
-function thumbFor(session: Session): string | null {
-  try {
-    return frameUri(session.framesDir, session.release.frame);
-  } catch {
-    return null;
-  }
 }
 
 export default function HistoryScreen() {
@@ -776,7 +761,7 @@ function SessionRow({
   onDelete: ((id: string) => void) | null;
   select: RowSelect;
 }) {
-  const uri = useMemo(() => thumbFor(session), [session]);
+  const uri = useMemo(() => releaseFrameUri(session), [session]);
   // Travel comes off the same marks as the speed, so it is read out only when
   // the speed is. It stays on the record either way.
   const measured = reading.kind === 'measured';

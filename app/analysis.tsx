@@ -28,6 +28,8 @@ import { useHoldRepeat } from '../src/ui/useHoldRepeat';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
+import { errorMessage } from '../src/ui/format';
+import { first } from '../src/ui/routeParams';
 import type { Point, Session } from '../src/types';
 
 /**
@@ -44,14 +46,6 @@ type Loaded =
   | { status: 'loading' }
   | { status: 'error'; title: string; body: string }
   | { status: 'ready'; session: Session; frames: (string | null)[]; framesProblem: string | null };
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
-}
-
-function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 export default function AnalysisScreen() {
   const router = useRouter();
@@ -82,7 +76,7 @@ export default function AnalysisScreen() {
           setLoaded({
             status: 'error',
             title: 'This delivery could not be read',
-            body: `Its saved record is corrupt: ${message(e)}`,
+            body: `Its saved record is corrupt: ${errorMessage(e)}`,
           });
         }
         return;
@@ -109,7 +103,7 @@ export default function AnalysisScreen() {
           framesProblem = 'None of the frames for this delivery are on the phone.';
         }
       } catch (e) {
-        framesProblem = `Could not read the frames for this delivery: ${message(e)}`;
+        framesProblem = `Could not read the frames for this delivery: ${errorMessage(e)}`;
       }
       setLoaded({ status: 'ready', session, frames, framesProblem });
     })();
@@ -679,7 +673,7 @@ function CleanExport({ sessionId, onLeave }: { sessionId: string; onLeave: () =>
     try {
       await action();
     } catch (e) {
-      setNotice(message(e));
+      setNotice(errorMessage(e));
     } finally {
       setBusy(false);
     }

@@ -27,6 +27,7 @@ import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { useHoldRepeat } from '../src/ui/useHoldRepeat';
+import { first, positiveNumber } from '../src/ui/routeParams';
 import type { CalibrationMethod, MarkConfidence, Player, Point } from '../src/types';
 
 type StepKey = 'calA' | 'calB' | 'release' | 'bounce';
@@ -123,15 +124,6 @@ const NO_POINTS: Points = {
   release: null,
   bounce: null,
 };
-
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
-}
-
-function positiveNumber(value: string | string[] | undefined): number | null {
-  const n = Number(first(value));
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
 
 export default function MarkScreen() {
   const router = useRouter();

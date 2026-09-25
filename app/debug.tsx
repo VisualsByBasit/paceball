@@ -20,6 +20,7 @@ import {
 } from '../src/export/renderSessionVideo';
 import { usePurchases } from '../src/purchases';
 import { colors, radius, space, stroke, type } from '../src/ui/tokens';
+import { errorMessage } from '../src/ui/format';
 import type { Session } from '../src/types';
 
 /**
@@ -48,10 +49,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
 type PathCheck = {
   label: string;
   uri: string;
@@ -70,7 +67,7 @@ function checkFile(label: string, uri: string): PathCheck {
     if (!file.exists) return { label, uri, exists: false, detail: 'missing' };
     return { label, uri, exists: true, detail: formatBytes(file.size) };
   } catch (e) {
-    return { label, uri, exists: false, detail: `error: ${message(e)}` };
+    return { label, uri, exists: false, detail: `error: ${errorMessage(e)}` };
   }
 }
 
@@ -83,7 +80,7 @@ function checkDirectory(label: string, uri: string): PathCheck {
     const bytes = size === null ? 'size unreadable' : formatBytes(size);
     return { label, uri, exists: true, detail: `${bytes} · ${entries} entries` };
   } catch (e) {
-    return { label, uri, exists: false, detail: `error: ${message(e)}` };
+    return { label, uri, exists: false, detail: `error: ${errorMessage(e)}` };
   }
 }
 
@@ -113,7 +110,7 @@ function DebugScreen() {
       .then(setSessions)
       .catch((e: unknown) => {
         setSessions([]);
-        setError(message(e));
+        setError(errorMessage(e));
       });
   }, []);
 
@@ -238,7 +235,7 @@ function VideoExportSpike({ session }: { session: Session }) {
       setResult(done);
       setProgress(100);
     } catch (error) {
-      setExportError(message(error));
+      setExportError(errorMessage(error));
       setProgress(null);
     } finally {
       subscription?.remove();
@@ -260,7 +257,7 @@ function VideoExportSpike({ session }: { session: Session }) {
       }
       await shareAsync(result.outputPath, { mimeType: 'video/mp4', dialogTitle: 'Share delivery video' });
     } catch (error) {
-      setExportError(message(error));
+      setExportError(errorMessage(error));
     }
   }, [result]);
 

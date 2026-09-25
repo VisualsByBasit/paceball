@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Directory, File, Paths } from 'expo-file-system';
 import FrameExtractor from '../../modules/frame-extractor/src/FrameExtractorModule';
 import { MARKING_LONG_EDGE_PX } from '../physics/computeSpeed';
+import { errorMessage } from '../ui/format';
+import { withTimeout } from './timeout';
 
 /**
  * Long-edge cap for extracted frames. Well above the ~1080 px a phone can show,
@@ -42,26 +44,6 @@ export type FramesState = {
   probe: string | null;
 };
 
-function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number, reason: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const id = setTimeout(() => reject(new Error(reason)), ms);
-    promise.then(
-      (v) => {
-        clearTimeout(id);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(id);
-        reject(e);
-      }
-    );
-  });
-}
-
 /** One cache directory per clip, so re-entering the screen reuses what is there. */
 function framesDirFor(videoPath: string): Directory {
   const base = videoPath.split('/').pop() ?? 'clip';
@@ -87,6 +69,18 @@ export function frameFileName(index: number): string {
 /** Where frame `index` of a frames directory lives, whether or not it is there. */
 export function frameUri(dirUri: string, index: number): string {
   return new File(new Directory(dirUri), frameFileName(index)).uri;
+}
+
+/**
+ * The release frame of a saved delivery: the one the share card uses and the
+ * one worth recognising in a list. Null when its path cannot even be built.
+ */
+export function releaseFrameUri(session: { framesDir: string; release: { frame: number } }): string | null {
+  try {
+    return frameUri(session.framesDir, session.release.frame);
+  } catch {
+    return null;
+  }
 }
 
 /** Decoded frames in a directory, by index. Throws if the directory cannot be read. */
@@ -231,7 +225,7 @@ export function useFrames(
         setState((s) => ({
           ...s,
           status: 'error',
-          error: `Could not open a cache directory: ${message(e)}`,
+          error: `Could not open a cache directory: ${errorMessage(e)}`,
         }));
       }
       return;
@@ -277,7 +271,7 @@ export function useFrames(
         setState((s) => ({
           ...s,
           status: 'error',
-          error: `Frame extraction failed: ${message(e)}`,
+          error: `Frame extraction failed: ${errorMessage(e)}`,
           probe: 'extractFrames did not return a usable JPEG',
         }));
         return;
@@ -320,7 +314,7 @@ export function useFrames(
           ...s,
           status: decoded > 0 ? 'ready' : 'error',
           total: decoded > 0 ? decoded : s.total,
-          error: `Stopped after ${decoded} frames: ${message(e)}`,
+          error: `Stopped after ${decoded} frames: ${errorMessage(e)}`,
         }));
         return;
       }

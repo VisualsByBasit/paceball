@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { frameUri } from '../src/capture/useFrames';
+import { releaseFrameUri } from '../src/capture/useFrames';
 import { getComparison, getPlayer, getSession } from '../src/data';
 import { measurementState } from '../src/physics/measurementState';
 import { canCompare, useEntitlements, usePurchases } from '../src/purchases';
@@ -19,6 +19,8 @@ import { orderForCompare } from '../src/ui/compareSelection';
 import { speedVerdict, type SpeedVerdict } from '../src/ui/speedVerdict';
 import { colors, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
+import { errorMessage, formatWhen } from '../src/ui/format';
+import { first } from '../src/ui/routeParams';
 import type { Diff, Session } from '../src/types';
 
 /** One side of the comparison: the record, its reading and who bowled it. */
@@ -34,35 +36,11 @@ type Loaded =
   | { status: 'error'; title: string; body: string }
   | { status: 'ready'; a: Side; b: Side; diffs: Diff[] };
 
-function first(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
-}
-
-function message(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-function formatWhen(t: number): string {
-  const d = new Date(t);
-  const day = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  return `${day} · ${time}`;
-}
-
 /** A signed change with a plain hyphen, and no sign on a change that rounds to nothing. */
 function signed(delta: number, digits: number): string {
   const size = Math.abs(delta).toFixed(digits);
   if (Number(size) === 0) return size;
   return `${delta > 0 ? '+' : '-'}${size}`;
-}
-
-/** The release frame, as History's rows show it. */
-function thumbFor(session: Session): string | null {
-  try {
-    return frameUri(session.framesDir, session.release.frame);
-  } catch {
-    return null;
-  }
 }
 
 async function playerName(id: string): Promise<string> {
@@ -127,7 +105,7 @@ async function loadComparison(idA: string, idB: string): Promise<Loaded> {
     return {
       status: 'error',
       title: 'These deliveries could not be compared',
-      body: message(e),
+      body: errorMessage(e),
     };
   }
 
@@ -196,7 +174,7 @@ function Comparison() {
           setLoaded({
             status: 'error',
             title: 'These deliveries could not be compared',
-            body: message(e),
+            body: errorMessage(e),
           });
         }
       });
@@ -379,7 +357,7 @@ function SideCard({
   angle: number | null;
 }) {
   const { session } = side;
-  const uri = useMemo(() => thumbFor(session), [session]);
+  const uri = useMemo(() => releaseFrameUri(session), [session]);
   const [failed, setFailed] = useState(false);
   // The frame's own shape, read off the record rather than assumed.
   const aspectRatio = session.width / session.height;
