@@ -39,8 +39,9 @@ export default function PrivacyPage() {
         <p>Three services can receive information from the app. Each is named here with when it happens.</p>
         <ul>
           <li>
-            <strong>Google Play</strong>, when you buy or restore a subscription. Google handles
-            the payment under its own terms and privacy policy.
+            <strong>Google Play</strong>, when the app starts, for the plans and their prices and
+            any purchase already on your account, and when you buy or restore a subscription.
+            Google handles the payment under its own terms and privacy policy.
           </li>
           <li>
             <strong>RevenueCat</strong>, which manages subscriptions for the app. The app contacts

@@ -52,3 +52,24 @@ test('the privacy screen names what leaves the phone, where it goes and when', (
     assert.doesNotMatch(read(file), /never leave the phone|nothing leaves/i, file);
   }
 });
+
+test('both policies say Google Play is asked at launch, not only when buying', () => {
+  // RevenueCat's SDK reads the plans' prices and any existing purchase through
+  // Google Play Billing every time a keyed build starts.
+  const privacy = read('app/diagnostics.tsx');
+  assert.match(privacy, /When the app opens, it asks RevenueCat whether this phone has Pro, and Google Play for the plans and their prices\./);
+  const site = read('website/app/privacy/page.tsx');
+  assert.match(site, /<strong>Google Play<\/strong>, when the app starts, for the plans and their prices/);
+  assert.match(site, /and when you buy or restore a subscription\./);
+});
+
+test('the in-app policy names the gallery permission the website lists', () => {
+  const privacy = read('app/diagnostics.tsx');
+  assert.match(privacy, /Saving an image to your gallery may ask for permission to add it; Paceball cannot read your gallery\./);
+  assert.match(read('website/app/privacy/page.tsx'), /<strong>Photos and media<\/strong>/);
+  // Reading the gallery is blocked in the manifest, which is what "cannot" rests on.
+  const blocked = JSON.parse(read('app.json')).expo.android.blockedPermissions;
+  for (const permission of ['READ_EXTERNAL_STORAGE', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO']) {
+    assert.ok(blocked.includes(`android.permission.${permission}`), permission);
+  }
+});

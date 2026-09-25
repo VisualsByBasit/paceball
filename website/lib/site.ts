@@ -17,7 +17,7 @@ export const BETA_URL = "https://play.google.com/apps/testing/com.paceball.app";
 export const CONTACT_EMAIL = "paceballpro@gmail.com";
 
 /** Date shown as "Last updated" on the privacy policy and the terms. */
-export const POLICY_UPDATED = "23 September 2026";
+export const POLICY_UPDATED = "25 September 2026";
 
 export const SITE_NAME = "Paceball";
 export const SITE_DESCRIPTION =

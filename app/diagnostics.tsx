@@ -16,13 +16,13 @@ export default function DiagnosticsScreen() {
   return <ScrollView style={styles.screen} contentContainerStyle={{ padding: space.md, paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.lg }}>
     <Pressable onPress={() => router.back()} accessibilityRole="button" style={styles.button}><Text style={styles.body}>Back</Text></Pressable>
     <Text style={styles.title}>Privacy and crash reports</Text>
-    <Text style={styles.body}>Your videos and measurements stay on this phone. Paceball never uploads your videos or measurements, and there is no account. Android's own backup can copy app data to your backup, and images you save to your gallery or share can remain after uninstalling.</Text>
+    <Text style={styles.body}>Your videos and measurements stay on this phone. Paceball never uploads your videos or measurements, and there is no account. Android's own backup can copy app data to your backup, and images you save to your gallery or share can remain after uninstalling. Saving an image to your gallery may ask for permission to add it; Paceball cannot read your gallery.</Text>
     <Pressable onPress={() => void Linking.openURL(PRIVACY_URL).catch(() => undefined)} accessibilityRole="link" style={[styles.button, styles.link]}><Text style={styles.body}>Read the full privacy policy</Text></Pressable>
     <Text style={styles.title}>Sound</Text>
     <Text style={styles.body}>Recordings include sound if you allow the microphone. Recordings stay on this phone, with or without sound. Shared videos are silent unless you choose to include sound. Speeds are measured from the picture alone, so sound never changes a reading.</Text>
     <Text style={styles.title}>Purchases</Text>
     {purchasesConfigured()
-      ? <Text style={styles.body}>Paceball Pro is sold through Google Play and RevenueCat. When the app opens, it asks RevenueCat whether this phone has Pro and what the plans cost. When you subscribe or restore, your purchase goes through Google Play and RevenueCat. They receive the purchase, an anonymous ID and device details such as the Android and app version. They never receive your videos, names or speeds.</Text>
+      ? <Text style={styles.body}>Paceball Pro is sold through Google Play and RevenueCat. When the app opens, it asks RevenueCat whether this phone has Pro, and Google Play for the plans and their prices. When you subscribe or restore, your purchase goes through Google Play and RevenueCat. They receive the purchase, an anonymous ID and device details such as the Android and app version. They never receive your videos, names or speeds.</Text>
       : <Text style={styles.body}>Purchases are not set up in this build, so nothing is sent to Google Play or RevenueCat.</Text>}
     <Text style={styles.title}>Optional crash reports</Text>
     <Text style={styles.body}>Off unless you turn them on below. Crash reports go to Sentry only if you opt in.</Text>
