@@ -6,7 +6,7 @@ workflows:
     environment:
       groups:
         - expo
-      node: 20
+      node: 24
       java: 17
     scripts:
       - name: Install dependencies
