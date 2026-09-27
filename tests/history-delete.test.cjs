@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
-const { createDeliveryDelete, DELETE_TITLE } = require('../src/ui/deleteDelivery.ts');
+const { createDeliveryDelete, DELETE_CONFIRM, DELETE_KEEP, DELETE_MESSAGE, DELETE_TITLE } = require('../src/ui/deleteDelivery.ts');
 
 // Normalised, because a Windows checkout converts line endings to CRLF.
 const read = (file) =>
@@ -44,7 +44,7 @@ test('confirming deletes the delivery, and the list no longer shows it', async (
   assert.equal(h.dialogs.length, 1);
   assert.equal(h.dialogs[0].title, DELETE_TITLE);
   assert.deepEqual(h.removed, [], 'nothing is deleted before the answer');
-  h.answer('Delete');
+  h.answer(DELETE_CONFIRM);
   await settle();
   assert.deepEqual(h.removed, ['b']);
   assert.equal(h.store.has('b'), false);
@@ -55,9 +55,9 @@ test('confirming deletes the delivery, and the list no longer shows it', async (
 test('cancelling keeps the delivery', async () => {
   const h = setup();
   h.del('b', false);
-  const cancel = h.dialogs[0].buttons.find((b) => b.text === 'Cancel');
+  const cancel = h.dialogs[0].buttons.find((b) => b.text === DELETE_KEEP);
   assert.equal(cancel.style, 'cancel');
-  h.answer('Cancel');
+  h.answer(DELETE_KEEP);
   await settle();
   assert.deepEqual(h.removed, []);
   assert.deepEqual(h.shown(), ['a', 'b', 'c']);
@@ -89,7 +89,7 @@ test('a failed delete is reported and leaves the list alone', async () => {
     onError: (e) => errors.push(e.message),
   });
   del('a', false);
-  ask.find((b) => b.text === 'Delete').onPress();
+  ask.find((b) => b.text === DELETE_CONFIRM).onPress();
   await settle();
   assert.deepEqual(errors, ['disk']);
   assert.deepEqual(shown, ['a', 'b']);

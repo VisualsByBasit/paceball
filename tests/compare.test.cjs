@@ -120,10 +120,10 @@ test('the new copy uses no em dashes', () => {
   // History's new select-mode copy: from the list header through the confirm bar.
   const history = read('app/history.tsx');
   const from = history.indexOf('<View style={styles.listTop}>');
-  const to = history.indexOf('</View>', history.indexOf('style={styles.compareBar'));
+  const to = history.indexOf('</View>', history.indexOf('styles.compareBar,'));
   assert.ok(from !== -1 && to > from, 'select-mode JSX found');
   const selectMode = history.slice(from, to);
-  assert.match(selectMode, /PICK TWO TO COMPARE/);
+  assert.match(selectMode, /Choose two measured deliveries/);
   assert.doesNotMatch(selectMode, /—/);
   // The dimmed-row reasons live in compareSelection.ts, checked above.
 

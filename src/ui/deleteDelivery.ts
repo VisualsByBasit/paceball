@@ -3,9 +3,10 @@ export type AskButton = { text: string; style?: 'cancel' | 'destructive'; onPres
 export type Ask = (title: string, message: string, buttons: AskButton[]) => void;
 
 export const DELETE_TITLE = 'Delete this delivery?';
-export const DELETE_MESSAGE =
-  'Its video and extracted frames will also be deleted. This cannot be undone. ' +
-  'Images already saved to your gallery or shared will remain.';
+export const DELETE_MESSAGE = 'Its video, marks and reading will be removed from this phone.';
+/** The two answers, each naming what it does to the delivery. */
+export const DELETE_KEEP = 'Keep delivery';
+export const DELETE_CONFIRM = 'Delete delivery';
 
 /**
  * Asks before deleting a delivery from a list, and deletes it only on confirm.
@@ -27,9 +28,9 @@ export function createDeliveryDelete({
   return (id: string, selecting: boolean): boolean => {
     if (selecting || busy) return false;
     ask(DELETE_TITLE, DELETE_MESSAGE, [
-      { text: 'Cancel', style: 'cancel' },
+      { text: DELETE_KEEP, style: 'cancel' },
       {
-        text: 'Delete',
+        text: DELETE_CONFIRM,
         style: 'destructive',
         onPress: () => {
           if (busy) return;

@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   BackHandler,
-  FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
   type GestureResponderEvent,
 } from 'react-native';
+import Animated, { FadeOut, LinearTransition } from 'react-native-reanimated';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { releaseFrameUri } from '../src/capture/useFrames';
@@ -27,7 +25,13 @@ import {
   type Selectability,
 } from '../src/ui/compareSelection';
 import { createDeliveryDelete } from '../src/ui/deleteDelivery';
-import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+import { AppBar } from '../src/ui/AppBar';
+import { DeliveryRow } from '../src/ui/DeliveryRow';
+import { EmptyState } from '../src/ui/EmptyState';
+import { TabBar } from '../src/ui/TabBar';
+import { compareFooterLabel, groupByDay } from '../src/ui/deliveries';
+import { readingView } from '../src/ui/reading';
+import { colors, motion, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, speedIn, unitLabel, unitSpoken } from '../src/ui/units';
 import { formatWhen } from '../src/ui/format';
 import type { Session, Trend, TrendPoint } from '../src/types';
@@ -46,13 +50,11 @@ const DOT = 8;
 /** Clean steps for the y-axis in the display unit, smallest first. */
 const TICK_STEPS = [2, 5, 10, 20, 50];
 const MAX_TICKS = 5;
-const THUMB_WIDTH = 72;
-const THUMB_HEIGHT = 48;
 
 type Loaded =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; playerId: string | null; sessions: Session[] };
+  | { status: 'ready'; playerId: string | null; bowler: string | null; sessions: Session[] };
 
 type TrendState =
   | { status: 'loading' }
@@ -139,9 +141,10 @@ export default function HistoryScreen() {
     (async () => {
       try {
         // The active player's deliveries, not whichever profile is first on file.
-        const playerId = (await getActivePlayer())?.id ?? null;
+        const player = await getActivePlayer();
+        const playerId = player?.id ?? null;
         const sessions = playerId === null ? [] : await listSessions({ playerId });
-        if (alive) setLoaded({ status: 'ready', playerId, sessions });
+        if (alive) setLoaded({ status: 'ready', playerId, bowler: player?.name ?? null, sessions });
       } catch (e) {
         console.error('[History] reading saved deliveries failed', e);
         if (alive) setLoaded({ status: 'error', message: describe(e) });
@@ -287,36 +290,63 @@ export default function HistoryScreen() {
     return () => subscription.remove();
   }, [selecting, isFocused, cancelCompare]);
 
+  // Compare sits at the top while there is anything to compare; the tab bar
+  // takes the place of Back, which the hardware button still does.
   const header = (
-    <View style={styles.header}>
-      <Pressable
-        onPress={() => (selecting ? cancelCompare() : router.back())}
-        hitSlop={space.md}
-        accessibilityRole="button"
-      >
-        <Text style={styles.headerAction}>Back</Text>
-      </Pressable>
-      <Text style={styles.headerTitle}>HISTORY</Text>
-      <Text style={styles.headerCount}>
+    <AppBar
+      title="History"
+      onBack={null}
+      right={
+        !selecting && measuredCount >= COMPARE_COUNT ? (
+          <Pressable
+            style={styles.compareButton}
+            onPress={startCompare}
+            accessibilityRole="button"
+            accessibilityLabel="Compare two deliveries"
+          >
+            <Text style={styles.compareButtonText}>Compare</Text>
+          </Pressable>
+        ) : null
+      }
+    />
+  );
+
+  const bowler = loaded.status === 'ready' ? loaded.bowler : null;
+  const playerRow = bowler ? (
+    <View style={styles.player}>
+      <View style={styles.avatar}>
+        <Text style={styles.avatarText}>{bowler.trim().charAt(0).toUpperCase()}</Text>
+      </View>
+      <Text style={styles.playerName} numberOfLines={1}>
+        {bowler}
+      </Text>
+      <Text style={styles.playerCount}>
         {sessions && sessions.length > 0 ? `${sessions.length} saved` : ''}
       </Text>
     </View>
-  );
+  ) : null;
 
   if (loaded.status === 'loading') {
     return (
-      <View style={[styles.screen, styles.padded, { paddingTop: insets.top + space.md }]}>
-        {header}
-        <ActivityIndicator color={colors.muted} style={styles.loading} />
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
+        <View style={styles.bar}>{header}</View>
+        <View style={styles.padded}>
+          <Text style={styles.loadingText}>Loading deliveries…</Text>
+          <View style={styles.placeholder} />
+          <View style={styles.placeholder} />
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.fill} />
+        <TabBar current="history" />
       </View>
     );
   }
 
   if (loaded.status === 'error') {
     return (
-      <View style={[styles.screen, styles.padded, { paddingTop: insets.top + space.md }]}>
-        {header}
-        <View style={styles.center}>
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
+        <View style={styles.bar}>{header}</View>
+        <View style={[styles.padded, styles.center]}>
           <Text style={styles.centerTitle}>Could not read saved deliveries</Text>
           <Text style={styles.errorDetail} selectable>
             {loaded.message}
@@ -329,153 +359,137 @@ export default function HistoryScreen() {
             <Text style={styles.primaryButtonText}>Try again</Text>
           </Pressable>
         </View>
+        <TabBar current="history" />
       </View>
     );
   }
 
   if (loaded.sessions.length === 0) {
     return (
-      <View
-        style={[
-          styles.screen,
-          styles.padded,
-          { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.lg },
-        ]}
-      >
-        {header}
-        <View style={styles.center}>
-          <Text style={styles.centerTitle}>No deliveries yet</Text>
-          <Text style={styles.centerBody}>
-            Save a reading on the result screen and it lands here: its speed, its error range,
-            and the frame the ball left the hand.
-          </Text>
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
+        <View style={styles.bar}>{header}</View>
+        <View style={[styles.padded, styles.center]}>
+          <EmptyState
+            title="No deliveries yet"
+            body="Save a reading on the result screen and it lands here: its speed, its error range, and the frame the ball left the hand."
+            action={{
+              label: 'Record a delivery',
+              onPress: () => router.push(playerId ? '/capture' : '/setup/player'),
+            }}
+          />
         </View>
-        <Pressable
-          style={styles.primaryButton}
-          onPress={() => router.push(playerId ? '/capture' : '/setup/player')}
-          accessibilityRole="button"
-          accessibilityLabel="Record a delivery"
-        >
-          <Text style={styles.primaryButtonText}>Record a delivery</Text>
-        </Pressable>
+        <TabBar current="history" />
       </View>
     );
   }
 
   const bestId = best?.id ?? null;
+  const rows = groupByDay(loaded.sessions, Date.now(), (t) =>
+    new Date(t).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
+  );
 
   return (
-    <View style={styles.screen}>
-    <FlatList
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.padded,
-        {
-          paddingTop: insets.top + space.md,
-          // Room for the confirm bar, so the last row can scroll clear of it.
-          paddingBottom: insets.bottom + (selecting ? space.xxl + space.xxl : space.lg),
-        },
-      ]}
-      data={loaded.sessions}
-      extraData={{ selecting, picked }}
-      keyExtractor={(s) => s.id}
-      ListHeaderComponent={
-        <>
-          {header}
-          <BestBlock state={allTimeRead} best={best} session={bestSession} unit={unit} onOpen={open} />
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <View style={styles.bar}>{header}</View>
+      <Animated.FlatList
+        style={styles.fill}
+        contentContainerStyle={[styles.padded, styles.listContent]}
+        data={rows}
+        extraData={{ selecting, picked }}
+        keyExtractor={(row) => row.key}
+        // Rows below a deleted one close the gap rather than jump.
+        itemLayoutAnimation={LinearTransition.duration(motion.collapse)}
+        ListHeaderComponent={
+          <>
+            {playerRow}
 
-          <View style={styles.ranges}>
-            {RANGES.map((r) => {
-              const on = r.key === range;
-              return (
-                <Pressable
-                  key={r.key}
-                  onPress={() => setRange(r.key)}
-                  // Downwards only: the personal best above is a button too.
-                  hitSlop={{ top: space.xs, bottom: space.md }}
-                  style={[styles.range, on && styles.rangeOn]}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: on }}
-                >
-                  <Text style={[styles.rangeText, on && styles.rangeTextOn]}>{r.label}</Text>
+            <View style={styles.ranges}>
+              {RANGES.map((r) => {
+                const on = r.key === range;
+                return (
+                  <Pressable
+                    key={r.key}
+                    onPress={() => setRange(r.key)}
+                    // Downwards only: the player row above is not a target.
+                    hitSlop={{ top: space.xs, bottom: space.md }}
+                    style={[styles.range, on && styles.rangeOn]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: on }}
+                  >
+                    <Text style={[styles.rangeText, on && styles.rangeTextOn]}>{r.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <TrendCard
+              key={range}
+              range={range}
+              state={chart}
+              empty={RANGES.find((r) => r.key === range)!.empty}
+              unit={unit}
+              onOpen={open}
+            />
+
+            <View style={styles.listTop}>
+              <Text style={styles.listTopLabel}>
+                {selecting ? 'Choose two measured deliveries' : 'Deliveries'}
+              </Text>
+              {selecting ? (
+                <Pressable style={styles.cancel} onPress={cancelCompare} accessibilityRole="button">
+                  <Text style={styles.listAction}>Cancel</Text>
                 </Pressable>
-              );
-            })}
-          </View>
-
-          <TrendCard
-            key={range}
-            range={range}
-            state={chart}
-            empty={RANGES.find((r) => r.key === range)!.empty}
-            unit={unit}
-            onOpen={open}
-          />
-
-          <View style={styles.listTop}>
-            <Text style={styles.listTopLabel}>
-              {selecting ? 'PICK TWO TO COMPARE' : 'EVERY DELIVERY'}
-            </Text>
-            {selecting ? (
-              <Pressable onPress={cancelCompare} hitSlop={space.sm} accessibilityRole="button">
-                <Text style={styles.listAction}>Cancel</Text>
-              </Pressable>
-            ) : measuredCount >= COMPARE_COUNT ? (
-              <Pressable
-                style={styles.compareButton}
-                onPress={startCompare}
-                hitSlop={space.md}
-                accessibilityRole="button"
-                accessibilityLabel="Compare two deliveries"
-              >
-                <Text style={styles.compareButtonText}>Compare</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {selecting ? null : (
-            <Text style={styles.listHint}>Press and hold a delivery to delete it.</Text>
-          )}
-        </>
-      }
-      renderItem={({ item }) => {
-        const reading = states.get(item.id) ?? measurementState(item);
-        return (
-          <SessionRow
-            session={item}
-            reading={reading}
-            isBest={item.id === bestId}
-            unit={unit}
-            onOpen={open}
-            onDelete={selecting ? null : (id) => deleteDelivery(id, selecting)}
-            select={
-              selecting
-                ? {
-                    picked: picked.includes(item.id),
-                    selectability: compareSelectability(reading),
-                    onToggle: () => setPicked((current) => togglePick(current, item.id)),
-                  }
-                : null
-            }
-          />
-        );
-      }}
-    />
-    {selecting ? (
-      <View style={[styles.compareBar, { paddingBottom: insets.bottom + space.md }]}>
-        <Text style={styles.compareBarCount}>
-          {picked.length} of {COMPARE_COUNT} picked
-        </Text>
-        <Pressable
-          style={[styles.compareConfirm, picked.length !== COMPARE_COUNT && styles.off]}
-          disabled={picked.length !== COMPARE_COUNT}
-          onPress={confirmCompare}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: picked.length !== COMPARE_COUNT }}
-        >
-          <Text style={styles.primaryButtonText}>Compare</Text>
-        </Pressable>
-      </View>
-    ) : null}
+              ) : null}
+            </View>
+            {selecting ? null : (
+              <Text style={styles.listHint}>Press and hold a delivery to delete it.</Text>
+            )}
+          </>
+        }
+        renderItem={({ item: row }) => {
+          if (row.kind === 'day') {
+            return <Text style={styles.day}>{row.heading}</Text>;
+          }
+          const item = row.item;
+          const reading = states.get(item.id) ?? measurementState(item);
+          return (
+            <Animated.View exiting={FadeOut.duration(motion.collapse)}>
+              <SessionRow
+                session={item}
+                reading={reading}
+                isBest={item.id === bestId}
+                unit={unit}
+                onOpen={open}
+                onDelete={selecting ? null : (id) => deleteDelivery(id, selecting)}
+                select={
+                  selecting
+                    ? {
+                        picked: picked.includes(item.id),
+                        selectability: compareSelectability(reading),
+                        onToggle: () => setPicked((current) => togglePick(current, item.id)),
+                      }
+                    : null
+                }
+              />
+            </Animated.View>
+          );
+        }}
+      />
+      {selecting ? (
+        <View style={[styles.compareBar, { paddingBottom: insets.bottom + space.md }]}>
+          <Pressable
+            style={[styles.compareConfirm, picked.length !== COMPARE_COUNT && styles.off]}
+            disabled={picked.length !== COMPARE_COUNT}
+            onPress={confirmCompare}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: picked.length !== COMPARE_COUNT }}
+          >
+            <Text style={styles.primaryButtonText}>{compareFooterLabel(picked.length)}</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <TabBar current="history" />
+      )}
     </View>
   );
 }
@@ -491,73 +505,6 @@ function TrendFailure({ range, state }: { range: Range; state: TrendState }) {
         {state.message}
       </Text>
     </View>
-  );
-}
-
-function BestBlock({
-  state,
-  best,
-  session,
-  unit,
-  onOpen,
-}: {
-  state: TrendState;
-  best: TrendPoint | null;
-  session: Session | null;
-  unit: SpeedUnit;
-  onOpen: (id: string) => void;
-}) {
-  if (state.status === 'threw') {
-    return (
-      <View style={styles.best}>
-        <Text style={styles.bestLabel}>PERSONAL BEST</Text>
-        <TrendFailure range="all" state={state} />
-      </View>
-    );
-  }
-  if (state.status === 'loading') {
-    return (
-      <View style={styles.best}>
-        <ActivityIndicator color={colors.muted} />
-      </View>
-    );
-  }
-  // The trend is in and holds no best. Saying so is the honest reading; a
-  // personal best of 0.0 km/h would not be.
-  if (best === null) {
-    return (
-      <View style={styles.best}>
-        <Text style={styles.bestLabel}>PERSONAL BEST</Text>
-        <Text style={styles.bestEmpty}>
-          Nothing measured yet. The fastest saved delivery shows here.
-        </Text>
-      </View>
-    );
-  }
-  return (
-    <Pressable
-      style={styles.best}
-      onPress={() => onOpen(best.id)}
-      accessibilityRole="button"
-      accessibilityLabel={`Personal best, average speed to bounce ${formatSpeed(best.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(best.errorKmh, unit)}. Open it.`}
-    >
-      <Text style={styles.bestLabel}>PERSONAL BEST · AVG SPEED TO BOUNCE</Text>
-      <Text
-        style={styles.bestNumber}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        allowFontScaling={false}
-      >
-        {formatSpeed(best.speedKmh, unit)}
-      </Text>
-      <Text style={styles.bestError}>
-        ± {errorIn(best.errorKmh, unit)} {unitLabel(unit)}
-      </Text>
-      <Text style={styles.bestMeta}>
-        {formatWhen(best.t)}
-        {session === null ? '' : ` · ${session.travelMetres.toFixed(2)} m travelled`}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -580,7 +527,7 @@ function TrendCard({
   if (state.status === 'threw') {
     body = <TrendFailure range={range} state={state} />;
   } else if (state.status === 'loading') {
-    body = <ActivityIndicator color={colors.muted} style={styles.chartLoading} />;
+    body = <Text style={[styles.chartEmpty, styles.chartLoading]}>Loading the trend…</Text>;
   } else if (state.trend.points.length === 0) {
     body = <Text style={styles.chartEmpty}>{empty}</Text>;
   } else {
@@ -764,6 +711,7 @@ function SessionRow({
   select: RowSelect;
 }) {
   const uri = useMemo(() => releaseFrameUri(session), [session]);
+  const view = readingView(reading, unit);
   // Travel comes off the same marks as the speed, so it is read out only when
   // the speed is. It stays on the record either way.
   const measured = reading.kind === 'measured';
@@ -772,7 +720,7 @@ function SessionRow({
   const blocked = select !== null && !select.selectability.selectable;
   return (
     <Pressable
-      style={[styles.row, select?.picked && styles.rowPicked, blocked && styles.off]}
+      style={[styles.rowPress, blocked && styles.off]}
       onPress={select ? select.onToggle : () => onOpen(session.id)}
       onLongPress={onDelete ? () => onDelete(session.id) : undefined}
       disabled={blocked}
@@ -784,87 +732,45 @@ function SessionRow({
       accessibilityRole={select ? 'checkbox' : 'button'}
       accessibilityState={select ? { checked: select.picked, disabled: blocked } : undefined}
       accessibilityLabel={
-        reading.kind === 'measured'
-          ? `${formatWhen(session.createdAt)}, ${formatSpeed(reading.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(reading.errorKmh, unit)}${isBest ? ', personal best' : ''}`
+        view.kind === 'measured'
+          ? `${formatWhen(session.createdAt)}. ${view.spoken}${isBest ? ' Personal best.' : ''}`
           : reading.kind === 'not-seen'
             ? `${formatWhen(session.createdAt)}, no speed, the bounce was not seen`
             : `${formatWhen(session.createdAt)}, no speed, it can't be measured from what was saved`
       }
     >
-      <Thumb uri={uri} />
-      <View style={styles.rowBody}>
-        <View style={styles.rowTop}>
-          {reading.kind === 'measured' ? (
-            <>
-              <Text style={styles.rowSpeed}>{formatSpeed(reading.speedKmh, unit)}</Text>
-              <Text style={styles.rowError}>
-                {' '}
-                ± {errorIn(reading.errorKmh, unit)} {unitLabel(unit)}
-              </Text>
-            </>
-          ) : reading.kind === 'not-seen' ? (
-            <Text style={styles.rowNoSpeed}>No speed · bounce not seen</Text>
-          ) : (
-            <Text style={styles.rowNoSpeed} numberOfLines={1}>
-              No speed · can't be measured from what was saved
-            </Text>
-          )}
-          {isBest ? <Text style={styles.rowBest}>PB</Text> : null}
-        </View>
-        <Text style={styles.rowMeta} numberOfLines={1}>
-          {formatWhen(session.createdAt)}
-          {measured ? ` · ${session.travelMetres.toFixed(2)} m` : ''} ·{' '}
-          {CALIBRATION_SPECS[session.calibrationMethod].short}
-        </Text>
-        {select && !select.selectability.selectable ? (
-          <Text style={styles.rowReason}>{select.selectability.reason}</Text>
-        ) : null}
-      </View>
-      {select && select.selectability.selectable ? (
-        <View style={[styles.pick, select.picked && styles.pickOn]} />
-      ) : null}
+      <DeliveryRow
+        thumb={uri}
+        reading={view}
+        when={formatWhen(session.createdAt)}
+        detail={`${measured ? `${session.travelMetres.toFixed(2)} m · ` : ''}${CALIBRATION_SPECS[session.calibrationMethod].short}`}
+        best={isBest}
+        state={select?.picked ? 'selected' : blocked ? 'blocked' : 'normal'}
+        reason={select && !select.selectability.selectable ? select.selectability.reason : null}
+        pick={select && select.selectability.selectable ? { picked: select.picked } : null}
+      />
     </Pressable>
-  );
-}
-
-function Thumb({ uri }: { uri: string | null }) {
-  const [failed, setFailed] = useState(false);
-  return (
-    <View style={styles.thumb}>
-      {uri && !failed ? (
-        <Image
-          source={{ uri }}
-          style={styles.thumbImage}
-          resizeMode="cover"
-          // Downsamples during decode — a list of full-size frames would not fit in memory.
-          resizeMethod="resize"
-          fadeDuration={0}
-          onError={() => setFailed(true)}
-        />
-      ) : null}
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  fill: { flex: 1 },
+  bar: { paddingHorizontal: space.md },
   padded: { paddingHorizontal: space.lg },
+  listContent: { paddingBottom: space.lg },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.md,
+  loadingText: { ...type.body, color: colors.muted, marginTop: space.md },
+  placeholder: {
+    minHeight: size.row,
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    marginTop: space.sm,
   },
-  headerAction: { ...type.caption, color: colors.muted },
-  headerTitle: { ...type.label, color: colors.muted },
-  headerCount: { ...type.caption, ...type.tabular, color: colors.muted },
-
-  loading: { marginTop: space.xl },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   centerTitle: { ...type.h2, color: colors.text, marginBottom: space.sm, textAlign: 'center' },
-  centerBody: { ...type.body, color: colors.muted, textAlign: 'center' },
   errorDetail: {
     ...type.caption,
     ...type.mono,
@@ -873,18 +779,25 @@ const styles = StyleSheet.create({
     marginBottom: space.lg,
   },
 
-  best: { alignItems: 'center', paddingVertical: space.lg },
-  bestLabel: { ...type.label, color: colors.muted, marginBottom: space.sm },
-  bestNumber: { ...type.hero, ...type.mono, color: colors.accent },
-  bestError: { ...type.h2, ...type.mono, color: colors.text, marginTop: space.xs },
-  bestMeta: { ...type.caption, color: colors.muted, marginTop: space.sm },
-  bestEmpty: { ...type.body, color: colors.muted, textAlign: 'center' },
+  player: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.md },
+  avatar: {
+    width: size.target,
+    height: size.target,
+    borderRadius: radius.pill,
+    borderWidth: stroke.medium,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { ...type.button, color: colors.text },
+  playerName: { ...type.body, color: colors.text, fontWeight: '700', flex: 1 },
+  playerCount: { ...type.caption, ...type.tabular, color: colors.muted },
 
   ranges: { flexDirection: 'row', marginBottom: space.sm },
   range: {
     borderRadius: radius.pill,
     borderWidth: stroke.hairline,
-    borderColor: colors.line,
+    borderColor: colors.control,
     paddingHorizontal: space.md,
     paddingVertical: space.xs,
     marginRight: space.sm,
@@ -902,7 +815,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: { ...type.label, color: colors.text },
   cardNote: { ...type.caption, color: colors.muted, marginTop: space.xs, marginBottom: space.md },
-  chartLoading: { height: PLOT_HEIGHT },
+  chartLoading: { minHeight: PLOT_HEIGHT },
   chartEmpty: { ...type.body, color: colors.muted, paddingVertical: space.xl, textAlign: 'center' },
 
   failure: {
@@ -924,22 +837,22 @@ const styles = StyleSheet.create({
   plot: { height: PLOT_HEIGHT + space.lg },
   grid: {
     position: 'absolute',
-    right: 0,
+    right: stroke.hairline - stroke.hairline,
     height: stroke.hairline,
-    backgroundColor: colors.line,
+    backgroundColor: colors.control,
   },
   yTick: {
     ...type.caption,
     ...type.tabular,
     position: 'absolute',
-    left: 0,
+    left: stroke.hairline - stroke.hairline,
     width: Y_AXIS_WIDTH - space.sm,
     textAlign: 'right',
     color: colors.muted,
   },
   crosshair: {
     position: 'absolute',
-    top: 0,
+    top: stroke.hairline - stroke.hairline,
     height: PLOT_HEIGHT,
     width: stroke.hairline,
     backgroundColor: colors.muted,
@@ -962,10 +875,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   dotOn: { borderColor: colors.text },
-  hit: { position: 'absolute', top: 0, height: PLOT_HEIGHT },
+  hit: { position: 'absolute', top: stroke.hairline - stroke.hairline, height: PLOT_HEIGHT },
   xAxis: {
     position: 'absolute',
-    right: 0,
+    right: stroke.hairline - stroke.hairline,
     top: PLOT_HEIGHT + space.xs,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -976,82 +889,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: space.xl,
-    marginBottom: space.sm,
+    minHeight: size.target,
+    marginTop: space.lg,
   },
-  listTopLabel: { ...type.label, color: colors.muted },
-  listAction: { ...type.caption, color: colors.muted },
+  listTopLabel: { ...type.h2, color: colors.text },
+  cancel: { minHeight: size.target, justifyContent: 'center', paddingLeft: space.md },
+  listAction: { ...type.body, color: colors.text },
   listHint: { ...type.caption, color: colors.muted, marginBottom: space.sm },
+  day: { ...type.label, color: colors.muted, marginTop: space.md, marginBottom: space.xs },
+
   compareButton: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingHorizontal: space.md,
+    minHeight: size.target,
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
   },
-  compareButtonText: { ...type.caption, color: colors.text },
+  compareButtonText: { ...type.body, color: colors.text, textDecorationLine: 'underline' },
   compareBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: space.lg,
     paddingTop: space.md,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.bg,
     borderTopWidth: stroke.hairline,
     borderColor: colors.line,
   },
-  compareBarCount: { ...type.body, ...type.tabular, color: colors.text },
   compareConfirm: {
+    minHeight: size.button,
+    borderRadius: radius.md,
     backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   off: { opacity: opacity.disabled },
-  rowPicked: { backgroundColor: colors.surface },
-  rowReason: { ...type.caption, color: colors.warn, marginTop: space.xs },
-  pick: {
-    width: space.md,
-    height: space.md,
-    borderRadius: radius.pill,
-    borderWidth: stroke.medium,
-    borderColor: colors.muted,
-    marginLeft: space.md,
-  },
-  pickOn: { borderColor: colors.text, backgroundColor: colors.text },
 
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: space.sm,
-    borderBottomWidth: stroke.hairline,
-    borderColor: colors.line,
-  },
-  thumb: {
-    width: THUMB_WIDTH,
-    height: THUMB_HEIGHT,
-    borderRadius: radius.sm,
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
-  },
-  thumbImage: { width: '100%', height: '100%' },
-  rowBody: { flex: 1, marginLeft: space.md },
-  rowTop: { flexDirection: 'row', alignItems: 'baseline' },
-  rowSpeed: { ...type.h2, ...type.mono, color: colors.text },
-  rowError: { ...type.caption, ...type.mono, color: colors.muted },
-  rowNoSpeed: { ...type.body, color: colors.warn },
-  rowBest: { ...type.label, color: colors.accent, marginLeft: 'auto' },
-  rowMeta: { ...type.caption, color: colors.muted, marginTop: space.xs },
+  rowPress: {},
 
   primaryButton: {
     alignSelf: 'stretch',
+    minHeight: size.button,
     backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
+    borderRadius: radius.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
+  primaryButtonText: { ...type.button, color: colors.bg },
 });

@@ -51,7 +51,7 @@ test('the tab bar is on Home, History and Settings, and nowhere else', () => {
     }
   };
   walk('app');
-  assert.deepEqual(on.sort(), ['app/index.tsx', 'app/settings.tsx']);
+  assert.deepEqual(on.sort(), ['app/history.tsx', 'app/index.tsx', 'app/settings.tsx']);
   assert.match(read(HOME), /<TabBar current="home" \/>/);
   assert.match(read('app/settings.tsx'), /<TabBar current="settings" \/>/);
 });
