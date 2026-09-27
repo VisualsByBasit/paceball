@@ -455,7 +455,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.xs,
   },
   trialBadgeText: { ...type.body, color: colors.bg, fontWeight: '900' },
-  // Readable and plain, never the hero: body is the 15 pt floor for any price.
+  // Readable and plain, never the hero: body is the 16 pt floor for any price.
   planPrice: { ...type.body, color: colors.text, marginTop: space.xs },
 
   cta: {
