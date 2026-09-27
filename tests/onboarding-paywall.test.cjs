@@ -61,7 +61,7 @@ test('skipping the onboarding paywall leaves the user free and moves on to the c
   assert.doesNotMatch(leave, /purchase|restore|updateSettings/);
   // And it is plainly there, not small print.
   assert.match(paywall, /context === 'onboarding' && styles\.dismissOutlined/);
-  assert.match(paywall, /dismiss: 'Start with the free plan'/);
+  assert.match(paywall, /dismiss: `Continue with \$\{FREE_ANALYSES_PER_PERIOD\} analyses a week`/);
 });
 
 test('the onboarding copy leads with what Pro gives, not a limit', () => {
@@ -70,7 +70,9 @@ test('the onboarding copy leads with what Pro gives, not a limit', () => {
   assert.match(paywall, /raw === 'onboarding'/);
   const start = paywall.indexOf('  onboarding: {');
   const copy = paywall.slice(start, paywall.indexOf('},', start));
-  assert.doesNotMatch(copy, /limit|allowance|left this week|run out|\d+ free/i);
+  // "Without limits" is what Pro gives. What the copy must never do is warn
+  // about a limit the user has not met.
+  assert.doesNotMatch(copy, /limit (reached|hit)|your limit|allowance|left this week|run out|\d+ free/i);
   assert.doesNotMatch(copy, /—/);
   assert.doesNotMatch(copy, /Upgrade to Pro|Not now|Continue free/);
 });

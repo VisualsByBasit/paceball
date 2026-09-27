@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  allowanceLine,
+  FREE_ANALYSES_PER_PERIOD,
   plansIn,
   selectedPlan,
   trialDays,
@@ -21,74 +15,68 @@ import {
   type RestoreOutcome,
 } from '../src/purchases';
 import { PRIVACY_URL, TERMS_URL } from '../src/purchases/links';
-import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+import { AppBar } from '../src/ui/AppBar';
+import { Notice, type NoticeTone } from '../src/ui/Notice';
+import { ctaFor, planTerms, renewalLine } from '../src/ui/paywallCopy';
+import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 
 /** What sent the user here. Same layout; the headline speaks to what they just tried. */
 type PaywallContext = 'export' | 'limit' | 'compare' | 'pro' | 'onboarding';
 
 type Copy = {
-  /** The value, not the product. */
-  headline: string;
-  values: string[];
+  /**
+   * The value, not the product. Given the annual plan's free days when the
+   * store reports a trial, and null otherwise, when it never mentions one.
+   */
+  headline: (trial: number | null) => string;
   /** Names what is given up by leaving. */
   dismiss: string;
 };
 
 const COPY: Record<PaywallContext, Copy> = {
   export: {
-    headline: 'Export without the watermark',
-    values: [
-      'Share cards carry your reading and nothing else',
-      'Unlimited analyses',
-      'Cancel any time in Google Play',
-    ],
+    headline: (trial) =>
+      trial === null ? 'Share without the watermark.' : `Share without the watermark. ${trial} days free.`,
     dismiss: 'Continue with the watermark',
   },
   limit: {
-    headline: 'Unlimited analyses',
-    values: [
-      'Analyse every delivery you record',
-      'Export without the watermark',
-      'Cancel any time in Google Play',
-    ],
-    dismiss: 'Continue without unlimited analyses',
+    headline: (trial) =>
+      trial === null ? 'Keep bowling with Pro' : `Keep bowling with ${trial} days free`,
+    dismiss: `Wait for my next ${FREE_ANALYSES_PER_PERIOD} analyses`,
   },
   compare: {
-    headline: 'Compare any two deliveries',
-    values: [
-      'Side by side, each with its own error range',
-      'Only called faster when the ranges say so',
-      'Cancel any time in Google Play',
-    ],
-    dismiss: 'Continue without comparing',
+    headline: (trial) =>
+      trial === null ? 'Compare your deliveries.' : `Compare your deliveries. ${trial} days free.`,
+    dismiss: 'Continue without comparison',
   },
   // Opened from Settings rather than by being blocked, so it leads with the lot.
   pro: {
-    headline: 'Measure as much as you like',
-    values: [
-      'Unlimited analyses, every week',
-      'Export without the watermark',
-      'Compare any two deliveries',
-    ],
+    headline: (trial) =>
+      trial === null ? 'Measure as much as you like.' : `Measure as much as you like. ${trial} days free.`,
     dismiss: 'Stay on the free plan',
   },
-  // Offered once, at the end of setup, before a limit has ever been reached. It
-  // leads with what Pro adds and says nothing about the free allowance.
+  // Offered once, at the end of setup, before anything has been refused. It
+  // leads with what Pro adds.
   onboarding: {
-    headline: 'Get more from every session',
-    values: [
-      'Analyse every delivery you record',
-      'Export without the watermark',
-      'Compare any two deliveries side by side',
-    ],
-    dismiss: 'Start with the free plan',
+    headline: (trial) =>
+      trial === null
+        ? 'Every delivery, without limits.'
+        : `${trial} days free. Every delivery, without limits.`,
+    dismiss: `Continue with ${FREE_ANALYSES_PER_PERIOD} analyses a week`,
   },
 };
+
+/** What Pro adds, and only what this build ships. */
+const VALUES = [
+  'Unlimited analyses',
+  'Watermark-free exports',
+  'Higher recording quality',
+  'Compare deliveries',
+];
 
 const PLAN_ORDER: PlanPeriod[] = ['annual', 'monthly'];
 
 const PLAN_NAME: Record<PlanPeriod, string> = { annual: 'Annual', monthly: 'Monthly' };
-const PLAN_PER: Record<PlanPeriod, string> = { annual: 'a year', monthly: 'a month' };
 
 function parseContext(value: string | string[] | undefined): PaywallContext {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -97,36 +85,50 @@ function parseContext(value: string | string[] | undefined): PaywallContext {
     : 'export';
 }
 
+type Said = { tone: NoticeTone; title?: string; text: string };
+
 type RestoreState = { status: 'idle' } | { status: 'restoring' } | RestoreOutcome;
 
-function restoreNote(state: RestoreState): string | null {
+function restoreNote(state: RestoreState): Said | null {
   switch (state.status) {
     case 'restored':
-      return 'Paceball Pro is active on this phone.';
+      return { tone: 'success', title: 'Pro restored', text: 'Paceball Pro is active on this phone.' };
     case 'nothing':
-      return 'Google Play found no Paceball purchase on this account.';
+      return { tone: 'info', text: 'Google Play found no Paceball purchase on this account.' };
     case 'unavailable':
-      return 'Purchases are not set up in this build, so there is nothing to restore from.';
+      return {
+        tone: 'error',
+        text: 'Purchases are not set up in this build, so there is nothing to restore from.',
+      };
     case 'failed':
-      return `Could not restore: ${state.message}`;
+      return { tone: 'error', text: `Could not restore: ${state.message}` };
     default:
       return null;
   }
 }
 
-/** What the store said about the purchase. Never a success it did not report. */
-function purchaseNote(outcome: PurchaseOutcome): string | null {
+/**
+ * What the store said about the purchase. Never a success it did not report,
+ * and nothing at all for a purchase the user backed out of: that is a choice,
+ * not something to apologise for.
+ */
+function purchaseNote(outcome: PurchaseOutcome): Said | null {
   switch (outcome.status) {
     case 'purchased':
+    case 'cancelled':
       return null;
     case 'not-active':
-      return 'Google Play took the purchase but has not granted Pro yet. If payment is still pending, it will arrive once the payment clears.';
-    case 'cancelled':
-      return 'Purchase cancelled. Nothing has been charged.';
+      return {
+        tone: 'info',
+        text: 'Google Play took the purchase but has not granted Pro yet. If payment is still pending, it will arrive once the payment clears.',
+      };
     case 'unavailable':
-      return 'Purchases are not set up in this build, so nothing can be bought here. Nothing has been charged.';
+      return {
+        tone: 'error',
+        text: 'Purchases are not set up in this build, so nothing can be bought here. Nothing has been charged.',
+      };
     case 'failed':
-      return `Could not complete the purchase: ${outcome.message}`;
+      return { tone: 'error', text: `Could not complete the purchase: ${outcome.message}` };
   }
 }
 
@@ -140,6 +142,7 @@ export default function PaywallScreen() {
     offering,
     loading,
     configured,
+    allowance,
     purchase,
     reloadOffering,
     restore: restoreWithStore,
@@ -160,7 +163,7 @@ export default function PaywallScreen() {
   const [picked, setPicked] = useState<PlanPeriod | null>(null);
   const selected = selectedPlan(plans, PLAN_ORDER, picked);
   const [restore, setRestore] = useState<RestoreState>({ status: 'idle' });
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Said | null>(null);
   const [buying, setBuying] = useState(false);
 
   // A launch that could not reach the store left no plans. Opening the paywall
@@ -182,18 +185,14 @@ export default function PaywallScreen() {
   }, [missingPlans]);
 
   const chosen = selected ? (plans[selected] ?? null) : null;
-  const chosenTrial = chosen ? trialDays(chosen) : null;
-  // The headline trial is the offering's, wherever it sits, so it stays put as the
-  // selection moves. The CTA speaks only for the plan actually selected.
-  const offeredTrial =
-    available.map((period) => trialDays(plans[period]!)).find((days) => days !== null) ?? null;
+  // A trial is the annual plan's, and only when the store reports one. Monthly
+  // never carries one here, whatever it might be sold with. The headline reads
+  // the annual trial, so it stays put as the selection moves.
+  const annualTrial = plans.annual ? trialDays(plans.annual) : null;
+  const chosenTrial = selected === 'annual' ? annualTrial : null;
 
-  const cta =
-    chosenTrial !== null
-      ? `Start my ${chosenTrial} days free`
-      : selected
-        ? `Start my ${PLAN_NAME[selected].toLowerCase()} plan`
-        : null;
+  // The button speaks for the plan actually selected.
+  const cta = ctaFor(selected, annualTrial);
 
   const onPurchase = useCallback(async () => {
     if (!chosen || buying) return;
@@ -221,184 +220,195 @@ export default function PaywallScreen() {
   const restored = restore.status === 'restored' || isPro;
   const restoring = restore.status === 'restoring';
   const note = restoreNote(restore);
+  const waitingForPlans = loading || reloading;
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + space.lg },
-      ]}
-    >
-      <Text style={styles.headline} accessibilityRole="header">
-        {copy.headline}
-      </Text>
-      {offeredTrial !== null ? (
-        <Text style={styles.headlineTrial}>Free for {offeredTrial} days.</Text>
-      ) : null}
-
-      <View style={styles.values}>
-        {copy.values.map((value) => (
-          <View key={value} style={styles.value}>
-            <View style={styles.valueMark} />
-            <Text style={styles.valueText}>{value}</Text>
-          </View>
-        ))}
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      {/* Leaving is reachable from the top as well as below the offer. */}
+      <View style={styles.bar}>
+        <AppBar
+          title="Paceball Pro"
+          onBack={leave}
+          backLabel={restored ? 'Done' : copy.dismiss}
+        />
       </View>
 
-      {loading || reloading ? (
-        <ActivityIndicator color={colors.muted} style={styles.plansLoading} />
-      ) : available.length === 0 ? (
-        <Text style={styles.problem}>
-          The plans could not be loaded. Check the connection, then open this page again.
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.lg }]}
+      >
+        <Text style={styles.headline} accessibilityRole="header">
+          {copy.headline(annualTrial)}
         </Text>
-      ) : (
-        <View accessibilityRole="radiogroup">
-          {available.map((period) => (
-            <Plan
-              key={period}
-              period={period}
-              pkg={plans[period]!}
-              selected={selected === period}
-              onSelect={() => {
-                setPicked(period);
-                setNotice(null);
-              }}
-            />
+        {/* Sent here by the weekly limit: when it comes back, in its own words. */}
+        {context === 'limit' ? (
+          <Text style={styles.reset}>
+            {allowanceLine(allowance, (t) =>
+              new Date(t).toLocaleDateString(undefined, { weekday: 'long' })
+            )}
+          </Text>
+        ) : null}
+
+        <View style={styles.values}>
+          {VALUES.map((value) => (
+            <View key={value} style={styles.value}>
+              <Text style={styles.valueMark} accessibilityElementsHidden importantForAccessibility="no">
+                ✓
+              </Text>
+              <Text style={styles.valueText}>{value}</Text>
+            </View>
           ))}
         </View>
-      )}
 
-      {sample ? (
-        <Text style={styles.sampleNotice}>
-          Sample prices. The store is not connected in this build.
-        </Text>
-      ) : null}
+        {waitingForPlans ? (
+          // Static outlines where the plans will be, and what is happening in words.
+          <View accessible accessibilityLabel="Loading plans">
+            <View style={styles.planPlaceholder} />
+            <View style={styles.planPlaceholder} />
+          </View>
+        ) : available.length === 0 ? (
+          <Notice tone="error">
+            The plans could not be loaded. Check the connection, then open this page again.
+          </Notice>
+        ) : (
+          <View style={styles.plans} accessibilityRole="radiogroup">
+            {available.map((period) => (
+              <Plan
+                key={period}
+                period={period}
+                pkg={plans[period]!}
+                trial={period === 'annual' ? annualTrial : null}
+                selected={selected === period}
+                onSelect={() => {
+                  setPicked(period);
+                  setNotice(null);
+                }}
+              />
+            ))}
+          </View>
+        )}
 
-      {cta && !restored ? (
+        {sample ? (
+          <Text style={styles.sampleNotice}>
+            Sample prices. The store is not connected in this build.
+          </Text>
+        ) : null}
+
+        {(cta || waitingForPlans) && !restored ? (
+          <>
+            <Pressable
+              style={({ pressed }) => [
+                styles.cta,
+                pressed && styles.ctaPressed,
+                (buying || sample || cta === null) && styles.ctaOff,
+              ]}
+              onPress={onPurchase}
+              disabled={buying || sample}
+              accessibilityRole="button"
+              accessibilityState={{ busy: buying, disabled: buying || sample }}
+              accessibilityLabel={
+                cta === null
+                  ? 'Loading plans'
+                  : sample
+                    ? `${cta}. Not available in this build.`
+                    : buying
+                      ? 'Opening Google Play'
+                      : cta
+              }
+            >
+              <Text style={styles.ctaText}>
+                {buying ? 'Opening Google Play…' : (cta ?? 'Loading plans…')}
+              </Text>
+            </Pressable>
+            {cta !== null && !sample ? (
+              <Text style={styles.renewal}>{renewalLine(chosenTrial)}</Text>
+            ) : null}
+          </>
+        ) : null}
+
+        {notice ? (
+          <View style={styles.notice}>
+            <Notice tone={notice.tone} title={notice.title} live>
+              {notice.text}
+            </Notice>
+          </View>
+        ) : null}
+
         <Pressable
-          style={[styles.cta, (buying || sample) && styles.ctaBusy]}
-          onPress={onPurchase}
-          disabled={buying || sample}
+          style={[styles.dismiss, context === 'onboarding' && styles.dismissOutlined]}
+          onPress={leave}
           accessibilityRole="button"
-          accessibilityState={{ busy: buying, disabled: buying || sample }}
-          accessibilityLabel={sample ? `${cta}. Not available in this build.` : cta}
         >
-          {buying ? (
-            <ActivityIndicator color={colors.bg} />
-          ) : (
-            <Text style={styles.ctaText}>{cta}</Text>
-          )}
+          <Text style={[styles.dismissText, context === 'onboarding' && styles.dismissTextOn]}>
+            {restored ? 'Done' : copy.dismiss}
+          </Text>
         </Pressable>
-      ) : null}
-      {chosenTrial !== null && !restored ? (
-        <Text style={styles.ctaNote}>
-          Nothing is charged today. Cancel in Google Play before the {chosenTrial} days are up and
-          you pay nothing.
-        </Text>
-      ) : null}
-      {notice ? (
-        <Text style={styles.notice} accessibilityLiveRegion="polite">
-          {notice}
-        </Text>
-      ) : null}
 
-      <Pressable
-        style={[styles.dismiss, context === 'onboarding' && styles.dismissOutlined]}
-        onPress={leave}
-        accessibilityRole="button"
-        hitSlop={space.sm}
-      >
-        <Text style={[styles.dismissText, context === 'onboarding' && styles.dismissTextOn]}>
-          {restored ? 'Done' : copy.dismiss}
-        </Text>
-      </Pressable>
-
-      <View style={styles.links}>
-        <Pressable
-          onPress={onRestore}
-          disabled={restoring}
-          accessibilityRole="button"
-          accessibilityState={{ busy: restoring, disabled: restoring }}
-          hitSlop={space.sm}
-        >
-          {restoring ? (
-            <ActivityIndicator color={colors.muted} />
-          ) : (
-            <Text style={styles.linkText}>Restore purchases</Text>
-          )}
-        </Pressable>
-        <Pressable
-          onPress={() => void Linking.openURL(TERMS_URL).catch(() => undefined)}
-          accessibilityRole="link"
-          hitSlop={space.sm}
-        >
-          <Text style={styles.linkText}>Terms</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void Linking.openURL(PRIVACY_URL).catch(() => undefined)}
-          accessibilityRole="link"
-          hitSlop={space.sm}
-        >
-          <Text style={styles.linkText}>Privacy</Text>
-        </Pressable>
-      </View>
-      {note ? (
-        <Text
-          style={[
-            styles.restoreNote,
-            restore.status === 'restored'
-              ? styles.restoreOk
-              : restore.status === 'nothing'
-                ? styles.restoreNothing
-                : styles.restoreFailed,
-          ]}
-          accessibilityLiveRegion="polite"
-        >
-          {note}
-        </Text>
-      ) : null}
-
-      <Text style={styles.terms}>
-        Subscriptions renew automatically until cancelled in Google Play.
-      </Text>
-    </ScrollView>
+        <View style={styles.links}>
+          <Pressable
+            style={styles.link}
+            onPress={onRestore}
+            disabled={restoring}
+            accessibilityRole="button"
+            accessibilityState={{ busy: restoring, disabled: restoring }}
+          >
+            <Text style={styles.linkText}>{restoring ? 'Restoring…' : 'Restore purchases'}</Text>
+          </Pressable>
+          <Pressable
+            style={styles.link}
+            onPress={() => void Linking.openURL(TERMS_URL).catch(() => undefined)}
+            accessibilityRole="link"
+          >
+            <Text style={styles.linkText}>Terms</Text>
+          </Pressable>
+          <Pressable
+            style={styles.link}
+            onPress={() => void Linking.openURL(PRIVACY_URL).catch(() => undefined)}
+            accessibilityRole="link"
+          >
+            <Text style={styles.linkText}>Privacy</Text>
+          </Pressable>
+        </View>
+        {note ? (
+          <View style={styles.notice}>
+            <Notice tone={note.tone} title={note.title} live>
+              {note.text}
+            </Notice>
+          </View>
+        ) : null}
+      </ScrollView>
+    </View>
   );
 }
 
 function Plan({
   period,
   pkg,
+  trial,
   selected,
   onSelect,
 }: {
   period: PlanPeriod;
   pkg: PaywallPackage;
+  /** The store's free days on this plan. Always null for monthly. */
+  trial: number | null;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const trial = trialDays(pkg);
-  // The store's own string, as given. The price appears here and nowhere else.
-  const price = `${pkg.product.priceString} ${PLAN_PER[period]}`;
+  // The store's own string, as given. The price appears here and nowhere else,
+  // once per plan.
+  const terms = planTerms(period, pkg.product.priceString, trial);
   return (
     <Pressable
       style={[styles.plan, selected && styles.planOn]}
       onPress={onSelect}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${PLAN_NAME[period]}${trial !== null ? `, ${trial} days free, then` : ','} ${price}`}
+      accessibilityLabel={`${PLAN_NAME[period]}, ${terms}`}
     >
       <View style={[styles.radio, selected && styles.radioOn]} />
       <View style={styles.planBody}>
-        <View style={styles.planTop}>
-          <Text style={styles.planName}>{PLAN_NAME[period]}</Text>
-          {trial !== null ? (
-            <View style={styles.trialBadge}>
-              <Text style={styles.trialBadgeText}>{trial} DAYS FREE</Text>
-            </View>
-          ) : null}
-        </View>
-        <Text style={styles.planPrice}>{trial !== null ? `Then ${price}` : price}</Text>
+        <Text style={styles.planName}>{PLAN_NAME[period]}</Text>
+        <Text style={styles.planPrice}>{terms}</Text>
       </View>
     </Pressable>
   );
@@ -406,67 +416,51 @@ function Plan({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: space.lg },
+  bar: { paddingHorizontal: space.md },
+  content: { paddingHorizontal: space.lg, paddingTop: space.md },
 
   headline: { ...type.h1, color: colors.text },
-  // As loud as the headline itself: the trial is the offer, not its small print.
-  headlineTrial: { ...type.h1, color: colors.text, marginTop: space.xs },
+  reset: { ...type.body, color: colors.muted, marginTop: space.sm },
 
-  values: { marginTop: space.lg, marginBottom: space.lg },
-  value: { flexDirection: 'row', alignItems: 'center', marginBottom: space.sm },
-  valueMark: {
-    width: space.sm,
-    height: space.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.text,
-    marginRight: space.md,
-  },
+  values: { marginTop: space.lg, marginBottom: space.lg, gap: space.sm },
+  value: { flexDirection: 'row', alignItems: 'center' },
+  valueMark: { ...type.body, color: colors.text, fontWeight: '900', width: space.lg },
   valueText: { ...type.body, color: colors.text, flex: 1 },
 
-  problem: { ...type.body, color: colors.danger, marginBottom: space.md },
-
+  plans: { gap: space.sm },
   plan: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: size.row,
     padding: space.md,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
+    backgroundColor: colors.surface,
+  },
+  // The chosen plan is the action about to happen, so it is the one in lime.
+  planOn: { borderColor: colors.accent },
+  planPlaceholder: {
+    minHeight: size.row,
+    borderRadius: radius.md,
     borderWidth: stroke.medium,
     borderColor: colors.line,
-    backgroundColor: colors.surface,
     marginBottom: space.sm,
   },
-  planOn: { borderColor: colors.text },
   radio: {
     width: space.md,
     height: space.md,
     borderRadius: radius.pill,
     borderWidth: stroke.medium,
-    borderColor: colors.muted,
+    borderColor: colors.control,
     marginRight: space.md,
   },
-  radioOn: { borderColor: colors.text, backgroundColor: colors.text },
+  radioOn: { borderColor: colors.accent, backgroundColor: colors.accent },
   planBody: { flex: 1 },
-  planTop: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  planName: { ...type.h2, color: colors.text, marginRight: space.sm },
-  trialBadge: {
-    backgroundColor: colors.text,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-  },
-  trialBadgeText: { ...type.body, color: colors.bg, fontWeight: '900' },
+  planName: { ...type.h2, color: colors.text },
   // Readable and plain, never the hero: body is the 16 pt floor for any price.
   planPrice: { ...type.body, color: colors.text, marginTop: space.xs },
 
-  cta: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
-    alignItems: 'center',
-    marginTop: space.md,
-  },
-  ctaText: { ...type.h2, color: colors.bg, fontWeight: '800' },
-  ctaBusy: { opacity: opacity.inactive },
   sampleNotice: {
     ...type.body,
     color: colors.warn,
@@ -476,34 +470,51 @@ const styles = StyleSheet.create({
     padding: space.md,
     marginTop: space.md,
   },
-  plansLoading: { marginVertical: space.lg },
-  ctaNote: { ...type.body, color: colors.text, textAlign: 'center', marginTop: space.sm },
-  notice: { ...type.body, color: colors.warn, textAlign: 'center', marginTop: space.md },
 
-  dismiss: { alignItems: 'center', paddingVertical: space.md, marginTop: space.sm },
+  // Drawn to the same measure as ActionButton's primary.
+  cta: {
+    minHeight: size.button,
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.accent,
+    backgroundColor: colors.accent,
+    paddingHorizontal: space.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: space.lg,
+  },
+  ctaPressed: { borderColor: colors.text },
+  ctaOff: { opacity: opacity.inactive },
+  ctaText: { ...type.button, color: colors.bg, textAlign: 'center' },
+  renewal: { ...type.caption, color: colors.muted, textAlign: 'center', marginTop: space.sm },
+  notice: { marginTop: space.md },
+
+  dismiss: {
+    minHeight: size.target,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: space.md,
+  },
   dismissText: { ...type.body, color: colors.muted },
   // Nothing has been refused yet during onboarding, so skipping is a plain,
   // full-weight choice beside the offer, not small print under it.
   dismissOutlined: {
+    minHeight: size.button,
     borderWidth: stroke.medium,
-    borderColor: colors.line,
-    borderRadius: radius.pill,
-    marginTop: space.md,
+    borderColor: colors.control,
+    borderRadius: radius.md,
   },
-  dismissTextOn: { color: colors.text },
+  dismissTextOn: { ...type.button, color: colors.text },
 
   links: {
     flexDirection: 'row',
     justifyContent: 'center',
-    columnGap: space.lg,
+    flexWrap: 'wrap',
+    columnGap: space.md,
     borderTopWidth: stroke.hairline,
     borderColor: colors.line,
-    paddingTop: space.md,
+    marginTop: space.md,
   },
+  link: { minHeight: size.target, justifyContent: 'center', paddingHorizontal: space.xs },
   linkText: { ...type.body, color: colors.muted, textDecorationLine: 'underline' },
-  restoreNote: { ...type.body, textAlign: 'center', marginTop: space.sm },
-  restoreOk: { color: colors.text },
-  restoreNothing: { color: colors.muted },
-  restoreFailed: { color: colors.danger },
-  terms: { ...type.caption, color: colors.muted, textAlign: 'center', marginTop: space.md },
 });
