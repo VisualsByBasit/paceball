@@ -1,0 +1,17 @@
+workflows:
+  android-production:
+    name: Android production (EAS local)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - expo
+      node: 20
+      java: 17
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+      - name: Build AAB on this machine (no EAS quota used)
+        script: npx eas-cli@latest build --local --non-interactive --platform android --profile production --output $CM_BUILD_DIR/paceball.aab
+    artifacts:
+      - paceball.aab
