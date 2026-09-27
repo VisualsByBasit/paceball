@@ -22,7 +22,10 @@ import {
   formatMetres,
   type MarkersDraft,
 } from '../physics/calibration';
-import { colors, opacity, radius, space, stroke, type } from './tokens';
+import { ActionButton } from './ActionButton';
+import { AppBar } from './AppBar';
+import { Notice } from './Notice';
+import { colors, opacity, radius, size, space, stroke, type } from './tokens';
 import type { CalibrationMethod } from '../types';
 
 type CalibrationStepProps = {
@@ -51,7 +54,7 @@ type CalibrationStepProps = {
 };
 
 /**
- * Mark, part one — what the measurement is scaled against.
+ * Mark, part one: what the measurement is scaled against.
  *
  * Nothing on screen has a size until one real-world distance is known, so this
  * is asked before the first tap rather than assumed to be a full pitch. Getting
@@ -128,12 +131,12 @@ export function CalibrationStep({
           { paddingTop: topInset + space.md, paddingBottom: bottomInset + space.lg },
         ]}
       >
-        <View style={styles.header}>
-          <Pressable onPress={onBack} hitSlop={space.md} accessibilityRole="button">
-            <Text style={styles.headerAction}>Retake</Text>
-          </Pressable>
-          <Text style={styles.headerStep}>SCALE</Text>
-        </View>
+        <AppBar
+          title="Mark delivery"
+          onBack={onBack}
+          backLabel="Retake the delivery"
+          right={<Text style={styles.headerStep}>SCALE</Text>}
+        />
 
         <ScrollView
           contentContainerStyle={styles.body}
@@ -316,16 +319,19 @@ export function CalibrationStep({
                     />
                     <Text style={styles.inputUnit}>{needsSize ? 'EU' : 'cm'}</Text>
                   </View>
-                  <Pressable
-                    style={styles.shoeSave}
+                  <ActionButton
+                    variant="secondary"
+                    label="Save to my profile"
                     onPress={submitShoe}
-                    accessibilityRole="button"
                     accessibilityLabel={needsSize ? 'Save shoe size' : 'Save shoe length'}
-                  >
-                    <Text style={styles.shoeSaveText}>Save to my profile</Text>
-                  </Pressable>
+                    style={styles.shoeSave}
+                  />
                   {shoeInputProblem ? (
-                    <Text style={styles.problem}>{shoeInputProblem}</Text>
+                    <View style={styles.notice}>
+                      <Notice tone="error" live>
+                        {shoeInputProblem}
+                      </Notice>
+                    </View>
                   ) : null}
                 </View>
               ) : null}
@@ -334,6 +340,7 @@ export function CalibrationStep({
                   the better path is offered rather than buried in settings. */}
               {markers.source === 'paced-shoe-size' ? (
                 <Pressable
+                  style={styles.upgradeTarget}
                   onPress={() => onChangeMarkers({ source: 'paced-measured-shoe' })}
                   accessibilityRole="button"
                   accessibilityLabel="Measure your shoe instead, for a five times tighter error range"
@@ -345,22 +352,25 @@ export function CalibrationStep({
                 </Pressable>
               ) : null}
 
-              {shoeProblem ? <Text style={styles.shoeNote}>{shoeProblem}</Text> : null}
+              {shoeProblem ? (
+                <View style={styles.notice}>
+                  <Notice tone="caution">{shoeProblem}</Notice>
+                </View>
+              ) : null}
             </View>
           ) : null}
 
-          {problem ? <Text style={styles.problem}>{problem}</Text> : null}
         </ScrollView>
 
-        <Pressable
-          style={[styles.primaryButton, !canConfirm && styles.buttonOff]}
+        {/* Why marking cannot start yet sits under the button it holds back,
+            in words: a paced distance still needs its count, a shoe, and so on. */}
+        <ActionButton
+          label="Start marking"
           onPress={onConfirm}
-          disabled={!canConfirm}
-          accessibilityRole="button"
-          accessibilityLabel="Start marking"
-        >
-          <Text style={styles.primaryButtonText}>Start marking</Text>
-        </Pressable>
+          disabledReason={
+            canConfirm ? null : (problem ?? 'Enter the distance between the markers.')
+          }
+        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -370,28 +380,23 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { flex: 1, paddingHorizontal: space.lg },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerAction: { ...type.caption, color: colors.muted },
   headerStep: { ...type.label, color: colors.muted },
 
-  body: { paddingTop: space.xl, paddingBottom: space.lg },
+  body: { paddingTop: space.lg, paddingBottom: space.lg },
   title: { ...type.h1, color: colors.text },
   sub: { ...type.body, color: colors.muted, marginTop: space.sm },
 
-  options: { marginTop: space.lg },
+  // Full-width choice rows; the chosen one outlined in lime.
+  options: { marginTop: space.lg, gap: space.sm },
   option: {
+    minHeight: size.target,
     borderRadius: radius.md,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
     backgroundColor: colors.surface,
     padding: space.md,
-    marginBottom: space.sm,
   },
-  optionSelected: { borderColor: colors.accent, borderWidth: stroke.medium },
+  optionSelected: { borderColor: colors.accent },
   optionOff: { opacity: opacity.disabled },
   optionHead: {
     flexDirection: 'row',
@@ -400,36 +405,36 @@ const styles = StyleSheet.create({
   },
   optionTitle: { ...type.body, color: colors.text, fontWeight: '700' },
   optionValue: { ...type.caption, ...type.mono, color: colors.muted },
-  optionValueSelected: { color: colors.accent },
+  optionValueSelected: { color: colors.text },
   optionDetail: { ...type.caption, color: colors.muted, marginTop: space.xs },
 
-  custom: { marginTop: space.md },
+  custom: { marginTop: space.lg },
   label: { ...type.label, color: colors.muted },
   fieldLabel: { marginTop: space.md },
   sourceNote: { ...type.caption, color: colors.muted, marginTop: space.xs },
 
-  sources: { flexDirection: 'row', marginTop: space.sm },
+  sources: { flexDirection: 'row', gap: space.xs, marginTop: space.sm },
   source: {
     flex: 1,
-    borderRadius: radius.sm,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
+    minHeight: size.target,
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
     backgroundColor: colors.surface,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.sm,
-    marginRight: space.xs,
+    padding: space.sm,
   },
-  sourceOn: { borderColor: colors.accent, borderWidth: stroke.medium },
+  sourceOn: { borderColor: colors.accent },
   sourceTitle: { ...type.caption, color: colors.muted },
   sourceTitleOn: { color: colors.text, fontWeight: '700' },
   sourceAccuracy: { ...type.caption, ...type.mono, color: colors.muted, marginTop: space.xs },
-  sourceAccuracyOn: { color: colors.accent },
+  sourceAccuracyOn: { color: colors.text },
 
+  // Input outlines are `control`, so the field can be found at a glance.
   customRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    borderBottomWidth: stroke.hairline,
-    borderColor: colors.line,
+    borderBottomWidth: stroke.medium,
+    borderColor: colors.control,
   },
   input: {
     ...type.h1,
@@ -440,6 +445,7 @@ const styles = StyleSheet.create({
   },
   inputUnit: { ...type.body, color: colors.muted, marginLeft: space.sm },
   customHint: { ...type.caption, color: colors.muted, marginTop: space.sm },
+  // Measured data, worked out live from what was typed.
   computed: { ...type.body, ...type.mono, color: colors.accent, marginTop: space.sm },
 
   shoe: {
@@ -450,31 +456,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: space.md,
   },
-  shoeSave: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.text,
-    paddingVertical: space.sm,
-    alignItems: 'center',
-    marginTop: space.md,
-  },
-  shoeSaveText: { ...type.caption, color: colors.text, fontWeight: '800' },
-  shoeNote: { ...type.caption, color: colors.warn, marginTop: space.sm },
-  upgrade: {
-    ...type.caption,
-    color: colors.accent,
-    marginTop: space.md,
-    textDecorationLine: 'underline',
-  },
-
-  problem: { ...type.caption, color: colors.danger, marginTop: space.md },
-
-  primaryButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
-    alignItems: 'center',
-  },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
-  buttonOff: { opacity: opacity.disabled },
+  shoeSave: { marginTop: space.md },
+  upgradeTarget: { minHeight: size.target, justifyContent: 'center', marginTop: space.sm },
+  upgrade: { ...type.caption, color: colors.text, textDecorationLine: 'underline' },
+  notice: { marginTop: space.sm },
 });

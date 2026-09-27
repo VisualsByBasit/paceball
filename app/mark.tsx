@@ -11,6 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSharedValue } from 'react-native-reanimated';
 import { framesDirUri, useFrames } from '../src/capture/useFrames';
 import { getActivePlayer, updatePlayer } from '../src/data';
 import {
@@ -22,11 +23,15 @@ import {
   type MarkersDraft,
 } from '../src/physics/calibration';
 import { getSettings } from '../src/settings';
+import { ActionButton } from '../src/ui/ActionButton';
+import { AppBar } from '../src/ui/AppBar';
 import { CalibrationStep } from '../src/ui/CalibrationStep';
 import { FrameMarker } from '../src/ui/FrameMarker';
-import { FrameScrubber } from '../src/ui/FrameScrubber';
+import { Loupe } from '../src/ui/Loupe';
+import { Notice } from '../src/ui/Notice';
+import { DetentStrip } from '../src/ui/motion/DetentStrip';
 import { errorMessage } from '../src/ui/format';
-import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 import { useHoldRepeat } from '../src/ui/useHoldRepeat';
 import { first, positiveNumber } from '../src/ui/routeParams';
 import type { CalibrationMethod, MarkConfidence, Player, Point } from '../src/types';
@@ -38,7 +43,9 @@ type Step = {
   label: string;
   short: string;
   hint: string;
-  /** Ball points carry the measurement, so they get the accent. */
+  /** A second line under the hint, saying exactly which frame to choose. */
+  helper?: string;
+  /** Ball points carry the measurement. */
   ball: boolean;
   /**
    * Whether the point only exists on the frame it was placed on. A fixed
@@ -58,6 +65,7 @@ const BALL_STEPS: Step[] = [
     label: 'Ball at release',
     short: 'Release',
     hint: 'Scrub to the frame the ball leaves the hand, then tap the ball.',
+    helper: 'Choose the first frame where the ball has left the hand.',
     ball: true,
     pinned: true,
   },
@@ -66,6 +74,7 @@ const BALL_STEPS: Step[] = [
     label: 'Ball at bounce',
     short: 'Bounce',
     hint: 'Scrub to the frame the ball hits the pitch, then tap the ball.',
+    helper: 'Choose the first frame where the ball touches the ground.',
     ball: true,
     pinned: true,
   },
@@ -323,6 +332,7 @@ export default function MarkScreen() {
       setHistory((h) => [...h, points]);
       setPoints((p) => ({ ...p, [activeKey]: { x, y, frame: current } }));
       setSelected(null);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
     },
     [fit, currentUri, activeKey, current, points, imageSize]
   );
@@ -415,6 +425,27 @@ export default function MarkScreen() {
     markConfidence,
   ]);
 
+  // The frame file actually on screen. A new frame takes a moment to draw, and
+  // a tap in that moment would land a point on the frame that was there before
+  // while recording the new frame's number, so marking waits for it.
+  const [shownUri, setShownUri] = useState<string | null>(null);
+
+  // Where the finger is on the frame while it is down, for the loupe. Written
+  // from touch events straight to the UI thread; nothing re-renders for them.
+  const loupeX = useSharedValue(0);
+  const loupeY = useSharedValue(0);
+  const loupeOn = useSharedValue(0);
+
+  // One warning tap when the marks stop making sense, like a bounce placed
+  // before the release. Not again until they make sense and break again.
+  const hadProblem = useRef(false);
+  useEffect(() => {
+    if (problem !== null && !hadProblem.current) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+    }
+    hadProblem.current = problem !== null;
+  }, [problem]);
+
   if (!videoPath || !fps || !frameCount) {
     return (
       <Fallback
@@ -473,68 +504,154 @@ export default function MarkScreen() {
     );
   }
 
-  const seconds = fps > 0 ? current / fps : 0;
+  // Which step is in hand, counted from one. With all four down and none
+  // picked to redo, the count stands at the last.
+  const stepNumber = activeKey ? steps.findIndex((s) => s.key === activeKey) + 1 : steps.length;
+
+  const frameShown = currentUri !== null && shownUri === currentUri;
+  const canPlace = fit !== null && frameShown && activeStep !== null;
+
+  const guessed = points.bounce !== null && markConfidence === 'guessed';
+  const remaining = steps.length - placedCount;
+  // Why the reading cannot be shown yet, in words. The first that applies.
+  const waitingFor = canContinue
+    ? null
+    : problem !== null
+      ? 'Fix the marks first. The problem is described above.'
+      : remaining > 0
+        ? `${remaining} ${remaining === 1 ? 'point' : 'points'} left to mark.`
+        : status !== 'ready'
+          ? 'Waiting for the last frames to decode.'
+          : 'Choose a scale reference first.';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={space.md} accessibilityRole="button">
-          <Text style={styles.headerAction}>Retake</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setCalibrating(true)}
-          hitSlop={space.md}
-          accessibilityRole="button"
-          accessibilityLabel="Change the scale reference"
-        >
-          <Text style={styles.headerScale}>
-            {spec.short} · {calRealMetres === null ? '–' : formatMetres(calRealMetres)}
-          </Text>
-        </Pressable>
-        <Text style={styles.headerCount}>
-          {placedCount} of {steps.length}
-        </Text>
+      <View style={styles.bar}>
+        <AppBar
+          title="Mark delivery"
+          onBack={() => router.back()}
+          backLabel="Retake the delivery"
+          right={
+            <Text style={styles.counter} accessibilityLabel={`Step ${stepNumber} of ${steps.length}`}>
+              {stepNumber} of {steps.length}
+            </Text>
+          }
+        />
       </View>
 
-      <View style={styles.stage} onLayout={(e: LayoutChangeEvent) => {
-        const { width, height } = e.nativeEvent.layout;
-        setStage({ w: width, h: height });
-      }}>
-        {fit && currentUri ? (
-          <Pressable
-            onPress={place}
-            disabled={activeStep === null}
-            style={[styles.frameBox, { width: fit.w, height: fit.h }]}
-            accessibilityRole="button"
-            accessibilityLabel={
-              activeStep ? `Tap to place ${activeStep.label}` : 'All points placed'
-            }
-          >
-            <Image
-              source={{ uri: currentUri }}
-              style={{ width: fit.w, height: fit.h }}
-              resizeMode="contain"
-              fadeDuration={0}
-            />
+      <Pressable
+        style={styles.scale}
+        onPress={() => setCalibrating(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Scale reference, ${spec.short}, ${calRealMetres === null ? 'no length' : formatMetres(calRealMetres)}. Change it.`}
+      >
+        <Text style={styles.scaleLabel}>SCALE</Text>
+        <Text style={styles.scaleValue} numberOfLines={1}>
+          {spec.short} · {calRealMetres === null ? '-' : formatMetres(calRealMetres)}
+        </Text>
+        <Text style={styles.scaleChange}>Change</Text>
+      </Pressable>
 
-            {steps.map((s) => {
-              const point = points[s.key];
-              if (!point) return null;
-              // A pinned point only exists on its own frame. A wicket is a fixed
-              // landmark, so it stays visible wherever you scrub.
-              if (s.pinned && point.frame !== current) return null;
-              return (
-                <FrameMarker
-                  key={s.key}
-                  label={s.short}
-                  left={point.x * fit.scale}
-                  top={point.y * fit.scale}
-                  active={s.key === activeKey}
-                  confidence={s.key === 'bounce' ? markConfidence : undefined}
-                />
-              );
-            })}
-          </Pressable>
+      <View style={styles.steps}>
+        {steps.map((s) => {
+          const placed = points[s.key] !== null;
+          const isActive = s.key === activeKey;
+          return (
+            <Pressable
+              key={s.key}
+              onPress={() => setSelected(s.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isActive }}
+              style={[styles.step, placed && styles.stepDone, isActive && styles.stepActive]}
+              accessibilityLabel={
+                placed
+                  ? `${s.label}, placed on frame ${points[s.key]!.frame}. Move it.`
+                  : `Place ${s.label}`
+              }
+            >
+              <Text
+                style={[styles.stepText, (placed || isActive) && styles.stepTextOn]}
+                numberOfLines={1}
+              >
+                {placed ? `✓ ${s.short}` : s.short}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View
+        style={styles.stage}
+        onLayout={(e: LayoutChangeEvent) => {
+          const { width, height } = e.nativeEvent.layout;
+          setStage({ w: width, h: height });
+        }}
+      >
+        {fit && currentUri ? (
+          <View
+            // Watched, not claimed: the Pressable inside still owns the tap.
+            onTouchStart={(e) => {
+              if (!canPlace) return;
+              loupeX.value = Math.min(fit.w, Math.max(0, e.nativeEvent.locationX));
+              loupeY.value = Math.min(fit.h, Math.max(0, e.nativeEvent.locationY));
+              loupeOn.value = 1;
+            }}
+            onTouchMove={(e) => {
+              loupeX.value = Math.min(fit.w, Math.max(0, e.nativeEvent.locationX));
+              loupeY.value = Math.min(fit.h, Math.max(0, e.nativeEvent.locationY));
+            }}
+            onTouchEnd={() => {
+              loupeOn.value = 0;
+            }}
+            onTouchCancel={() => {
+              loupeOn.value = 0;
+            }}
+          >
+            <Pressable
+              onPress={place}
+              disabled={!canPlace}
+              // A finger can move to aim while the loupe shows what is under
+              // it, and the point lands where it is let go, anywhere on the frame.
+              pressRetentionOffset={{ top: fit.h, bottom: fit.h, left: fit.w, right: fit.w }}
+              style={[styles.frameBox, { width: fit.w, height: fit.h }]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                activeStep ? `Tap to place ${activeStep.label}` : 'All points placed'
+              }
+            >
+              <Image
+                source={{ uri: currentUri }}
+                style={{ width: fit.w, height: fit.h }}
+                resizeMode="contain"
+                fadeDuration={0}
+                onLoadEnd={() => setShownUri(currentUri)}
+              />
+
+              {steps.map((s) => {
+                const point = points[s.key];
+                if (!point) return null;
+                // A pinned point only exists on its own frame. A wicket is a fixed
+                // landmark, so it stays visible wherever you scrub.
+                if (s.pinned && point.frame !== current) return null;
+                return (
+                  <FrameMarker
+                    key={s.key}
+                    label={s.short}
+                    left={point.x * fit.scale}
+                    top={point.y * fit.scale}
+                    active={s.key === activeKey}
+                    confidence={s.key === 'bounce' ? markConfidence : undefined}
+                  />
+                );
+              })}
+
+              {frameShown ? null : (
+                <View style={styles.plate}>
+                  <Text style={styles.plateText}>Loading frame…</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
         ) : (
           <View style={styles.stagePlaceholder}>
             <Text style={styles.muted}>
@@ -542,79 +659,45 @@ export default function MarkScreen() {
             </Text>
           </View>
         )}
+
+        {fit && currentUri ? (
+          <Loupe
+            uri={currentUri}
+            frame={{ width: fit.w, height: fit.h }}
+            origin={{ x: (stage.w - fit.w) / 2, y: (stage.h - fit.h) / 2 }}
+            x={loupeX}
+            y={loupeY}
+            shown={loupeOn}
+          />
+        ) : null}
       </View>
 
       <View style={[styles.controls, { paddingBottom: insets.bottom + space.md }]}>
         <Text style={styles.hint}>
           {activeStep
             ? activeStep.hint
-            : 'All four placed. Tap a point below to move it, or continue.'}
+            : 'All four placed. Tap a step above to move its point, or continue.'}
         </Text>
-
-        <View style={styles.chips}>
-          {steps.map((s) => {
-            const placed = points[s.key] !== null;
-            const isActive = s.key === activeKey;
-            return (
-              <Pressable
-                key={s.key}
-                onPress={() => setSelected(s.key)}
-                hitSlop={{ top: space.md, bottom: space.sm }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isActive }}
-                style={[
-                  styles.chip,
-                  isActive && (s.ball ? styles.chipActiveBall : styles.chipActive),
-                ]}
-                accessibilityLabel={
-                  placed ? `Move ${s.label}` : `Place ${s.label}`
-                }
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    placed && styles.chipTextPlaced,
-                    isActive && (s.ball ? styles.chipTextActiveBall : styles.chipTextActive),
-                  ]}
-                >
-                  {s.short}
-                </Text>
-                {placed ? (
-                  <Text
-                    style={[
-                      styles.chipFrame,
-                      isActive && (s.ball ? styles.chipTextActiveBall : styles.chipTextActive),
-                    ]}
-                  >
-                    {s.pinned ? `f${points[s.key]!.frame}` : '✓'}
-                  </Text>
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </View>
+        {activeStep?.helper ? <Text style={styles.helper}>{activeStep.helper}</Text> : null}
 
         {activeKey === 'bounce' || points.bounce !== null ? (
           <View style={styles.confidence}>
             <Text style={styles.confidenceLabel}>
               COULD YOU SEE THE BALL IN THE BOUNCE FRAME?
             </Text>
-            <View style={styles.confidenceOptions}>
+            <View style={styles.segments} accessibilityRole="radiogroup">
               {BOUNCE_CONFIDENCE.map((option) => {
                 const on = option.key === markConfidence;
                 return (
                   <Pressable
                     key={option.key}
                     onPress={() => setMarkConfidence(option.key)}
-                    hitSlop={{ top: space.md, bottom: space.sm }}
-                    style={[styles.confidenceOption, on && styles.confidenceOptionOn]}
+                    style={[styles.segment, on && styles.segmentOn]}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: on }}
                     accessibilityLabel={`${option.label}. ${option.hint}`}
                   >
-                    <Text
-                      style={[styles.confidenceText, on && styles.confidenceTextOn]}
-                    >
+                    <Text style={[styles.segmentText, on && styles.segmentTextOn]}>
                       {option.label}
                     </Text>
                   </Pressable>
@@ -632,35 +715,27 @@ export default function MarkScreen() {
           </View>
         ) : null}
 
-        <FrameScrubber
-          frames={frames}
-          total={total}
-          max={scrubMax}
-          current={current}
-          onSeek={setCurrent}
-          style={styles.scrubber}
-        />
-
         <View style={styles.stepRow}>
           <Pressable
             onPressIn={stepBack.onPressIn}
             onPressOut={stepBack.onPressOut}
             onPress={stepBack.onPress}
             disabled={current === 0}
-            hitSlop={space.sm}
-            style={[styles.stepButton, current === 0 && styles.stepButtonOff]}
+            style={[styles.stepButton, current === 0 && styles.off]}
             accessibilityRole="button"
             accessibilityLabel="Previous frame"
           >
-            <Text style={styles.stepButtonText}>−</Text>
+            <Text style={styles.stepButtonText}>‹</Text>
           </Pressable>
 
-          <View style={styles.readout}>
-            <Text style={styles.frameNumber}>
-              {current}
-              <Text style={styles.frameTotal}> / {Math.max(0, total - 1)}</Text>
-            </Text>
-            <Text style={styles.frameTime}>{seconds.toFixed(3)}s</Text>
+          <View style={styles.strip}>
+            <DetentStrip
+              count={total}
+              index={current}
+              max={scrubMax}
+              onChange={setCurrent}
+              accessibilityLabel="Frame"
+            />
           </View>
 
           <Pressable
@@ -668,14 +743,16 @@ export default function MarkScreen() {
             onPressOut={stepForward.onPressOut}
             onPress={stepForward.onPress}
             disabled={current >= scrubMax}
-            hitSlop={space.sm}
-            style={[styles.stepButton, current >= scrubMax && styles.stepButtonOff]}
+            style={[styles.stepButton, current >= scrubMax && styles.off]}
             accessibilityRole="button"
             accessibilityLabel="Next frame"
           >
-            <Text style={styles.stepButtonText}>+</Text>
+            <Text style={styles.stepButtonText}>›</Text>
           </Pressable>
         </View>
+        <Text style={styles.frameCaption}>
+          Frame {current} of {Math.max(0, total - 1)} · {fps.toFixed(2)} fps
+        </Text>
 
         {status === 'extracting' ? (
           <Text style={styles.progress}>
@@ -683,33 +760,41 @@ export default function MarkScreen() {
           </Text>
         ) : null}
 
-        {extraction.error ? <Text style={styles.warn}>{extraction.error}</Text> : null}
-        {problem ? <Text style={styles.problem}>{problem}</Text> : null}
+        {extraction.error ? (
+          <View style={styles.notice}>
+            <Notice tone="caution">{extraction.error}</Notice>
+          </View>
+        ) : null}
+        {problem ? (
+          <View style={styles.notice}>
+            <Notice tone="error" live>
+              {problem}
+            </Notice>
+          </View>
+        ) : null}
 
         {__DEV__ && extraction.probe ? (
           <Text style={styles.debug}>extractFrames: {extraction.probe}</Text>
         ) : null}
 
         <View style={styles.footer}>
-          <Pressable
+          <ActionButton
+            variant="secondary"
+            label="Undo"
             onPress={undo}
-            disabled={history.length === 0}
-            style={[styles.secondaryButton, history.length === 0 && styles.buttonOff]}
-            accessibilityRole="button"
+            disabledReason={history.length === 0 ? 'Nothing to undo.' : null}
             accessibilityLabel="Undo last point"
-          >
-            <Text style={styles.secondaryButtonText}>Undo</Text>
-          </Pressable>
-
-          <Pressable
+            style={styles.undo}
+          />
+          <ActionButton
+            // A guessed bounce still goes on to Result, which keeps the clip
+            // and the marks but shows no speed; the label says so up front.
+            label={guessed ? 'Continue without speed' : 'Show reading'}
             onPress={onNext}
-            disabled={!canContinue}
-            style={[styles.primaryButton, !canContinue && styles.buttonOff]}
-            accessibilityRole="button"
-            accessibilityLabel="Continue to the result"
-          >
-            <Text style={styles.primaryButtonText}>Next</Text>
-          </Pressable>
+            disabledReason={waitingFor}
+            accessibilityLabel={guessed ? 'Continue to the result, without a speed' : 'Show the reading'}
+            style={styles.next}
+          />
         </View>
       </View>
     </View>
@@ -733,13 +818,9 @@ function Fallback({
     <View style={[styles.screen, styles.fallback, { paddingTop: insets }]}>
       <Text style={styles.fallbackTitle}>{title}</Text>
       <Text style={styles.fallbackBody}>{body}</Text>
-      <Pressable style={styles.primaryButton} onPress={action.onPress} accessibilityRole="button">
-        <Text style={styles.primaryButtonText}>{action.label}</Text>
-      </Pressable>
+      <ActionButton label={action.label} onPress={action.onPress} />
       {secondary ? (
-        <Pressable style={styles.fallbackSecondary} onPress={secondary.onPress} accessibilityRole="button">
-          <Text style={styles.secondaryButtonText}>{secondary.label}</Text>
-        </Pressable>
+        <ActionButton variant="text" label={secondary.label} onPress={secondary.onPress} />
       ) : null}
     </View>
   );
@@ -747,17 +828,37 @@ function Fallback({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  bar: { paddingHorizontal: space.md },
+  counter: { ...type.caption, ...type.tabular, color: colors.muted },
 
-  header: {
+  // The reference the marks are scaled by, and the way back to change it.
+  scale: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    minHeight: size.target,
     paddingHorizontal: space.lg,
-    paddingVertical: space.md,
+    gap: space.sm,
   },
-  headerAction: { ...type.caption, color: colors.muted },
-  headerScale: { ...type.caption, color: colors.text },
-  headerCount: { ...type.label, color: colors.muted },
+  scaleLabel: { ...type.label, color: colors.muted },
+  scaleValue: { ...type.caption, ...type.mono, color: colors.text, flex: 1 },
+  scaleChange: { ...type.caption, color: colors.text, textDecorationLine: 'underline' },
+
+  steps: { flexDirection: 'row', gap: space.xs, paddingHorizontal: space.lg, marginBottom: space.sm },
+  step: {
+    flex: 1,
+    minHeight: size.target,
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.xs,
+  },
+  stepDone: { borderColor: colors.line, backgroundColor: colors.surface },
+  // The step in hand, and only that one, is lime.
+  stepActive: { borderColor: colors.accent },
+  stepText: { ...type.caption, color: colors.muted },
+  stepTextOn: { color: colors.text, fontWeight: '700' },
 
   stage: {
     flex: 1,
@@ -768,114 +869,80 @@ const styles = StyleSheet.create({
   stagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
   frameBox: { position: 'relative', overflow: 'hidden' },
   muted: { ...type.caption, color: colors.muted },
-
-  controls: { paddingHorizontal: space.lg, paddingTop: space.md },
-  hint: { ...type.caption, color: colors.text, minHeight: space.xl },
-
-  chips: { flexDirection: 'row', marginTop: space.sm },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
+  // Opaque, so it reads over any frame.
+  plate: {
+    position: 'absolute',
+    top: space.sm,
+    left: space.sm,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
     paddingHorizontal: space.sm,
     paddingVertical: space.xs,
-    marginRight: space.sm,
   },
-  chipActive: { borderColor: colors.text, backgroundColor: colors.text },
-  chipActiveBall: { borderColor: colors.accent, backgroundColor: colors.accent },
-  chipText: { ...type.caption, color: colors.muted },
-  chipTextPlaced: { color: colors.text },
-  chipTextActive: { color: colors.bg, fontWeight: '800' },
-  chipTextActiveBall: { color: colors.bg, fontWeight: '800' },
-  chipFrame: {
-    ...type.caption,
-    ...type.tabular,
-    color: colors.muted,
-    marginLeft: space.xs,
-  },
+  plateText: { ...type.caption, color: colors.text },
 
-  scrubber: { marginTop: space.md },
+  controls: { paddingHorizontal: space.lg, paddingTop: space.md },
+  hint: { ...type.body, color: colors.text },
+  helper: { ...type.caption, color: colors.muted, marginTop: space.xs },
 
   confidence: { marginTop: space.md },
   confidenceLabel: { ...type.label, color: colors.muted },
-  confidenceOptions: { flexDirection: 'row', marginTop: space.sm },
-  confidenceOption: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-    paddingHorizontal: space.md,
-    paddingVertical: space.xs,
-    marginRight: space.sm,
+  segments: { flexDirection: 'row', gap: space.xs, marginTop: space.sm },
+  segment: {
+    flex: 1,
+    minHeight: size.target,
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  confidenceOptionOn: { borderColor: colors.text, backgroundColor: colors.text },
-  confidenceText: { ...type.caption, color: colors.muted },
-  confidenceTextOn: { color: colors.bg, fontWeight: '800' },
+  segmentOn: { borderColor: colors.text, backgroundColor: colors.text },
+  segmentText: { ...type.button, color: colors.text },
+  segmentTextOn: { color: colors.bg },
   confidenceHint: { ...type.caption, color: colors.muted, marginTop: space.xs },
   confidenceHintWarn: { color: colors.warn },
 
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: space.sm,
-  },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md },
   stepButton: {
-    width: space.xl,
-    height: space.xl,
+    width: size.target,
+    height: size.target,
     borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepButtonOff: { opacity: opacity.disabled },
   stepButtonText: { ...type.h2, color: colors.text },
-  readout: { alignItems: 'center' },
-  frameNumber: { ...type.h2, ...type.tabular, color: colors.text },
-  frameTotal: { ...type.caption, color: colors.muted },
-  frameTime: { ...type.caption, ...type.tabular, color: colors.muted },
+  strip: { flex: 1 },
+  off: { opacity: opacity.disabled },
+  frameCaption: {
+    ...type.caption,
+    ...type.tabular,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: space.xs,
+  },
 
   progress: { ...type.caption, color: colors.muted, marginTop: space.sm },
-  warn: { ...type.caption, color: colors.warn, marginTop: space.sm },
-  problem: { ...type.caption, color: colors.danger, marginTop: space.sm },
+  notice: { marginTop: space.sm },
   debug: { ...type.caption, color: colors.muted, marginTop: space.xs, opacity: opacity.secondary },
 
-  footer: { flexDirection: 'row', alignItems: 'center', marginTop: space.md },
-  primaryButton: {
-    flex: 1,
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
-    alignItems: 'center',
-  },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
-  secondaryButton: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingVertical: space.md,
-    paddingHorizontal: space.lg,
-    marginRight: space.sm,
-    alignItems: 'center',
-  },
-  secondaryButtonText: { ...type.body, color: colors.text },
-  buttonOff: { opacity: opacity.disabled },
+  footer: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, marginTop: space.md },
+  undo: { flex: 1 },
+  next: { flex: 2 },
 
   fallback: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'center',
     paddingHorizontal: space.lg,
+    gap: space.sm,
   },
-  fallbackTitle: { ...type.h2, color: colors.text, marginBottom: space.sm },
+  fallbackTitle: { ...type.h2, color: colors.text, textAlign: 'center' },
   fallbackBody: {
     ...type.body,
     color: colors.muted,
     textAlign: 'center',
-    marginBottom: space.lg,
+    marginBottom: space.md,
   },
-  fallbackSecondary: { paddingVertical: space.md },
 });

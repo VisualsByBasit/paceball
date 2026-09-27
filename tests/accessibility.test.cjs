@@ -51,9 +51,15 @@ test('the small chips reach 48 dp under the finger without changing how they loo
   // nothing to what is drawn. Vertical only, so a chip never takes its
   // neighbour's taps.
   const chip = /hitSlop=\{\{ top: space\.md, bottom: space\.sm \}\}/;
+  // Mark's step list and bounce confidence are no longer small chips: they are
+  // drawn 48 dp tall, so they need no slop to reach it.
   const mark = read('app/mark.tsx');
-  assert.match(mark.slice(mark.indexOf('onPress={() => setSelected(s.key)}')), chip);
-  assert.match(mark.slice(mark.indexOf('onPress={() => setMarkConfidence(option.key)}')), chip);
+  const stepPress = mark.slice(mark.indexOf('onPress={() => setSelected(s.key)}'));
+  assert.match(stepPress.slice(0, stepPress.indexOf('<Text')), /style=\{\[styles\.step,/);
+  assert.match(mark, /step: \{\s*flex: 1,\s*minHeight: size\.target,/);
+  const confidencePress = mark.slice(mark.indexOf('onPress={() => setMarkConfidence(option.key)}'));
+  assert.match(confidencePress.slice(0, confidencePress.indexOf('<Text')), /style=\{\[styles\.segment,/);
+  assert.match(mark, /segment: \{\s*flex: 1,\s*minHeight: size\.target,/);
   const analysis = read('app/analysis.tsx');
   assert.match(analysis.slice(analysis.indexOf('onPress={() => changeRate(r.rate)}')), chip);
   assert.match(analysis.slice(analysis.indexOf('onPress={toggleSound}')), chip);
