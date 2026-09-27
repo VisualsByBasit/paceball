@@ -50,6 +50,10 @@ export const size = {
   emblem: 96,
   /** A delivery row's minimum height. */
   row: 80,
+  /** A delivery row's release-frame thumbnail. */
+  thumb: 48,
+  /** The tab bar along the foot of Home, History and Settings, above the inset. */
+  tabBar: 64,
   /** Screens narrower than this show the Result reading at heroCompact, not hero. */
   compactBelow: 380,
   /** The wicket under a completed reading: three stumps and a bail. */
@@ -127,6 +131,8 @@ export const motion = {
   notice: 120,
   /** The record button turning from a circle to a rounded square and back, with the recorder. */
   record: 160,
+  /** A deleted row leaving its list. */
+  collapse: 160,
   /** A lens swap: the preview fades out, waits for the new lens, then fades back in. */
   lens: { out: 120, in: 180 },
   /** Playhead chasing the finger. Just under critical damping, so it lags a touch. */

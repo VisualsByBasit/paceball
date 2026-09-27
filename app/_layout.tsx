@@ -10,6 +10,9 @@ function RootLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.bg },
+          // The native stack's own rise and fade. A custom curve would need a
+          // JavaScript stack and gesture handler, which this build does not add.
+          animation: 'fade_from_bottom',
         }}
       />
     </PurchasesProvider>
