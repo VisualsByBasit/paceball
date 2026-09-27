@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -10,17 +9,19 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, opacity, radius, space, stroke, type } from '../../src/ui/tokens';
+import { ActionButton } from '../../src/ui/ActionButton';
+import { AppBar } from '../../src/ui/AppBar';
+import { colors, space, stroke, type } from '../../src/ui/tokens';
 
 const MAX_NAME_LENGTH = 40;
 
 /**
- * Setup 01 — who is bowling.
+ * Setup, step 1 of 3: who is bowling.
  *
  * Only the name is collected here. A shoe is asked for on the scale step, where
  * a paced markers distance needs one. Height calibration reads the profile,
  * which no shipped screen can set yet, so asking for it here would be a
- * question with no use.
+ * question with no use, and so would a line about measuring heel to toe.
  *
  * The player is not created here. It is created at the end of setup, so backing
  * out of the next screen does not leave an orphan profile behind.
@@ -49,12 +50,11 @@ export default function SetupPlayerScreen() {
           { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.lg },
         ]}
       >
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={space.md} accessibilityRole="button">
-            <Text style={styles.headerAction}>Back</Text>
-          </Pressable>
-          <Text style={styles.headerStep}>1 OF 3</Text>
-        </View>
+        <AppBar
+          title="Setup"
+          onBack={() => router.back()}
+          right={<Text style={styles.headerStep}>Step 1 of 3</Text>}
+        />
 
         <View style={styles.body}>
           <Text style={styles.title}>Who's bowling?</Text>
@@ -80,15 +80,11 @@ export default function SetupPlayerScreen() {
           />
         </View>
 
-        <Pressable
-          style={[styles.primaryButton, !canContinue && styles.buttonOff]}
+        <ActionButton
+          label="Continue"
           onPress={onContinue}
-          disabled={!canContinue}
-          accessibilityRole="button"
-          accessibilityLabel="Continue"
-        >
-          <Text style={styles.primaryButtonText}>Continue</Text>
-        </Pressable>
+          disabledReason={canContinue ? null : 'Enter a name to continue.'}
+        />
       </View>
     </KeyboardAvoidingView>
   );
@@ -98,33 +94,19 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { flex: 1, paddingHorizontal: space.lg },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerAction: { ...type.caption, color: colors.muted },
-  headerStep: { ...type.label, color: colors.muted },
+  headerStep: { ...type.caption, ...type.tabular, color: colors.muted },
 
-  body: { flex: 1, paddingTop: space.xxl },
+  body: { flex: 1, paddingTop: space.xl },
   title: { ...type.h1, color: colors.text },
   sub: { ...type.body, color: colors.muted, marginTop: space.sm },
 
+  // Input outlines are `control`, so the field can be found at a glance.
   input: {
     ...type.h2,
     color: colors.text,
-    borderBottomWidth: stroke.hairline,
-    borderColor: colors.line,
+    borderBottomWidth: stroke.medium,
+    borderColor: colors.control,
     paddingVertical: space.md,
     marginTop: space.xl,
   },
-
-  primaryButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
-    alignItems: 'center',
-  },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
-  buttonOff: { opacity: opacity.disabled },
 });

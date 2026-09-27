@@ -1,12 +1,5 @@
 import { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createPlayer } from '../../src/data';
@@ -14,6 +7,9 @@ import { PITCH_LENGTH_M } from '../../src/physics/computeSpeed';
 import { shouldShowOnboardingPaywall, usePurchases } from '../../src/purchases';
 import { getSettings, updateSettings } from '../../src/settings';
 import { errorMessage } from '../../src/ui/format';
+import { ActionButton } from '../../src/ui/ActionButton';
+import { AppBar } from '../../src/ui/AppBar';
+import { Notice } from '../../src/ui/Notice';
 import { colors, opacity, radius, space, stroke, type } from '../../src/ui/tokens';
 
 const REQUIREMENTS = [
@@ -21,17 +17,6 @@ const REQUIREMENTS = [
   'Level with where the ball pitches, not level with either set of stumps.',
   'Both sets of stumps in frame for the whole delivery.',
 ];
-
-/** Dots standing in for the ball between release and bounce. */
-const BALL_DOTS = 9;
-
-/**
- * Where the path sits along the strip, as a fraction of the pitch. The ball is
- * let go about 2 m past the crease and pitches 6–8 m short of the far stumps,
- * so it covers a bit over half the ruler it is measured against.
- */
-const PATH_START = '12%';
-const PATH_END = '36%';
 
 const PITCH_HEIGHT = 68;
 const STANDOFF_HEIGHT = 84;
@@ -71,8 +56,8 @@ function Diagram() {
       accessible
       accessibilityRole="image"
       accessibilityLabel={
-        `Seen from above: a pitch with stumps at both ends, ${PITCH_LENGTH_M} metres apart, ` +
-        'and the ball path along it. The phone sits 5 to 8 metres back from the middle of ' +
+        `Seen from above: a pitch with stumps at both ends, ${PITCH_LENGTH_M} metres apart. ` +
+        'The phone sits 5 to 8 metres back from the middle of ' +
         'the pitch, square to it, with both sets of stumps inside its view.'
       }
     >
@@ -89,11 +74,8 @@ function Diagram() {
         onLayout={(e) => setPitchWidth(e.nativeEvent.layout.width)}
       >
         <Stumps />
-        <View style={styles.ballPath}>
-          {Array.from({ length: BALL_DOTS }, (_, i) => (
-            <View key={i} style={styles.ballDot} />
-          ))}
-        </View>
+        {/* The pitch line. No ball path: nothing on this screen was marked. */}
+        <View style={styles.pitchLine} />
         <Stumps />
       </View>
 
@@ -125,7 +107,7 @@ function Diagram() {
 }
 
 /**
- * Setup 03 — where to stand, and how to frame the shot.
+ * Setup, step 3 of 3: where to stand, and how to frame the shot.
  *
  * Last in setup, because it only makes sense once the pitch has been named as
  * the ruler on the previous screen, and because it is the thing you act on as
@@ -183,21 +165,20 @@ export default function SetupCameraScreen() {
   }, [configured, isOnboarding, isPro, loading, name, router]);
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <View style={styles.bar}>
+        <AppBar
+          title={isOnboarding ? 'Setup' : 'Where to stand'}
+          onBack={() => router.back()}
+          right={isOnboarding ? <Text style={styles.headerStep}>Step 3 of 3</Text> : null}
+        />
+      </View>
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + space.md, paddingBottom: space.lg },
-        ]}
+        contentContainerStyle={[styles.content, { paddingTop: space.md, paddingBottom: space.lg }]}
       >
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={space.md} accessibilityRole="button">
-            <Text style={styles.headerAction}>Back</Text>
-          </Pressable>
-          {isOnboarding ? <Text style={styles.headerStep}>3 OF 3</Text> : null}
-        </View>
-
-        <Text style={styles.title}>Stand side-on to the pitch</Text>
+        <Text style={styles.title} accessibilityRole="header">
+          Film side-on. Keep it steady.
+        </Text>
         <Text style={styles.sub}>
           Paceball measures how far the ball travels and how long it takes. The pitch
           is the ruler: the {PITCH_LENGTH_M} m between the wickets is what turns
@@ -219,22 +200,19 @@ export default function SetupCameraScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + space.lg }]}>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable
-          style={[styles.primaryButton, saving && styles.buttonOff]}
+        {error ? (
+          <View style={styles.error}>
+            <Notice tone="error" live>
+              {error}
+            </Notice>
+          </View>
+        ) : null}
+        <ActionButton
+          label={isOnboarding ? "Let's bowl" : 'Got it'}
           onPress={onFinish}
-          disabled={saving}
-          accessibilityRole="button"
-          accessibilityLabel={isOnboarding ? 'Create profile and start' : 'Done'}
-        >
-          {saving ? (
-            <ActivityIndicator color={colors.bg} />
-          ) : (
-            <Text style={styles.primaryButtonText}>
-              {isOnboarding ? `Start bowling as ${name}` : 'Got it'}
-            </Text>
-          )}
-        </Pressable>
+          busy={saving ? 'Setting up…' : null}
+          accessibilityLabel={isOnboarding ? `Create the profile for ${name} and start` : 'Done'}
+        />
       </View>
     </View>
   );
@@ -244,14 +222,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: space.lg },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.xl,
-  },
-  headerAction: { ...type.caption, color: colors.muted },
-  headerStep: { ...type.label, color: colors.muted },
+  bar: { paddingHorizontal: space.md },
+  headerStep: { ...type.caption, ...type.tabular, color: colors.muted },
 
   title: { ...type.h1, color: colors.text },
   sub: { ...type.body, color: colors.muted, marginTop: space.sm },
@@ -302,21 +274,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.text,
   },
 
-  ballPath: {
-    position: 'absolute',
-    left: PATH_START,
-    right: PATH_END,
-    top: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  ballDot: {
-    width: stroke.heavy,
-    height: stroke.heavy,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
+  pitchLine: {
+    flex: 1,
+    height: stroke.hairline,
+    marginHorizontal: space.sm,
+    backgroundColor: colors.control,
   },
 
   standoff: { height: STANDOFF_HEIGHT, alignItems: 'center' },
@@ -406,14 +368,5 @@ const styles = StyleSheet.create({
     borderTopWidth: stroke.hairline,
     borderColor: colors.line,
   },
-  error: { ...type.caption, color: colors.danger, marginBottom: space.md },
-  primaryButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
-  buttonOff: { opacity: opacity.disabled },
+  error: { marginBottom: space.md },
 });
