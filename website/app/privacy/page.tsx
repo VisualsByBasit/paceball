@@ -110,6 +110,11 @@ export default function PrivacyPage() {
             delete it.
           </li>
         </ul>
+        <p>
+          To delete your purchase ID or any crash reports, email {mail} and include the approximate
+          date you used Paceball. We will delete it within 30 days. Everything else Paceball stores
+          is on your phone and is removed when you delete a delivery or uninstall the app.
+        </p>
       </section>
 
       <section>

@@ -73,3 +73,15 @@ test('the in-app policy names the gallery permission the website lists', () => {
     assert.ok(blocked.includes(`android.permission.${permission}`), permission);
   }
 });
+
+test('both policies say how to ask for data to be deleted, in the same words', () => {
+  const copy =
+    'To delete your purchase ID or any crash reports, email paceballpro@gmail.com and include the approximate date you used Paceball. We will delete it within 30 days. Everything else Paceball stores is on your phone and is removed when you delete a delivery or uninstall the app.';
+  assert.ok(read('app/diagnostics.tsx').includes(copy), 'the in-app privacy screen');
+  // The site writes the address through its one contact constant, as a link.
+  const contact = read('website/lib/site.ts').match(/CONTACT_EMAIL = "([^"]+)"/)[1];
+  assert.equal(contact, 'paceballpro@gmail.com');
+  const site = read('website/app/privacy/page.tsx').replace(/\s+/g, ' ').replaceAll('{mail}', contact);
+  assert.ok(site.includes(copy), 'the website privacy policy');
+  assert.doesNotMatch(copy, /—/);
+});

@@ -57,6 +57,8 @@ export default function DiagnosticsScreen() {
       ]);
     }}><Text style={styles.body}>Test native crash</Text></Pressable> : null}
     {notice ? <Text accessibilityLiveRegion="polite" style={styles.note}>{notice}</Text> : null}
+    <Text style={styles.title}>Deleting your data</Text>
+    <Text style={styles.body}>To delete your purchase ID or any crash reports, email paceballpro@gmail.com and include the approximate date you used Paceball. We will delete it within 30 days. Everything else Paceball stores is on your phone and is removed when you delete a delivery or uninstall the app.</Text>
   </ScrollView>;
 }
 
