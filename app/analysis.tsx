@@ -26,8 +26,12 @@ import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { useHoldRepeat } from '../src/ui/useHoldRepeat';
 import { useSettings } from '../src/settings';
-import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
+import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
+import { AppBar } from '../src/ui/AppBar';
+import { BottomSheet } from '../src/ui/BottomSheet';
+import { Notice } from '../src/ui/Notice';
+import { ReadingBlock } from '../src/ui/ReadingBlock';
+import { readingView } from '../src/ui/reading';
 import { errorMessage } from '../src/ui/format';
 import { first } from '../src/ui/routeParams';
 import type { Point, Session } from '../src/types';
@@ -37,9 +41,9 @@ import type { Point, Session } from '../src/types';
  * speed the ball crosses the frame in a third of a second.
  */
 const RATES = [
-  { rate: 0.25, label: '¼×' },
-  { rate: 0.5, label: '½×' },
-  { rate: 1, label: '1×' },
+  { rate: 0.25, label: '0.25x' },
+  { rate: 0.5, label: '0.5x' },
+  { rate: 1, label: '1x' },
 ];
 
 type Loaded =
@@ -354,6 +358,9 @@ function Replay({
   // Export and delete live in a sheet over the screen rather than in the layout,
   // so the video stage keeps its full height whether or not they are open.
   const [sharing, setSharing] = useState(false);
+  const [working, setWorking] = useState(false);
+  // What the reading block shows: the speed with its range, or nothing at all.
+  const view = readingView(state, unit);
 
   // The same guard as Result, against the ruler this delivery actually used.
   const warning = travelWarning(
@@ -364,25 +371,16 @@ function Replay({
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Pressable onPress={onBack} hitSlop={space.md} accessibilityRole="button">
-          <Text style={styles.headerAction}>Back</Text>
-        </Pressable>
-        <Text style={styles.headerMeta}>
-          {spec.short} · {formatMetres(session.calRealMetres)}
-        </Text>
-      </View>
-
-      <View style={styles.stats}>
-        <View style={styles.statsTop}>
-          <Text style={styles.statsLabel}>AVG SPEED TO BOUNCE</Text>
-          {/* Same rule as Result: nothing to put on a share card without a
-              measured speed, so not-seen and unusable deliveries get no button. */}
-          {measured ? (
+      {/* Same rule as Result: nothing to put on a share card without a
+          measured speed, so not-seen and unusable deliveries get no button. */}
+      <View style={styles.bar}>
+        <AppBar
+          title="Delivery"
+          onBack={onBack}
+          right={measured ? (
             <Pressable
               style={[styles.shareButton, sharing && styles.shareButtonOn]}
               onPress={() => setSharing((open) => !open)}
-              hitSlop={space.md}
               accessibilityRole="button"
               accessibilityState={{ expanded: sharing }}
               accessibilityLabel="Share this delivery"
@@ -392,54 +390,43 @@ function Replay({
               </Text>
             </Pressable>
           ) : null}
-        </View>
-        <View style={styles.statRow}>
-          <Stat
-            label="SPEED"
-            value={state.kind === 'measured' ? formatSpeed(state.speedKmh, unit) : '–'}
-            unit={measured ? unitLabel(unit) : 'not measured'}
-            hero
-          />
-          <Stat
-            label="ERROR"
-            value={state.kind === 'measured' ? `± ${errorIn(state.errorKmh, unit)}` : '–'}
-            unit={measured ? unitLabel(unit) : ''}
-          />
-          <Stat
-            label="TRAVEL"
-            value={measured ? session.travelMetres.toFixed(2) : '–'}
-            unit={measured ? 'm' : 'not measured'}
-          />
-          {/* The clip's own frame rate is a property of the recording, not of
-              the marks, so it stands whatever the bounce was worth. */}
-          <Stat label="FPS" value={fps.toFixed(2)} unit="read from file" />
-          <Stat
-            label="FRAME Δ"
-            value={measured ? String(frameDelta) : '–'}
-            unit={measured ? 'frames' : ''}
-          />
-        </View>
+        />
+      </View>
+
+      <View style={styles.stats}>
+        {view.kind === 'measured' ? (
+          <ReadingBlock reading={view} size="reading" />
+        ) : (
+          <Text style={styles.noSpeed}>No speed measured</Text>
+        )}
         {state.kind === 'unusable' ? (
-          <Text style={styles.note}>
-            This delivery can't be measured from what was saved. Its marks don't
-            hold enough to put an error range on a speed, and a speed without its
-            range is not a reading, so no speed, flight time, frame delta or
-            distance travelled is shown. The clip and the marks are kept, and the
-            delivery is left out of your trend.
-          </Text>
+          <View style={styles.note}>
+            <Notice tone="info">
+              This delivery can't be measured from what was saved. Its marks don't hold enough to put an error range on a speed, and a speed without its range is not a reading, so no speed, flight time, frame delta or distance travelled is shown. The clip and the marks are kept, and the delivery is left out of your trend.
+            </Notice>
+          </View>
         ) : null}
         {state.kind === 'not-seen' ? (
-          <Text style={styles.note}>
-            The bounce was marked without the ball being visible in that frame, so
-            this delivery carries no speed, and no flight time, frame delta or
-            distance travelled either, since all of them are measured from that
-            mark. The clip and the marks are kept, and everything stays saved;
-            none of it is invented, and the delivery stays out of your trend.
-          </Text>
+          <View style={styles.note}>
+            <Notice tone="info">
+              The bounce was marked without the ball being visible in that frame, so this delivery carries no speed, and no flight time, frame delta or distance travelled either, since all of them are measured from that mark. The clip and the marks are kept, and everything stays saved; none of it is invented, and the delivery stays out of your trend.
+            </Notice>
+          </View>
         ) : null}
         {/* The warning quotes the travel figure, so it would leak a number this
             screen is deliberately withholding. */}
-        {warning && measured ? <Text style={styles.note}>{warning.message}</Text> : null}
+        {warning && measured ? (
+          <View style={styles.note}>
+            <Notice tone="caution">{warning.message}</Notice>
+          </View>
+        ) : null}
+        <Pressable
+          style={styles.workingLink}
+          onPress={() => setWorking(true)}
+          accessibilityRole="button"
+        >
+          <Text style={styles.workingLinkText}>How this was measured</Text>
+        </Pressable>
       </View>
 
       <View
@@ -582,7 +569,6 @@ function Replay({
               <Pressable
                 key={r.rate}
                 onPress={() => changeRate(r.rate)}
-                hitSlop={{ top: space.md, bottom: space.sm }}
                 style={[styles.rate, on && styles.rateOn]}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
@@ -594,7 +580,6 @@ function Replay({
           })}
           <Pressable
             onPress={toggleSound}
-            hitSlop={{ top: space.md, bottom: space.sm }}
             style={[styles.rate, styles.sound, !muted && styles.rateOn]}
             accessibilityRole="switch"
             accessibilityState={{ checked: !muted }}
@@ -606,6 +591,30 @@ function Replay({
           </Pressable>
         </View>
       </View>
+
+      {/* The working, in a sheet so the replay keeps its height. Everything
+          read off the bounce mark is withheld with the speed; the fps, the
+          marked frames and the scale reference still show. */}
+      <BottomSheet visible={working} title="How this was measured" onClose={() => setWorking(false)}>
+        <WorkingRow label="Marked frames" value={`${release.frame} → ${bounce.frame}`} />
+        {measured ? <WorkingRow label="Frame delta" value={`${frameDelta} frames`} /> : null}
+        <WorkingRow label="fps used" value={fps.toFixed(2)} />
+        {measured ? (
+          <WorkingRow label="Flight time" value={`${(frameDelta / fps).toFixed(4)} s`} />
+        ) : null}
+        <WorkingRow
+          label="Scale reference"
+          value={`${spec.short} · ${formatMetres(session.calRealMetres)}`}
+        />
+        <WorkingRow label="Pixels per metre" value={session.pixelsPerMetre.toFixed(2)} />
+        {measured ? (
+          <WorkingRow label="Ball travelled" value={`${session.travelMetres.toFixed(2)} m`} />
+        ) : (
+          <Text style={styles.footnote}>
+            Frame delta, flight time and distance travelled are not shown. They are measured from the bounce mark, so they are withheld with the speed. All of them are still saved with the delivery.
+          </Text>
+        )}
+      </BottomSheet>
 
       {measured ? (
         <Modal
@@ -752,32 +761,12 @@ function CleanExport({ sessionId, onLeave }: { sessionId: string; onLeave: () =>
   );
 }
 
-function Stat({
-  label,
-  value,
-  unit,
-  hero,
-}: {
-  label: string;
-  value: string;
-  unit: string;
-  hero?: boolean;
-}) {
+/** A label and its value in the working, side by side. */
+function WorkingRow({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <Text
-        style={[styles.statValue, hero && styles.statValueHero]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-      >
-        {value}
-      </Text>
-      <Text style={styles.statUnit} numberOfLines={1} adjustsFontSizeToFit>
-        {unit}
-      </Text>
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue}>{value}</Text>
     </View>
   );
 }
@@ -786,29 +775,21 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   center: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.lg },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-  },
+  bar: { paddingHorizontal: space.md },
   headerAction: { ...type.caption, color: colors.muted },
-  headerMeta: { ...type.caption, color: colors.text },
 
-  stats: { paddingHorizontal: space.lg, paddingBottom: space.md },
-  statsTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.sm,
-  },
+  stats: { paddingHorizontal: space.lg, paddingBottom: space.sm, alignItems: 'center' },
   statsLabel: { ...type.label, color: colors.muted },
-  // Kept to the label row's own height, so the stage below loses nothing to it.
+  noSpeed: { ...type.h2, color: colors.text, paddingVertical: space.sm },
+  note: { alignSelf: 'stretch', marginTop: space.sm },
+  workingLink: { minHeight: size.target, justifyContent: 'center' },
+  workingLinkText: { ...type.body, color: colors.text, textDecorationLine: 'underline' },
   shareButton: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
+    minHeight: size.target,
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
     paddingHorizontal: space.md,
   },
   shareButtonOn: { backgroundColor: colors.text, borderColor: colors.text },
@@ -859,21 +840,18 @@ const styles = StyleSheet.create({
   cleanNotice: { ...type.caption, color: colors.muted, marginBottom: space.sm },
   sheetScroll: { flexGrow: 0 },
   sheetContent: { paddingBottom: space.md },
-  statRow: { flexDirection: 'row' },
-  stat: { flex: 1, marginRight: space.xs },
-  statLabel: { ...type.label, color: colors.muted },
-  statValue: { ...type.body, ...type.mono, color: colors.text, marginTop: space.xs },
-  statValueHero: { color: colors.accent, fontWeight: '800' },
-  statUnit: { ...type.caption, color: colors.muted },
-  note: {
-    ...type.caption,
-    color: colors.warn,
-    borderWidth: stroke.hairline,
-    borderColor: colors.warn,
-    borderRadius: radius.md,
-    padding: space.md,
-    marginTop: space.md,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingVertical: space.sm,
+    borderBottomWidth: stroke.hairline,
+    borderColor: colors.line,
+    gap: space.md,
   },
+  rowLabel: { ...type.body, color: colors.muted, flexShrink: 1 },
+  rowValue: { ...type.body, ...type.mono, color: colors.text },
+  footnote: { ...type.caption, color: colors.muted, marginTop: space.md },
 
   stage: {
     flex: 1,
@@ -933,11 +911,12 @@ const styles = StyleSheet.create({
 
   rates: { flexDirection: 'row', justifyContent: 'center', marginTop: space.md },
   rate: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
+    minHeight: size.target,
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
     paddingHorizontal: space.md,
-    paddingVertical: space.xs,
     marginHorizontal: space.xs,
   },
   rateOn: { backgroundColor: colors.text, borderColor: colors.text },

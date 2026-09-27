@@ -61,8 +61,8 @@ test('the small chips reach 48 dp under the finger without changing how they loo
   assert.match(confidencePress.slice(0, confidencePress.indexOf('<Text')), /style=\{\[styles\.segment,/);
   assert.match(mark, /segment: \{\s*flex: 1,\s*minHeight: size\.target,/);
   const analysis = read('app/analysis.tsx');
-  assert.match(analysis.slice(analysis.indexOf('onPress={() => changeRate(r.rate)}')), chip);
-  assert.match(analysis.slice(analysis.indexOf('onPress={toggleSound}')), chip);
+  // Analysis's rate chips and sound switch are drawn 48 dp now, so they need no slop.
+  assert.match(analysis, /rate: \{\s*minHeight: size\.target,/);
   // The lens choice is drawn 48 dp now, as Mark's controls are.
   const capture = read('app/capture.tsx');
   assert.match(capture, /lens: \{\s*minWidth: size\.target,\s*minHeight: size\.target,/);
