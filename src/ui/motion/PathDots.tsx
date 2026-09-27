@@ -5,6 +5,7 @@ import Animated, {
   Extrapolation,
   interpolate,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withTiming,
   type SharedValue,
@@ -40,14 +41,21 @@ export function pointsAlong(from: PathPoint, to: PathPoint, count: number): Path
  * One shared value drives the whole sequence: it runs from 0 to the number of
  * dots, and dot i reads its own slice of it, i to i + 1. A single animation,
  * so there is nothing to keep in step, and its end is the cue for the pulse.
+ *
+ * Reduced motion draws every dot at once and does not pulse.
  */
 export function PathDots({ points }: { points: PathPoint[] }) {
-  const drawn = useSharedValue(0);
-  const ping = useSharedValue(0);
+  const reduced = useReducedMotion();
   const count = points.length;
+  const drawn = useSharedValue(reduced ? count : 0);
+  const ping = useSharedValue(0);
 
   useEffect(() => {
     ping.value = 0;
+    if (reduced) {
+      drawn.value = count;
+      return;
+    }
     drawn.value = 0;
     drawn.value = withTiming(
       count,
@@ -58,7 +66,7 @@ export function PathDots({ points }: { points: PathPoint[] }) {
         }
       }
     );
-  }, [count, drawn, ping]);
+  }, [count, drawn, ping, reduced]);
 
   if (count === 0) return null;
 
