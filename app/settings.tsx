@@ -29,6 +29,7 @@ import {
 import { LICENCE_NAME, LICENCE_TEXT } from '../src/ui/licence';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { unitLabel, unitSpoken } from '../src/ui/units';
+import { TabBar } from '../src/ui/TabBar';
 import { formatBias } from '../src/ui/format';
 
 type RestoreState = { status: 'idle' } | { status: 'restoring' } | RestoreOutcome;
@@ -89,6 +90,7 @@ export default function SettingsScreen() {
   const restoreNote = restoreMessage(restore);
 
   return (
+    <View style={styles.page}>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[
@@ -307,6 +309,9 @@ export default function SettingsScreen() {
         ) : null}
       </Section>
     </ScrollView>
+      {/* Home, History and Settings share one tab bar. */}
+      <TabBar current="settings" />
+    </View>
   );
 }
 
@@ -320,6 +325,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: colors.bg },
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: space.lg },
 

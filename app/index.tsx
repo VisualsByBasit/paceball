@@ -1,195 +1,290 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getActivePlayer } from '../src/data';
-import { PITCH_LENGTH_M } from '../src/physics/computeSpeed';
-import { Screen } from '../src/ui/Screen';
-import { colors, radius, space, stroke, type } from '../src/ui/tokens';
+import { releaseFrameUri } from '../src/capture/useFrames';
+import { getActivePlayer, listSessions } from '../src/data';
+import { measurementState } from '../src/physics/measurementState';
+import { allowanceLine, usePurchases } from '../src/purchases';
+import { useSettings } from '../src/settings';
+import { ActionButton } from '../src/ui/ActionButton';
+import { AllowanceLine } from '../src/ui/AllowanceLine';
+import { DeliveryRow } from '../src/ui/DeliveryRow';
+import { EmptyState } from '../src/ui/EmptyState';
+import { ReadingBlock } from '../src/ui/ReadingBlock';
+import { TabBar } from '../src/ui/TabBar';
+import { personalBest } from '../src/ui/deliveries';
+import { errorMessage, formatWhen } from '../src/ui/format';
+import { readingView } from '../src/ui/reading';
+import { colors, radius, size, space, stroke, type } from '../src/ui/tokens';
+import type { Session } from '../src/types';
 
-/**
- * Every number here is real: the pitch length the app calibrates against, the
- * error range on every reading, and how many videos or speeds Paceball sends —
- * none. That is narrower than saying nothing is sent: opted-in crash reports and
- * purchases do reach a server, and neither carries a video or a speed.
- */
-const FACTS = [
-  { value: String(PITCH_LENGTH_M), label: 'M PITCH\nAS RULER' },
-  { value: '±', label: 'ERROR RANGE\nPER READING' },
-  { value: '0', label: 'VIDEOS OR\nSPEEDS SENT' },
-];
+/** How many of the latest deliveries Home lists before "See all". */
+const RECENT = 3;
+
+type Loaded =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; bowler: string | null; sessions: Session[] };
+
+/** The day of the week a time falls on, as the phone names it. */
+function weekdayOf(t: number): string {
+  return new Date(t).toLocaleDateString(undefined, { weekday: 'long' });
+}
 
 export default function Index() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
+  const { unit } = useSettings();
+  const { isPro, allowance, refreshAnalyses } = usePurchases();
 
-  const [checked, setChecked] = useState(false);
-  const [bowler, setBowler] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<Loaded>({ status: 'loading' });
 
-  // Re-read on focus so finishing setup, or coming back from it, is reflected
-  // without a restart. An existing player is what "already onboarded" means —
-  // there is no separate flag to drift out of sync with the data.
+  // Re-read on focus so finishing setup, saving a delivery or deleting one is
+  // reflected without a restart. An existing player is what "already
+  // onboarded" means: there is no separate flag to drift out of sync with the
+  // data. The previous content stays on screen while it does.
   useEffect(() => {
     if (!isFocused) return;
+    refreshAnalyses();
     let alive = true;
-    // The active player, so the name shown is the one deliveries are saved to.
-    getActivePlayer()
-      .then((player) => {
-        if (!alive) return;
-        setBowler(player?.name ?? null);
-        setChecked(true);
-      })
-      .catch(() => {
-        if (!alive) return;
-        setBowler(null);
-        setChecked(true);
-      });
+    (async () => {
+      try {
+        // The active player, so the name shown is the one deliveries are saved to.
+        const player = await getActivePlayer();
+        const sessions = player ? await listSessions({ playerId: player.id }) : [];
+        if (alive) setLoaded({ status: 'ready', bowler: player?.name ?? null, sessions });
+      } catch (e) {
+        if (alive) setLoaded({ status: 'error', message: errorMessage(e) });
+      }
+    })();
     return () => {
       alive = false;
     };
-  }, [isFocused]);
+  }, [isFocused, refreshAnalyses]);
 
-  return (
-    <Screen
-      style={[
-        styles.screen,
-        { paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + space.lg },
-      ]}
-    >
+  const sessions = loaded.status === 'ready' ? loaded.sessions : [];
+  // Every delivery read once, through its own measurementState: the best is
+  // measured, with its recomputed range, or there is none.
+  const listed = useMemo(
+    () => sessions.map((s) => ({ id: s.id, createdAt: s.createdAt, state: measurementState(s), session: s })),
+    [sessions]
+  );
+  const best = useMemo(() => personalBest(listed), [listed]);
+  const bestView = best ? readingView(best.state, unit) : null;
+
+  const open = (id: string) => router.push({ pathname: '/analysis', params: { id } });
+
+  let body: React.ReactNode;
+  if (loaded.status === 'loading') {
+    body = (
       <View>
-        <Text style={styles.title}>Paceball</Text>
-        <Text style={styles.sub}>Your phone. The ultimate speed gun.</Text>
+        <Text style={styles.muted}>Loading deliveries…</Text>
+        <View style={styles.placeholder} />
+        <View style={styles.placeholder} />
       </View>
-
-      <View style={styles.facts}>
-        {FACTS.map((fact) => (
-          <View key={fact.label} style={styles.fact}>
-            <Text style={styles.factValue} numberOfLines={1} adjustsFontSizeToFit>
-              {fact.value}
-            </Text>
-            <Text style={styles.factLabel}>{fact.label}</Text>
-          </View>
-        ))}
+    );
+  } else if (loaded.status === 'error') {
+    body = (
+      <EmptyState title="Could not read saved deliveries" body={loaded.message} />
+    );
+  } else if (loaded.bowler === null) {
+    body = (
+      <View style={styles.welcome}>
+        <Text style={styles.h1}>A speed gun in your phone.</Text>
+        <Text style={styles.sub}>
+          Record a delivery, mark four points, and get the average speed to bounce with its
+          error range.
+        </Text>
+        <ActionButton
+          label="Get started"
+          onPress={() => router.push('/setup/player')}
+          style={styles.primary}
+        />
+        <Text style={styles.footnote}>Three screens. Nothing to sign up for.</Text>
       </View>
+    );
+  } else {
+    const allowanceNote = isPro ? null : allowanceLine(allowance, weekdayOf);
+    body = (
+      <>
+        <Text style={styles.h1}>Ready, {loaded.bowler}?</Text>
+        <ActionButton
+          label="Record a delivery"
+          onPress={() => router.push('/capture')}
+          style={styles.primary}
+        />
+        <View style={styles.allowance}>
+          <AllowanceLine line={allowanceNote} allowance={allowance} weekday={weekdayOf} />
+        </View>
 
-      <View style={styles.actions}>
-        {!checked ? (
-          <ActivityIndicator color={colors.muted} />
-        ) : bowler === null ? (
-          <>
-            <Pressable
-              style={styles.primaryButton}
-              onPress={() => router.push('/setup/player')}
-              accessibilityRole="button"
-              accessibilityLabel="Get started"
-            >
-              <Text style={styles.primaryButtonText}>Get started</Text>
-            </Pressable>
-            <Text style={styles.footnote}>Three screens. Nothing to sign up for.</Text>
-          </>
+        {sessions.length === 0 ? (
+          <EmptyState
+            title="Your first reading starts here."
+            body="Film a delivery and mark what you can see."
+          />
         ) : (
           <>
-            <Pressable
-              style={styles.primaryButton}
-              onPress={() => router.push('/capture')}
-              accessibilityRole="button"
-              accessibilityLabel="Record a delivery"
-            >
-              <Text style={styles.primaryButtonText}>Record a delivery</Text>
-            </Pressable>
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => router.push('/history')}
-              accessibilityRole="button"
-              accessibilityLabel="History"
-            >
-              <Text style={styles.secondaryButtonText}>History</Text>
-            </Pressable>
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => router.push('/setup/how-it-works')}
-              accessibilityRole="button"
-              accessibilityLabel="How it works"
-            >
-              <Text style={styles.secondaryButtonText}>How it works</Text>
-            </Pressable>
-            <Text style={styles.footnote}>Bowling as {bowler}.</Text>
+            {best && bestView?.kind === 'measured' ? (
+              <Pressable
+                style={styles.card}
+                onPress={() => open(best.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Personal best. ${bestView.spoken} Highest estimate. Open it.`}
+              >
+                <Text style={styles.h2}>Personal best</Text>
+                <View style={styles.bestReading}>
+                  <ReadingBlock reading={bestView} size="reading" />
+                </View>
+                <Text style={styles.caption}>Highest estimate</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.card}>
+                <Text style={styles.h2}>Personal best</Text>
+                <Text style={styles.muted}>
+                  Nothing measured yet. The fastest saved delivery shows here.
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.recentHead}>
+              <Text style={styles.h2}>Recent deliveries</Text>
+              <Pressable
+                style={styles.seeAll}
+                onPress={() => router.push('/history')}
+                accessibilityRole="button"
+                accessibilityLabel="See all deliveries"
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+              </Pressable>
+            </View>
+            {listed.slice(0, RECENT).map((d) => {
+              const view = readingView(d.state, unit);
+              return (
+                <Pressable
+                  key={d.id}
+                  onPress={() => open(d.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${formatWhen(d.createdAt)}. ${
+                    view.kind === 'measured' ? view.spoken : 'No speed.'
+                  } Open it.`}
+                >
+                  <DeliveryRow
+                    thumb={releaseFrameUri(d.session)}
+                    reading={view}
+                    when={formatWhen(d.createdAt)}
+                    best={best?.id === d.id}
+                  />
+                </Pressable>
+              );
+            })}
           </>
         )}
+      </>
+    );
+  }
 
-        {/* Outside both branches: restoring a purchase after a reinstall should
-            not wait on setting up a player first. */}
-        <Pressable
-          onPress={() => router.push('/settings')}
-          hitSlop={space.sm}
-          accessibilityRole="button"
-        >
-          <Text style={styles.settingsLink}>Settings</Text>
-        </Pressable>
+  const bowler = loaded.status === 'ready' ? loaded.bowler : null;
 
-        {/* Development only. The route itself redirects home in a release build. */}
-        {__DEV__ ? (
-          <Pressable onPress={() => router.push('/debug')} hitSlop={space.sm} accessibilityRole="button">
-            <Text style={styles.debugLink}>Debug · saved sessions</Text>
-          </Pressable>
+  return (
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <View style={styles.top}>
+        <Text style={styles.wordmark}>Paceball</Text>
+        {bowler ? (
+          // The first letter of the bowler's name, in place of a photo.
+          <View
+            style={styles.avatar}
+            accessible
+            accessibilityLabel={`Bowling as ${bowler}`}
+          >
+            <Text style={styles.avatarText}>{bowler.trim().charAt(0).toUpperCase()}</Text>
+          </View>
         ) : null}
       </View>
-    </Screen>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        {body}
+
+        {bowler ? (
+          <ActionButton
+            variant="text"
+            label="How it works"
+            onPress={() => router.push('/setup/how-it-works')}
+            style={styles.more}
+          />
+        ) : null}
+        {/* Development only. The route itself redirects home in a release build. */}
+        {__DEV__ ? (
+          <ActionButton variant="text" label="Debug · saved sessions" onPress={() => router.push('/debug')} />
+        ) : null}
+      </ScrollView>
+
+      {/* Settings is reachable before setup too: restoring a purchase after a
+          reinstall should not wait on setting up a player first. */}
+      <TabBar current="home" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { justifyContent: 'space-between' },
-
-  title: { ...type.h1, color: colors.text },
-  sub: { ...type.body, color: colors.muted, marginTop: space.sm },
-
-  facts: {
+  screen: { flex: 1, backgroundColor: colors.bg },
+  top: {
     flexDirection: 'row',
-    borderTopWidth: stroke.hairline,
-    borderBottomWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingVertical: space.lg,
-  },
-  fact: { flex: 1 },
-  factValue: { ...type.h1, color: colors.text },
-  factLabel: { ...type.label, color: colors.muted, marginTop: space.sm },
-
-  actions: { alignItems: 'stretch' },
-  primaryButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
     alignItems: 'center',
-  },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
-  secondaryButton: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingVertical: space.md,
-    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: size.target,
+    paddingHorizontal: space.lg,
     marginTop: space.sm,
   },
-  secondaryButtonText: { ...type.body, color: colors.text },
-  footnote: {
-    ...type.caption,
-    color: colors.muted,
-    textAlign: 'center',
-    marginTop: space.md,
+  wordmark: { ...type.h2, color: colors.text },
+  avatar: {
+    width: size.target,
+    height: size.target,
+    borderRadius: radius.pill,
+    borderWidth: stroke.medium,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  settingsLink: {
-    ...type.body,
-    color: colors.muted,
-    textAlign: 'center',
-    marginTop: space.lg,
+  avatarText: { ...type.button, color: colors.text },
+
+  content: { paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.xl },
+  h1: { ...type.h1, color: colors.text },
+  h2: { ...type.h2, color: colors.text },
+  sub: { ...type.body, color: colors.muted, marginTop: space.sm },
+  muted: { ...type.body, color: colors.muted, marginTop: space.sm },
+  caption: { ...type.caption, color: colors.muted, textAlign: 'center', marginTop: space.xs },
+  footnote: { ...type.caption, color: colors.muted, textAlign: 'center', marginTop: space.md },
+
+  welcome: { paddingTop: space.xl },
+  primary: { marginTop: space.lg },
+  allowance: { marginTop: space.sm, marginBottom: space.lg },
+
+  placeholder: {
+    minHeight: size.row,
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    marginTop: space.sm,
   },
-  debugLink: {
-    ...type.caption,
-    color: colors.muted,
-    textAlign: 'center',
-    marginTop: space.md,
-    textDecorationLine: 'underline',
+
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    padding: space.md,
   },
+  bestReading: { marginTop: space.sm },
+
+  recentHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: space.xl,
+  },
+  seeAll: { minHeight: size.target, justifyContent: 'center', paddingLeft: space.md },
+  seeAllText: { ...type.body, color: colors.text, textDecorationLine: 'underline' },
+  more: { marginTop: space.lg },
 });
