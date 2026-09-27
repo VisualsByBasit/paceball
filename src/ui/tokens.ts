@@ -46,6 +46,8 @@ export const size = {
   detent: 72,
   /** The magnifier over the frame while a mark is being placed. */
   loupe: 96,
+  /** The emblem shown once a purchase is confirmed. */
+  emblem: 96,
   /** A delivery row's minimum height. */
   row: 80,
   /** Screens narrower than this show the Result reading at heroCompact, not hero. */
@@ -115,8 +117,12 @@ export const motion = {
   press: { in: 80, out: 120 },
   /** The wicket locking once a reading lands: the bail falls, then it all turns lime. */
   lock: { bail: 180, colour: 120 },
-  /** The purchase emblem, from the first stump to the last line of copy. */
-  celebrate: 1100,
+  /**
+   * The purchase emblem, as the time each part finishes: the stumps fade in,
+   * the ball rolls up beside them, the bail settles, then the copy arrives.
+   * 1100 ms from the first stump to the last line of copy, with no springs.
+   */
+  celebrate: { stumps: 180, ball: 650, bail: 850, copy: 1100 },
   /** A notice arriving. Opacity only, never a shake. */
   notice: 120,
   /** The record button turning from a circle to a rounded square and back, with the recorder. */

@@ -201,14 +201,16 @@ glassmorphism.
 
 Built: index (home) · setup/player · setup/how-it-works · setup/camera
 · capture · mark · result · analysis · history · compare · settings
-· diagnostics (the privacy screen) · paywall · debug (development only;
-release builds redirect it home)
+· diagnostics (the privacy screen) · paywall · celebration · debug
+(development only; release builds redirect it home)
 
 The paywall is reached from Capture (the weekly limit), Analysis (the
 clean export), History (compare), Settings, and once at the end of
 onboarding. It renders the store's offering and buys and restores
-through RevenueCat. Result and Analysis give Pro a card without the
-watermark. Video export is a development-only spike on the debug screen.
+through RevenueCat. A purchase the store confirms with the `pro`
+entitlement replaces it with the celebration, once; a restore never
+does, and the route shows nothing when opened any other way. Result and
+Analysis give Pro a card without the watermark. Video export is a development-only spike on the debug screen.
 
 Not built: pre-flight check · a players screen (src/data/PlayersScreen.tsx
 exists but is not routed, so profiles cannot be switched and a height

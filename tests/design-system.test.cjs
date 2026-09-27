@@ -56,7 +56,7 @@ test('the brief\'s tokens exist, so no screen has to invent one', () => {
   assert.match(tokens, /sheet: \{ in: 220, out: 180 \}/);
   assert.match(tokens, /press: \{ in: 80, out: 120 \}/);
   assert.match(tokens, /lock: \{ bail: 180, colour: 120 \}/);
-  assert.match(tokens, /celebrate: 1100,/);
+  assert.match(tokens, /celebrate: \{ stumps: 180, ball: 650, bail: 850, copy: 1100 \},/);
   assert.match(tokens, /standardCurve: \[0\.2, 0, 0, 1\]/);
 });
 

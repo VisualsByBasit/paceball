@@ -64,7 +64,7 @@ test('every context has a headline with and without a trial, and a dismiss that 
 
 test('no badges, no countdowns, no savings and no social proof', () => {
   const paywall = read(PAYWALL);
-  assert.doesNotMatch(paywall, /Most popular|Best value|Save \d|% off|\bbadge\b|countdown|reviews|users love|rated/i);
+  assert.doesNotMatch(paywall, /Most popular|Best value|Save \d|% off|\bbadge\b|countdown|\breviews\b|users love|\brated\b/i);
   assert.doesNotMatch(paywall, /trialBadge|DAYS FREE/);
   // Only what the build ships.
   assert.match(paywall, /'Unlimited analyses',\s*'Watermark-free exports',\s*'Higher recording quality',\s*'Compare deliveries',/);

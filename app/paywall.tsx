@@ -16,6 +16,7 @@ import {
 } from '../src/purchases';
 import { PRIVACY_URL, TERMS_URL } from '../src/purchases/links';
 import { AppBar } from '../src/ui/AppBar';
+import { armCelebration } from '../src/ui/celebration';
 import { Notice, type NoticeTone } from '../src/ui/Notice';
 import { ctaFor, planTerms, renewalLine } from '../src/ui/paywallCopy';
 import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
@@ -202,8 +203,15 @@ export default function PaywallScreen() {
     // ever turns on because the entitlement came back with it.
     const outcome = await purchase(chosen);
     setBuying(false);
+    // Only a purchase the store confirmed with the pro entitlement active is
+    // celebrated, once, in place of this screen. A restore never gets here.
+    if (outcome.status === 'purchased') {
+      armCelebration(context);
+      router.replace('/celebration');
+      return;
+    }
     setNotice(purchaseNote(outcome));
-  }, [buying, chosen, purchase]);
+  }, [buying, chosen, purchase, context, router]);
 
   const onRestore = useCallback(async () => {
     setRestore({ status: 'restoring' });
