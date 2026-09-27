@@ -1,12 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   BackHandler,
-  Pressable,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +20,7 @@ import {
   formatMetres,
   isCalibrationMethod,
   travelWarning,
+  type CalibrationSpec,
 } from '../src/physics/calibration';
 import {
   computeSpeed,
@@ -26,16 +28,32 @@ import {
   type SpeedResult,
 } from '../src/physics/computeSpeed';
 import { referenceFraming, spanBetween } from '../src/capture/framing';
+import { releaseFrameUri } from '../src/capture/useFrames';
 import { measurementState } from '../src/physics/measurementState';
 import { canExportWithoutWatermark, useEntitlements } from '../src/purchases';
 import { useSettings } from '../src/settings';
-import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
-import { errorIn, formatSpeed, unitLabel, unitSpoken } from '../src/ui/units';
+import { ActionButton } from '../src/ui/ActionButton';
+import { AppBar } from '../src/ui/AppBar';
+import { BottomSheet } from '../src/ui/BottomSheet';
+import { FrameMarker } from '../src/ui/FrameMarker';
+import { Notice } from '../src/ui/Notice';
+import { ReadingBlock } from '../src/ui/ReadingBlock';
+import { WicketLock } from '../src/ui/WicketLock';
+import { PathDots, pointsAlong } from '../src/ui/motion/PathDots';
+import { READING_LABEL, readingView, type NoReading } from '../src/ui/reading';
+import { colors, radius, size, space, stroke, type } from '../src/ui/tokens';
+import { useLargeText } from '../src/ui/useLargeText';
 import { errorMessage } from '../src/ui/format';
 import { finiteNumber, first, positiveNumber } from '../src/ui/routeParams';
 import type { CalibrationMethod, MarkConfidence, MarkerSource, Point } from '../src/types';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+/** Dots along the straight line from release to bounce on the evidence frame. */
+const CONNECTOR_DOTS = 9;
+
+/** The evidence frame never takes more than this share of the screen's height. */
+const EVIDENCE_MAX_HEIGHT_SHARE = 0.5;
 
 function parsePoint(value: string | string[] | undefined): Point | null {
   const raw = first(value);
@@ -92,12 +110,21 @@ export default function ResultScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+  const { width } = useWindowDimensions();
+  // At large text the footer moves into the page and the working stacks, so
+  // nothing sits over a range or a button.
+  const largeText = useLargeText();
 
-  const [showWorking, setShowWorking] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  // Saving moves the frames out of the cache, so the evidence frame is read
+  // from where the saved delivery keeps them once it has been saved.
+  const [savedFramesDir, setSavedFramesDir] = useState<string | null>(null);
   const savingRef = useRef(false);
+  // The count has landed: the wicket locks.
+  const [landed, setLanded] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useFocusEffect(useCallback(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -282,6 +309,7 @@ export default function ResultScreen() {
         releaseAngleDeg: null,
       });
       setSavedId(saved.id);
+      setSavedFramesDir(saved.framesDir);
       setSaveStatus('saved');
     } catch (e) {
       setSaveStatus('error');
@@ -309,16 +337,20 @@ export default function ResultScreen() {
     bounce,
   ]);
 
+
   if (!result) {
     return (
-      <View style={[styles.screen, styles.fallback, { paddingTop: insets.top }]}>
-        <Text style={styles.fallbackTitle}>No reading</Text>
-        <Text style={styles.fallbackBody}>
-          {'error' in reading ? reading.error : 'Something went wrong.'}
-        </Text>
-        <Pressable style={styles.primaryButton} onPress={() => router.back()} accessibilityRole="button">
-          <Text style={styles.primaryButtonText}>Back to marking</Text>
-        </Pressable>
+      <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom + space.lg }]}>
+        <View style={styles.bar}>
+          <AppBar title="Result" onBack={() => router.back()} backLabel="Back to marking" />
+        </View>
+        <View style={styles.fallback}>
+          <Text style={styles.h1}>No reading</Text>
+          <Text style={styles.fallbackBody}>
+            {'error' in reading ? reading.error : 'Something went wrong.'}
+          </Text>
+          <ActionButton label="Back to marking" onPress={() => router.back()} />
+        </View>
       </View>
     );
   }
@@ -326,7 +358,7 @@ export default function ResultScreen() {
   // Read the same way History and Analysis read the saved delivery, so the range
   // shown here is the range those screens will show. Nothing is saved yet, so the
   // points are still in the extracted frame's own space, where the marking scale
-  // is 1 by definition — the frame's size stands in if it did not survive.
+  // is 1 by definition. The frame's size stands in if it did not survive.
   const state = measurementState({
     speedKmh: result.speedKmh,
     markConfidence: markConfidence!,
@@ -340,9 +372,14 @@ export default function ResultScreen() {
     markerSource: markerSource ?? undefined,
   });
 
-  // Everything downstream of the bounce mark — the flight time, the frame
-  // delta and the distance travelled — is only worth as much as that mark.
+  // Everything this screen shows of the reading comes through here: a measured
+  // delivery carries its range with it, and one with no reading carries no number.
+  const view = readingView(state, unit);
+
+  // Everything downstream of the bounce mark (the flight time, the frame delta
+  // and the distance travelled) is only worth as much as that mark.
   const measured = state.kind === 'measured';
+  const saved = saveStatus === 'saved';
 
   // How much of the frame's width the two calibration marks spanned, in the
   // space they were marked in.
@@ -353,135 +390,150 @@ export default function ResultScreen() {
   // length alone never fired for markers, ball or height.
   const warning = travelWarning(result.travelMetres, calRealMetres!, calibrationMethod!);
 
-  return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.lg },
+  // Saving moves the clip and its frames out of the cache, so going back to
+  // re-mark is no longer possible once it has been saved. Back then goes home,
+  // as the hardware button does.
+  const goBack = () => (saved ? router.dismissAll() : router.back());
+
+  const footer = (
+    <View
+      style={[
+        styles.footer,
+        largeText ? styles.footerInFlow : [styles.footerSticky, { paddingBottom: insets.bottom + space.md }],
       ]}
     >
-      <View style={styles.header}>
-        {/* Saving moves the clip and its frames out of the cache, so going back
-            to re-mark is no longer possible once it has been saved. */}
-        {saveStatus === 'saved' ? null : (
-          <Pressable
-            disabled={saveStatus === 'saving'}
-            onPress={() => router.back()}
-            hitSlop={space.md}
-            accessibilityRole="button"
-          >
-            <Text style={styles.headerAction}>Back</Text>
-          </Pressable>
-        )}
+      {saveError ? <Notice tone="error" live>{`Could not save this delivery: ${saveError}`}</Notice> : null}
+      {saved ? (
+        <>
+          <View style={largeText ? styles.stack : styles.pair}>
+            <ActionButton label="Saved" complete onPress={() => undefined} style={styles.pairItem} />
+            <ActionButton
+              variant="secondary"
+              label="Share reading"
+              onPress={() => setSharing(true)}
+              disabledReason={measured ? null : 'A measured reading is needed to share a speed card.'}
+              style={styles.pairItem}
+            />
+          </View>
+          <ActionButton
+            variant="text"
+            label="Record another"
+            onPress={() => router.dismissTo('/capture')}
+          />
+        </>
+      ) : (
+        <ActionButton
+          label={saveStatus === 'error' ? 'Try again' : measured ? 'Save' : 'Save without speed'}
+          onPress={onSave}
+          busy={saveStatus === 'saving' ? 'Saving…' : null}
+          disabledReason={
+            canSave || saveStatus === 'saving'
+              ? null
+              : 'Some of the recording details did not reach this screen, so this delivery cannot be saved.'
+          }
+          accessibilityLabel={measured ? 'Save this delivery' : 'Save this delivery without a speed'}
+        />
+      )}
+    </View>
+  );
+
+  return (
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <View style={styles.bar}>
+        <AppBar
+          title="Result"
+          onBack={goBack}
+          backLabel={saved ? 'Back to home' : 'Back to marking'}
+          backDisabled={saveStatus === 'saving'}
+          caption={saved ? 'Saved on this phone' : null}
+        />
       </View>
 
-      {state.kind === 'unusable' ? (
-        <View style={styles.unmeasured}>
-          <Text style={styles.unmeasuredTitle}>This delivery can't be measured from these marks</Text>
-          <Text style={styles.unmeasuredBody}>
-            The marks don't hold enough to put an error range on the speed, and a
-            speed without its range is not a reading. Paceball will not show one.
-          </Text>
-          <Pressable
-            style={styles.remarkButton}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Go back and re-mark the delivery"
-          >
-            <Text style={styles.remarkButtonText}>Re-mark the delivery</Text>
-          </Pressable>
-        </View>
-      ) : state.kind === 'not-seen' ? (
-        <View style={styles.unmeasured}>
-          <Text style={styles.unmeasuredTitle}>The bounce wasn't seen</Text>
-          <Text style={styles.unmeasuredBody}>
-            You marked the bounce without being able to see the ball in that frame.
-            The flight time is read from that frame, so any speed taken from it
-            would be invented rather than measured. Paceball will not show one.
-          </Text>
-          <Text style={styles.unmeasuredBody}>
-            Go back and re-mark it if you can find the frame the ball lands on. You
-            can still save the delivery to keep the clip and the marks. It will
-            carry no speed, and it stays out of your trend.
-          </Text>
-          <Pressable
-            style={styles.remarkButton}
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Go back and re-mark the bounce"
-          >
-            <Text style={styles.remarkButtonText}>Re-mark the bounce</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <View
-          style={styles.hero}
-          // One stop for a screen reader, with the range said in words: read
-          // apart, the ± can be skipped and the range lost from the number.
-          accessible
-          accessibilityLabel={`Average speed to bounce, ${formatSpeed(state.speedKmh, unit)} ${unitSpoken(unit)}, plus or minus ${errorIn(state.errorKmh, unit)}`}
-        >
-          <Text style={styles.heroLabel}>AVG SPEED TO BOUNCE</Text>
-          <Text
-            style={styles.heroNumber}
-            allowFontScaling={false}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            {formatSpeed(state.speedKmh, unit)}
-          </Text>
-          <Text style={styles.heroUnit}>{unitLabel(unit)}</Text>
-          <Text style={styles.heroError}>
-            ± {errorIn(state.errorKmh, unit)} {unitLabel(unit)}
-          </Text>
-        </View>
-      )}
-
-      {/* The warning quotes the travel figure, so on a guessed bounce it would
-          leak the very number the rest of the screen is withholding. */}
-      {warning && measured ? <Text style={styles.note}>{warning.message}</Text> : null}
-      {/* Now the marks exist, how much of the frame the reference filled is
-          known. Only worth saying where the reference is laid along the pitch:
-          a ball or a standing bowler is small in frame by nature. */}
-      {framing && !framing.tight && spec!.rulerBoundsTravel && measured ? (
-        <Text style={styles.note}>
-          Your reference filled about {Math.round(framing.fraction * 100)}% of the frame. The
-          scale comes from that one distance, so a reference this small in frame can read low
-          by more than the range above allows for. Stand so both ends sit near the edges next
-          time.
-        </Text>
-      ) : null}
-
-      <Pressable
-        style={styles.workingToggle}
-        onPress={() => setShowWorking((v) => !v)}
-        accessibilityRole="button"
-        accessibilityLabel={showWorking ? 'Hide the working' : 'Show the working'}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, largeText && { paddingBottom: insets.bottom + space.lg }]}
       >
-        <Text style={styles.workingToggleText}>Show the working</Text>
-        <Text style={styles.workingChevron}>{showWorking ? '−' : '+'}</Text>
-      </Pressable>
+        {view.kind === 'measured' ? (
+          <View style={styles.reading}>
+            {/* The reading's own sentence says this, so it is not read twice. */}
+            <Text style={styles.label} accessibilityElementsHidden importantForAccessibility="no">
+              {READING_LABEL}
+            </Text>
+            <ReadingBlock
+              reading={view}
+              size={width < size.compactBelow ? 'heroCompact' : 'hero'}
+              reveal
+              onLanded={() => setLanded(true)}
+            />
+            <View style={styles.wicket}>
+              <WicketLock locked={landed} />
+            </View>
+          </View>
+        ) : (
+          <NoSpeed
+            cause={view.cause}
+            // Re-marking is the way from here to a real reading. Once saved, the
+            // clip has left the cache and there is nothing to go back to.
+            onRemark={saved ? null : () => router.back()}
+            remarkDisabled={saveStatus === 'saving'}
+          />
+        )}
 
-      {showWorking ? (
+        <View style={styles.cautions}>
+          {/* The warning quotes the travel figure, so on a guessed bounce it would
+              leak the very number the rest of the screen is withholding. */}
+          {warning && measured ? <Notice tone="caution">{warning.message}</Notice> : null}
+          {/* Now the marks exist, how much of the frame the reference filled is
+              known. Only worth saying where the reference is laid along the pitch:
+              a ball or a standing bowler is small in frame by nature. */}
+          {framing && !framing.tight && spec!.rulerBoundsTravel && measured ? (
+            <Notice tone="caution">
+              {`Your reference filled about ${Math.round(framing.fraction * 100)}% of the frame. The scale comes from that one distance, so a reference this small in frame can read low by more than the range above allows for. Stand so both ends sit near the edges next time.`}
+            </Notice>
+          ) : null}
+        </View>
+
+        {imageWidth && imageHeight ? (
+          <Evidence
+            framesDir={savedFramesDir ?? framesDir}
+            imageWidth={imageWidth}
+            imageHeight={imageHeight}
+            spec={spec!}
+            calA={calA!}
+            calB={calB!}
+            release={release!}
+            bounce={bounce!}
+            guessed={markConfidence === 'guessed'}
+            // The straight line is the distance the reading was taken over, so
+            // without a reading there is nothing for it to stand for.
+            connect={measured}
+          />
+        ) : null}
+
         <View style={styles.working}>
+          <Text style={styles.h2} accessibilityRole="header">
+            How this was measured
+          </Text>
           <Row
+            stacked={largeText}
             label="Marked frames"
             value={`${release!.frame} → ${bounce!.frame}`}
           />
           {measured ? (
-            <Row label="Frame delta" value={`${result.frameDelta} frames`} />
+            <Row stacked={largeText} label="Frame delta" value={`${result.frameDelta} frames`} />
           ) : null}
-          <Row label="fps used" value={fps!.toFixed(2)} />
+          <Row stacked={largeText} label="fps used" value={fps!.toFixed(2)} />
           {measured ? (
-            <Row label="Flight time" value={`${result.seconds.toFixed(4)} s`} />
+            <Row stacked={largeText} label="Flight time" value={`${result.seconds.toFixed(4)} s`} />
           ) : null}
           <Row
+            stacked={largeText}
             label="Scale reference"
             value={`${spec!.short} · ${formatMetres(calRealMetres!)}`}
           />
           {markerSource ? (
             <Row
+              stacked={largeText}
               label="Distance from"
               value={
                 paceCount === null
@@ -490,77 +542,219 @@ export default function ResultScreen() {
               }
             />
           ) : null}
-          <Row label="Pixels per metre" value={result.pixelsPerMetre.toFixed(2)} />
+          <Row stacked={largeText} label="Pixels per metre" value={result.pixelsPerMetre.toFixed(2)} />
           {measured ? (
-            <Row label="Ball travelled" value={`${result.travelMetres.toFixed(2)} m`} />
+            <Row stacked={largeText} label="Ball travelled" value={`${result.travelMetres.toFixed(2)} m`} />
           ) : (
-            <Text style={styles.workingFootnote}>
+            <Text style={styles.footnote}>
               {state.kind === 'not-seen'
                 ? 'Frame delta, flight time and distance travelled are not shown. Each is measured from the bounce mark, and that frame was guessed, so they would be as invented as the speed. All three are still saved with the delivery.'
                 : 'Frame delta, flight time and distance travelled are not shown. They come from the same marks that cannot produce a reading, so they are worth no more than the speed would be.'}
             </Text>
           )}
-          <Text style={styles.workingFootnote}>
+          <Text style={styles.footnote}>
             Scaled against {formatMetres(calRealMetres!)}: {spec!.detail.toLowerCase()} The
             ball's own travel is measured with that scale, not assumed from it.
           </Text>
         </View>
-      ) : null}
 
-      <View style={styles.footer}>
-        {/* Nothing to put on a share card without a measured speed. Pro's card
-            is clean, as it is in Analysis; everyone else's carries the mark. */}
+        {largeText ? footer : null}
+      </ScrollView>
+
+      {largeText ? null : footer}
+
+      {/* Nothing to put on a share card without a measured speed. Pro's card
+          is clean, as it is in Analysis; everyone else's carries the mark. */}
+      <BottomSheet visible={sharing} title="Share reading" onClose={() => setSharing(false)}>
         {savedId && measured ? (
           <SessionActions
             sessionId={savedId}
             watermark={!canExportWithoutWatermark(entitlements)}
           />
         ) : null}
-        {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
-
-        <Pressable
-          onPress={onSave}
-          disabled={!canSave}
-          style={[
-            styles.primaryButton,
-            saveStatus === 'saved' && styles.savedButton,
-            !canSave && saveStatus !== 'saved' && styles.buttonOff,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Save this delivery"
-        >
-          {saveStatus === 'saving' ? (
-            <ActivityIndicator color={colors.bg} />
-          ) : (
-            <Text
-              style={[
-                styles.primaryButtonText,
-                saveStatus === 'saved' && styles.savedButtonText,
-              ]}
-            >
-              {saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Try again' : 'Save'}
-            </Text>
-          )}
-        </Pressable>
-
-        {saveStatus === 'saved' ? (
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => router.dismissAll()}
-            accessibilityRole="button"
-            accessibilityLabel="Finish"
-          >
-            <Text style={styles.secondaryButtonText}>Done</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </ScrollView>
+      </BottomSheet>
+    </View>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+/**
+ * A delivery that produced no speed. It says so plainly, in neutral colours:
+ * nothing went wrong, the marks just cannot support a reading. No number, no
+ * count and no wicket.
+ */
+function NoSpeed({
+  cause,
+  onRemark,
+  remarkDisabled,
+}: {
+  cause: NoReading['cause'];
+  /** Back to marking, or null once there is no going back. */
+  onRemark: (() => void) | null;
+  remarkDisabled: boolean;
+}) {
   return (
-    <View style={styles.row}>
+    <View style={styles.noSpeed}>
+      <View
+        style={styles.noSpeedIcon}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        <View style={styles.noSpeedBar} />
+      </View>
+      <Text style={styles.h1}>No speed measured</Text>
+      <Text style={styles.noSpeedBody}>
+        {cause === 'not-seen'
+          ? 'The bounce was guessed. A guess cannot produce a reading.'
+          : "The marks don't hold enough to put an error range on the speed, and a speed without its range is not a reading."}
+      </Text>
+      <Text style={styles.noSpeedNote}>
+        You can still save the delivery to keep the clip and the marks. It will carry no
+        speed, and it stays out of your trend.
+      </Text>
+      {onRemark ? (
+        <ActionButton
+          variant="text"
+          label={cause === 'not-seen' ? 'Re-mark the bounce' : 'Re-mark the delivery'}
+          onPress={onRemark}
+          disabledReason={remarkDisabled ? 'Saving the delivery.' : null}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The release frame with every mark that belongs on it, and the straight line
+ * the reading was taken over. The marks were placed by hand on single frames;
+ * nothing followed the ball, and the frame says so.
+ *
+ * The bounce is drawn on the release frame too. The camera does not move, so
+ * where the ball pitched is the same spot in either frame. A reference that
+ * moves between frames (a ball in the hand, a standing bowler) is only drawn
+ * if it was marked on this frame, the rule Mark and Analysis follow; otherwise
+ * the frame it was marked on is named beneath.
+ */
+function Evidence({
+  framesDir,
+  imageWidth,
+  imageHeight,
+  spec,
+  calA,
+  calB,
+  release,
+  bounce,
+  guessed,
+  connect,
+}: {
+  framesDir: string | undefined;
+  imageWidth: number;
+  imageHeight: number;
+  spec: CalibrationSpec;
+  calA: Point;
+  calB: Point;
+  release: Point;
+  bounce: Point;
+  guessed: boolean;
+  connect: boolean;
+}) {
+  const { height: screenHeight } = useWindowDimensions();
+  const [boxWidth, setBoxWidth] = useState(0);
+  // Keyed on the frame number: the points are parsed afresh from the route on
+  // every render, so the objects themselves change every time.
+  const releaseFrame = release.frame;
+  const uri = useMemo(
+    () => (framesDir ? releaseFrameUri({ framesDir, release: { frame: releaseFrame } }) : null),
+    [framesDir, releaseFrame]
+  );
+  // Remembered by uri, so the saved copy gets its own chance once it replaces
+  // the cached one.
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+
+  const scale =
+    boxWidth > 0
+      ? Math.min(boxWidth / imageWidth, (screenHeight * EVIDENCE_MAX_HEIGHT_SHARE) / imageHeight)
+      : 0;
+  const frame = { width: imageWidth * scale, height: imageHeight * scale };
+  const at = (p: Point) => ({ x: p.x * scale, y: p.y * scale });
+
+  const refsOnFrame = !spec.sameFrame || (calA.frame === release.frame && calB.frame === release.frame);
+
+  const dots = useMemo(
+    () =>
+      connect && scale > 0
+        ? pointsAlong(
+            { x: release.x * scale, y: release.y * scale },
+            { x: bounce.x * scale, y: bounce.y * scale },
+            CONNECTOR_DOTS
+          )
+        : [],
+    [connect, scale, release.x, release.y, bounce.x, bounce.y]
+  );
+
+  const showImage = uri !== null && failedUri !== uri && scale > 0;
+  const bounceCaption = `Bounce marked on frame ${bounce.frame}`;
+  const referenceCaption = refsOnFrame
+    ? null
+    : `${spec.short} reference marked on frame ${calA.frame}`;
+
+  return (
+    <View style={styles.evidence}>
+      <View
+        style={styles.evidenceBox}
+        onLayout={(e: LayoutChangeEvent) => setBoxWidth(e.nativeEvent.layout.width)}
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={`The release frame with the marks you placed. Marked, not tracked. ${bounceCaption}.${referenceCaption ? ` ${referenceCaption}.` : ''}`}
+      >
+        {scale > 0 ? (
+          <View style={[styles.frame, frame]}>
+            {showImage ? (
+              <Image
+                source={{ uri }}
+                style={frame}
+                resizeMode="contain"
+                fadeDuration={0}
+                onError={() => setFailedUri(uri)}
+              />
+            ) : (
+              <View style={[styles.frameMissing, frame]}>
+                <Text style={styles.caption}>The release frame is not on this phone.</Text>
+              </View>
+            )}
+
+            {refsOnFrame ? (
+              <>
+                <FrameMarker label={spec.a.short} ball={false} active={false} left={at(calA).x} top={at(calA).y} />
+                <FrameMarker label={spec.b.short} ball={false} active={false} left={at(calB).x} top={at(calB).y} />
+              </>
+            ) : null}
+            <PathDots points={dots} />
+            <FrameMarker label="Release" ball active left={at(release).x} top={at(release).y} />
+            <FrameMarker
+              label={guessed ? 'Guessed' : 'Bounce'}
+              ball
+              active={!guessed}
+              left={at(bounce).x}
+              top={at(bounce).y}
+            />
+
+            {/* Always on: the marks are the user's, not something the app found. */}
+            <View style={styles.plate}>
+              <Text style={styles.plateText}>Marked, not tracked</Text>
+            </View>
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.caption}>{bounceCaption}</Text>
+      {referenceCaption ? <Text style={styles.caption}>{referenceCaption}</Text> : null}
+    </View>
+  );
+}
+
+/** A label and its value side by side, or one above the other at large text. */
+function Row({ label, value, stacked }: { label: string; value: string; stacked: boolean }) {
+  return (
+    <View style={stacked ? styles.rowStacked : styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
       <Text style={styles.rowValue}>{value}</Text>
     </View>
@@ -569,107 +763,90 @@ function Row({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: space.lg, flexGrow: 1 },
+  bar: { paddingHorizontal: space.md },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: space.lg, paddingBottom: space.xl },
 
-  header: { flexDirection: 'row', alignItems: 'center' },
-  headerAction: { ...type.caption, color: colors.muted },
+  h1: { ...type.h1, color: colors.text, textAlign: 'center' },
+  h2: { ...type.h2, color: colors.text, marginBottom: space.sm },
 
-  hero: { alignItems: 'center', paddingVertical: space.xl },
-  heroLabel: { ...type.label, color: colors.muted, marginBottom: space.md },
-  heroNumber: {
-    ...type.hero,
-    ...type.mono,
-    color: colors.accent,
-  },
-  heroUnit: { ...type.body, color: colors.muted, marginTop: space.xs },
-  heroError: {
-    ...type.h2,
-    ...type.mono,
-    color: colors.text,
-    marginTop: space.md,
-  },
+  reading: { alignItems: 'center', paddingTop: space.lg, paddingBottom: space.xl },
+  label: { ...type.label, color: colors.muted, marginBottom: space.sm },
+  wicket: { marginTop: space.lg },
 
-  unmeasured: {
-    borderWidth: stroke.hairline,
-    borderColor: colors.warn,
-    borderRadius: radius.md,
-    padding: space.md,
-    marginTop: space.xl,
-    marginBottom: space.md,
-  },
-  unmeasuredTitle: { ...type.h2, color: colors.warn, marginBottom: space.sm },
-  unmeasuredBody: { ...type.body, color: colors.text, marginBottom: space.sm },
-  remarkButton: {
+  noSpeed: { alignItems: 'center', paddingTop: space.lg, paddingBottom: space.xl },
+  // Neutral: a delivery without a speed is not an error.
+  noSpeedIcon: {
+    width: size.target,
+    height: size.target,
     borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
+    borderWidth: stroke.medium,
     borderColor: colors.text,
-    paddingVertical: space.sm,
-    alignItems: 'center',
-    marginTop: space.xs,
-  },
-  remarkButtonText: { ...type.body, color: colors.text, fontWeight: '800' },
-
-  note: {
-    ...type.caption,
-    color: colors.warn,
-    borderWidth: stroke.hairline,
-    borderColor: colors.warn,
-    borderRadius: radius.md,
-    padding: space.md,
-    marginBottom: space.md,
-  },
-
-  workingToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: stroke.hairline,
-    borderBottomWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingVertical: space.md,
-  },
-  workingToggleText: { ...type.body, color: colors.text },
-  workingChevron: { ...type.h2, color: colors.muted },
-
-  working: { paddingTop: space.md },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: space.sm,
-  },
-  rowLabel: { ...type.caption, color: colors.muted },
-  rowValue: {
-    ...type.caption,
-    ...type.mono,
-    color: colors.text,
-  },
-  workingFootnote: { ...type.caption, color: colors.muted, marginTop: space.sm },
-
-  footer: { marginTop: 'auto', paddingTop: space.xl },
-  error: { ...type.caption, color: colors.danger, marginBottom: space.md },
-
-  primaryButton: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: space.md,
   },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
-  savedButton: { backgroundColor: colors.surface, borderWidth: stroke.hairline, borderColor: colors.line },
-  savedButtonText: { color: colors.muted },
-  buttonOff: { opacity: opacity.disabled },
-
-  secondaryButton: { paddingVertical: space.md, alignItems: 'center' },
-  secondaryButtonText: { ...type.body, color: colors.text },
-
-  fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.lg },
-  fallbackTitle: { ...type.h2, color: colors.text, marginBottom: space.sm },
-  fallbackBody: {
+  noSpeedBar: { width: space.lg, height: stroke.medium, backgroundColor: colors.text },
+  noSpeedBody: { ...type.body, color: colors.text, textAlign: 'center', marginTop: space.sm },
+  noSpeedNote: {
     ...type.body,
     color: colors.muted,
     textAlign: 'center',
-    marginBottom: space.lg,
+    marginTop: space.sm,
+    marginBottom: space.sm,
   },
+
+  cautions: { gap: space.sm, marginBottom: space.lg },
+
+  evidence: { marginBottom: space.xl },
+  evidenceBox: { alignItems: 'center' },
+  frame: { overflow: 'hidden', borderRadius: radius.sm, backgroundColor: colors.surface },
+  frameMissing: { alignItems: 'center', justifyContent: 'center', padding: space.md },
+  // Opaque, so it reads over any frame.
+  plate: {
+    position: 'absolute',
+    top: space.sm,
+    left: space.sm,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+  },
+  plateText: { ...type.caption, color: colors.text },
+  caption: { ...type.caption, color: colors.muted, marginTop: space.sm, textAlign: 'center' },
+
+  working: { marginBottom: space.lg },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingVertical: space.sm,
+    borderBottomWidth: stroke.hairline,
+    borderColor: colors.line,
+    gap: space.md,
+  },
+  rowStacked: {
+    paddingVertical: space.sm,
+    borderBottomWidth: stroke.hairline,
+    borderColor: colors.line,
+  },
+  rowLabel: { ...type.body, color: colors.muted, flexShrink: 1 },
+  rowValue: { ...type.body, ...type.mono, color: colors.text },
+  footnote: { ...type.caption, color: colors.muted, marginTop: space.md },
+
+  footer: { gap: space.sm },
+  footerSticky: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    borderTopWidth: stroke.hairline,
+    borderColor: colors.line,
+    backgroundColor: colors.bg,
+  },
+  footerInFlow: { paddingTop: space.md },
+  pair: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm },
+  stack: { gap: space.sm },
+  pairItem: { flex: 1 },
+
+  fallback: { flex: 1, justifyContent: 'center', paddingHorizontal: space.lg, gap: space.md },
+  fallbackBody: { ...type.body, color: colors.muted, textAlign: 'center' },
 });

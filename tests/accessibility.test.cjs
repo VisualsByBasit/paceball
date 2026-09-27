@@ -1,8 +1,10 @@
+require('./register.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 const ts = require('typescript');
+const { readingView } = require('../src/ui/reading.ts');
 
 const ROOT = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\r\n/g, '\n');
@@ -65,11 +67,23 @@ test('the small chips reach 48 dp under the finger without changing how they loo
 
 test('the reading on Result is one stop for a screen reader, range included', () => {
   const result = read('app/result.tsx');
-  assert.match(result, /accessibilityLabel=\{`Average speed to bounce, \$\{formatSpeed\(state\.speedKmh, unit\)\} \$\{unitSpoken\(unit\)\}, plus or minus \$\{errorIn\(state\.errorKmh, unit\)\}`\}/);
-  // Only on the measured branch: nothing is read out for a delivery without a speed.
-  const hero = result.slice(result.indexOf('<View\n          style={styles.hero}'));
-  assert.ok(result.indexOf("state.kind === 'not-seen'") < result.indexOf('<View\n          style={styles.hero}'));
-  assert.ok(hero.length > 0);
+  const block = read('src/ui/ReadingBlock.tsx');
+  // Result never writes a speed, a range or its spoken form itself: all three
+  // come from readingView, and only ReadingBlock draws them.
+  assert.doesNotMatch(result, /formatSpeed|speedIn\(|errorIn\(|unitSpoken/);
+  assert.match(result, /const view = readingView\(state, unit\);/);
+  // One stop, and what it says is the whole reading, range included.
+  assert.match(block, /accessible\s+accessibilityRole="text"\s+accessibilityLabel=\{reading\.spoken\}/);
+  const measured = readingView({ kind: 'measured', speedKmh: 124.8, errorKmh: 3.1 }, 'kmh');
+  assert.equal(measured.spoken, 'Average speed, release to bounce: 124.8 kilometres per hour, plus or minus 3.1.');
+  // Measured only: ReadingBlock takes nothing but a measured reading, Result
+  // reaches it only on the measured branch, and a delivery without a speed has
+  // nothing in it to read out.
+  assert.match(block, /reading: MeasuredReading;/);
+  assert.match(result, /\{view\.kind === 'measured' \? \(\s*<View style=\{styles\.reading\}>/);
+  for (const kind of ['not-seen', 'unusable']) {
+    assert.deepEqual(readingView({ kind }, 'kmh'), { kind: 'none', cause: kind });
+  }
 });
 
 test('a trend that cannot be read says so in words, not as a function call', () => {

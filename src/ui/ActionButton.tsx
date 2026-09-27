@@ -86,7 +86,7 @@ export function ActionButton({
         onPressOut={pressOut}
         disabled={disabled}
         accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel ?? busy ?? label}
+        accessibilityLabel={busy ?? accessibilityLabel ?? label}
         accessibilityState={{ disabled, busy: busy !== null }}
         accessibilityHint={disabledReason ?? undefined}
       >

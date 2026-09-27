@@ -79,7 +79,9 @@ corrupt one.
   The delivery can still be saved, keeping the clip and the marks,
   carrying no reading. Validation rejects a guessed bounce stored with a
   number, and a seen bounce stored without one.
-- Label it "avg speed to bounce", not "ball speed". Release speed is
+- Label it "AVERAGE SPEED" with "Release to bounce" beneath it, and
+  never "ball speed". A screen reader hears "Average speed, release to
+  bounce: 124.8 kilometres per hour, plus or minus 3.1." Release speed is
   5–8% higher due to drag.
 - Warn on implausible travel, on two independent bounds. The ruler bound
   applies only where the reference is laid along the pitch (stumps,
