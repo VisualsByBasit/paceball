@@ -29,14 +29,9 @@ import {
 import { LICENCE_NAME, LICENCE_TEXT } from '../src/ui/licence';
 import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
 import { unitLabel, unitSpoken } from '../src/ui/units';
+import { formatBias } from '../src/ui/format';
 
 type RestoreState = { status: 'idle' } | { status: 'restoring' } | RestoreOutcome;
-
-/** A signed number the way a camera readout writes it — a true minus, and a plus on none. */
-function formatBias(bias: number): string {
-  if (bias === 0) return '0';
-  return bias < 0 ? `−${Math.abs(bias)}` : `+${bias}`;
-}
 
 function formatDate(iso: string): string {
   const date = new Date(iso);

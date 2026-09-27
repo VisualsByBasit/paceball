@@ -82,7 +82,8 @@ test('the lens swap holds the preview dark until the new lens streams', () => {
   assert.doesNotMatch(faded, /LENS_LABEL|Switching lens/);
   // The picker calls it a lens, never a zoom: it is a swap, not a ramp. Only the
   // comment saying so may use the word.
-  const picker = capture.slice(capture.indexOf('ultraWideAvailable ? ('), capture.indexOf('showTips ? ('));
+  const picker = capture.slice(capture.indexOf('ultraWideAvailable ? ('), capture.indexOf('<ExposureControl'));
+  assert.ok(picker.length > 0);
   assert.doesNotMatch(picker, /\bzoom\b/i);
   assert.doesNotMatch(read('src/capture/lenses.ts'), /zoom/i);
 });
@@ -189,7 +190,8 @@ test('bitrate changes the encode only, not what the measurement reads', () => {
   // The claim on screen is quality, never frame rate, and only when it is on.
   assert.match(capture, /\{bitRate !== null \? \(/);
   assert.match(capture, /PRO QUALITY/);
-  const mark = capture.slice(capture.indexOf('qualityMark'), capture.indexOf('<View style={styles.timerRow}>'));
+  const mark = capture.slice(capture.indexOf('qualityMark'), capture.indexOf('STANDARD'));
+  assert.ok(mark.length > 0);
   assert.doesNotMatch(mark, /fps|frame rate|120/i);
 });
 

@@ -21,9 +21,10 @@ export function recordsSound(status: MicrophoneStatus): boolean {
 }
 
 export const MICROPHONE_OFFER_TITLE = 'Record sound too?';
-export const MICROPHONE_OFFER_REASON = 'Allow the microphone to keep the sound of the delivery.';
+export const MICROPHONE_OFFER_REASON =
+  'Sound is optional. Measurement works without it. Replays and exports start muted.';
 export const MICROPHONE_OFFER_ALLOW = 'Allow microphone';
-export const MICROPHONE_OFFER_SKIP = 'Video only';
+export const MICROPHONE_OFFER_SKIP = 'Continue without sound';
 
 /** The Settings note. Off is stated calmly: the measurement never needed sound. */
 export function microphoneSettingLine(status: MicrophoneStatus, asked: boolean): string {

@@ -76,14 +76,15 @@ A check marked with more than one build should pass on each.
 ## Audio
 
 11. **Microphone offered once.** (Preview) On a fresh install, allow the
-    camera. Capture shows "Record sound too?" with Video only and Allow
-    microphone. Leave and come back: it does not show again, whichever was
-    chosen.
+    camera. Capture shows the "Record sound too?" sheet with Allow microphone
+    and Continue without sound. Leave and come back: it does not show again,
+    whichever was chosen. Closing the sheet without choosing shows it again on
+    the next visit.
 12. **Allow.** (Preview) Choose Allow microphone and allow it in the system
     dialog. Record: the saved clip has sound when played in Analysis with
     sound switched on. Settings, Microphone says it is on.
 13. **Deny, then record video only.** (Preview) On a fresh install choose
-    Video only, or deny in the system dialog. Recording works and the clip is
+    Continue without sound, or deny in the system dialog. Recording works and the clip is
     silent. Settings, Microphone says it is off and speeds are measured the
     same way. Nothing asks again.
 14. **Microphone held by another app.** (Preview) Start a voice recording in

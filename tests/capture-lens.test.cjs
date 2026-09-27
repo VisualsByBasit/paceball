@@ -70,7 +70,7 @@ test('the pixel scale comes from the recorded frames, not from the camera', () =
 test('the lens picker copy uses no em dashes', () => {
   assert.doesNotMatch(read('src/capture/lenses.ts'), /—/);
   const capture = read('app/capture.tsx');
-  const picker = capture.slice(capture.indexOf('ultraWideAvailable ? ('), capture.indexOf('showTips ? ('));
+  const picker = capture.slice(capture.indexOf('ultraWideAvailable ? ('), capture.indexOf('<ExposureControl'));
   assert.ok(picker.length > 0);
   assert.doesNotMatch(picker, /—/);
 });

@@ -57,13 +57,16 @@ test('the microphone is offered when Capture first opens, never from the shutter
   assert.doesNotMatch(shutter, /offeringMicrophone|shouldOfferMicrophone|\brecord\b/);
   assert.doesNotMatch(capture, /const record = useCallback/);
   // Hidden while recording, so answering it can never restart the session under a clip.
-  assert.match(capture, /\{offeringMicrophone && !isRecording && !isProcessing \? \(/);
+  assert.match(capture, /visible=\{offeringMicrophone && !isRecording && !isProcessing\}/);
   // Never at launch: nothing before Capture asks.
   for (const file of ['app/_layout.tsx', 'app/index.tsx', 'app/setup/player.tsx', 'app/setup/camera.tsx', 'app/setup/how-it-works.tsx']) {
     assert.doesNotMatch(read(file), /useMicrophonePermission|requestMicrophonePermission/, file);
   }
   // Same one line on why, shown with the offer.
-  assert.match(microphone.MICROPHONE_OFFER_REASON, /keep the sound of the delivery/);
+  assert.equal(
+    microphone.MICROPHONE_OFFER_REASON,
+    'Sound is optional. Measurement works without it. Replays and exports start muted.',
+  );
   assert.match(capture, /\{MICROPHONE_OFFER_REASON\}/);
 });
 

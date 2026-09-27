@@ -63,8 +63,9 @@ test('the small chips reach 48 dp under the finger without changing how they loo
   const analysis = read('app/analysis.tsx');
   assert.match(analysis.slice(analysis.indexOf('onPress={() => changeRate(r.rate)}')), chip);
   assert.match(analysis.slice(analysis.indexOf('onPress={toggleSound}')), chip);
+  // The lens choice is drawn 48 dp now, as Mark's controls are.
   const capture = read('app/capture.tsx');
-  assert.match(capture.slice(capture.indexOf('onPress={() => chooseLens(option)}')), chip);
+  assert.match(capture, /lens: \{\s*minWidth: size\.target,\s*minHeight: size\.target,/);
   const history = read('app/history.tsx');
   assert.match(history.slice(history.indexOf('onPress={() => setRange(r.key)}')), /hitSlop=\{\{ top: space\.xs, bottom: space\.md \}\}/);
   // The picked point says so, not only by colour.

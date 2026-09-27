@@ -119,6 +119,10 @@ export const motion = {
   celebrate: 1100,
   /** A notice arriving. Opacity only, never a shake. */
   notice: 120,
+  /** The record button turning from a circle to a rounded square and back, with the recorder. */
+  record: 160,
+  /** A lens swap: the preview fades out, waits for the new lens, then fades back in. */
+  lens: { out: 120, in: 180 },
   /** Playhead chasing the finger. Just under critical damping, so it lags a touch. */
   drag: { mass: 0.6, stiffness: 280, damping: 24 },
   /** Playhead landing after release. Underdamped, so it overshoots once and rests. */

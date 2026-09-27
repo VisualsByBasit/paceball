@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { File } from 'expo-file-system';
@@ -38,7 +48,16 @@ import {
   usePurchases,
 } from '../src/purchases';
 import { getSettings, updateSettings, useSettings } from '../src/settings';
-import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+import { EXPOSURE_BIAS_OPTIONS } from '../src/settings/settings';
+import { ActionButton } from '../src/ui/ActionButton';
+import { AllowanceLine } from '../src/ui/AllowanceLine';
+import { AppBar } from '../src/ui/AppBar';
+import { BottomSheet } from '../src/ui/BottomSheet';
+import { Notice } from '../src/ui/Notice';
+import { RecordButtonFace } from '../src/ui/RecordButtonFace';
+import { formatBias } from '../src/ui/format';
+import { colors, motion, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
+import type { CalibrationMethod } from '../src/types';
 
 /**
  * A lens swap restarts the camera session, and on a real phone that takes far
@@ -47,16 +66,10 @@ import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
  * restarts, and fades back in on the new lens's first preview frame. It is a
  * swap between two lenses, not a zoom ramp.
  */
-const LENS_FADE_OUT_MS = 120;
-const LENS_FADE_IN_MS = 180;
+const LENS_FADE_OUT_MS = motion.lens.out;
+const LENS_FADE_IN_MS = motion.lens.in;
 /** If the first frame is never reported, the preview comes back anyway. */
 const LENS_SWAP_TIMEOUT_MS = 2000;
-
-const TIPS = [
-  'Stand side-on to the pitch, level with the bounce.',
-  'Keep both sets of stumps in frame the whole delivery.',
-  'Shoot in bright, even light. Avoid shooting into the sun.',
-];
 
 /** The day an allowance comes back, named as the phone names its weekdays. */
 function weekdayOf(t: number): string {
@@ -149,7 +162,10 @@ export default function CaptureScreen() {
       if (swapTimeout.current !== null) clearTimeout(swapTimeout.current);
     };
   }, []);
-  const { exposureBias, lastRecording } = useSettings();
+  const { exposureBias, lastRecording, calibrationMethod } = useSettings();
+  // Starts from the Settings default on every visit and is never written back:
+  // it is this session's light, not a preference.
+  const [bias, setBias] = useState<number>(exposureBias);
   const entitlements = useEntitlements();
   const { refreshAnalyses, isPro, allowance, configured, loading } = usePurchases();
   const [showGuide, setShowGuide] = useState(true);
@@ -185,7 +201,8 @@ export default function CaptureScreen() {
   const allowed = canAnalyse(entitlements);
   // Pro is unlimited, so Pro is told nothing about limits anywhere.
   const allowanceNote = isPro ? null : allowanceLine(allowance, weekdayOf);
-  const exposure = captureExposure(device, exposureBias);
+  // The same request and the same clamp as ever, now from the value chosen here.
+  const exposure = captureExposure(device, bias);
 
   // Pro records the same frames with less compression. The target is set
   // clearly above what this camera writes on its own default, measured from a
@@ -194,7 +211,6 @@ export default function CaptureScreen() {
   // nothing on screen claims Pro quality.
   const bitRate = canRecordHighBitrate(entitlements) ? highBitRate(lastRecording) : null;
   const [sessionReady, setSessionReady] = useState(false);
-  const [showTips, setShowTips] = useState(true);
 
   // Sound is a second track in the same file. fps, frame count and dimensions
   // are read off the video track alone, so it cannot move a reading.
@@ -237,6 +253,18 @@ export default function CaptureScreen() {
   const onAudioFailure = useCallback(() => setMicrophoneBusy(true), []);
   const capture = useCapture(videoOutput, { onFinished, withAudio: enableAudio, onAudioFailure });
 
+  // One light tap each time the recorder actually starts or stops: after the
+  // camera's own state changes, never on the press that asked for it.
+  const wasRecording = useRef(capture.isRecording);
+  useEffect(() => {
+    if (wasRecording.current === capture.isRecording) return;
+    wasRecording.current = capture.isRecording;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+  }, [capture.isRecording]);
+
+  // The preview is contained in a 3:4 box, as large as the space allows.
+  const [area, setArea] = useState({ w: 0, h: 0 });
+
   // Offered on the first visit, once the camera itself is allowed so two system
   // dialogs never stack. Answering it restarts the session for sound, which is
   // why it happens here and not while a bowler is running in.
@@ -268,6 +296,7 @@ export default function CaptureScreen() {
     if (!hasPermission && canRequestPermission) void requestPermission().catch(() => false);
   }, [hasPermission, canRequestPermission, requestPermission]);
 
+
   if (!hasPermission) {
     return (
       <Screen style={styles.center}>
@@ -284,19 +313,15 @@ export default function CaptureScreen() {
             Android will not ask again. Allow the camera for Paceball in the phone's settings.
           </Text>
         )}
-        <Pressable
-          style={styles.primaryButton}
+        <ActionButton
+          label={canRequestPermission ? 'Grant access' : 'Open settings'}
           onPress={() =>
             void (canRequestPermission
               ? requestPermission().catch(() => false)
               : Linking.openSettings().catch(() => undefined))
           }
-          accessibilityRole="button"
-        >
-          <Text style={styles.primaryButtonText}>
-            {canRequestPermission ? 'Grant access' : 'Open settings'}
-          </Text>
-        </Pressable>
+          style={styles.permissionAction}
+        />
       </Screen>
     );
   }
@@ -321,43 +346,91 @@ export default function CaptureScreen() {
   else if (canStop) hint = 'Tap to stop';
   else hint = `Stop unlocks in ${lockedSeconds}s`;
 
+  // The largest 3:4 box the space holds. The preview is contained in it, so
+  // everything the camera records is on screen and nothing is cropped away.
+  const boxWidth = Math.min(area.w, (area.h * PREVIEW_ASPECT_W) / PREVIEW_ASPECT_H);
+  const box = { width: boxWidth, height: (boxWidth * PREVIEW_ASPECT_H) / PREVIEW_ASPECT_W };
+
   return (
-    <View style={styles.container}>
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: previewFade }]}>
-      <Camera
-        style={StyleSheet.absoluteFill}
-        device={device}
-        isActive={isFocused}
-        outputs={[videoOutput]}
-        constraints={[{ fps: CAPTURE_FPS }, { videoStabilizationMode: 'off' }]}
-        exposure={isFocused && sessionReady ? exposure : undefined}
-        onStarted={() => setSessionReady(true)}
-        onStopped={() => setSessionReady(false)}
-        onPreviewStarted={revealPreview}
-        onError={onCameraError}
-      />
-      </Animated.View>
-
-      {switchingLens ? (
-        <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
-          <Text style={styles.switchingText}>Switching lens</Text>
-        </View>
-      ) : null}
-
-      {isProcessing ? <View style={[StyleSheet.absoluteFill, styles.scrim]} /> : null}
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Pro quality is named only when the higher bitrate is really being
+          requested; everything else, Pro included before it is measured, is
+          standard. */}
+      <View style={styles.bar}>
+        <AppBar
+          title="Capture"
+          onBack={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          backDisabled={isRecording || isProcessing}
+          right={bitRate !== null ? (
+            <View style={styles.qualityMark}>
+              <Text style={styles.qualityMarkText}>PRO QUALITY</Text>
+            </View>
+          ) : (
+            <View style={styles.qualityChip}>
+              <Text style={styles.qualityChipText}>STANDARD</Text>
+            </View>
+          )}
+        />
+      </View>
 
       <View
-        style={[
-          styles.overlay,
-          { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.lg },
-        ]}
-        pointerEvents="box-none"
+        style={styles.previewArea}
+        onLayout={(e: LayoutChangeEvent) => {
+          const { width, height } = e.nativeEvent.layout;
+          setArea({ w: width, h: height });
+        }}
       >
-        <View style={styles.top} pointerEvents="box-none">
-          {showGuide ? (
-            <FramingGuide dimmed={isRecording} onDismiss={() => setShowGuide(false)} />
+        <View style={[styles.previewBox, box]}>
+          <Animated.View style={[StyleSheet.absoluteFill, { opacity: previewFade }]}>
+          <Camera
+            style={StyleSheet.absoluteFill}
+            resizeMode="contain"
+            device={device}
+            isActive={isFocused}
+            outputs={[videoOutput]}
+            constraints={[{ fps: CAPTURE_FPS }, { videoStabilizationMode: 'off' }]}
+            exposure={isFocused && sessionReady ? exposure : undefined}
+            onStarted={() => setSessionReady(true)}
+            onStopped={() => setSessionReady(false)}
+            onPreviewStarted={revealPreview}
+            onError={onCameraError}
+          />
+          </Animated.View>
+
+          <GuideOverlay method={calibrationMethod} dimmed={isRecording} />
+
+          {switchingLens ? (
+            <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
+              <View style={styles.plate}>
+                <Text style={styles.plateText}>Switching lens…</Text>
+              </View>
+            </View>
           ) : null}
 
+          {isProcessing ? <View style={[StyleSheet.absoluteFill, styles.scrim]} /> : null}
+
+          {showGuide ? (
+            <View style={styles.guideSlot} pointerEvents="box-none">
+              <FramingGuide dimmed={isRecording} onDismiss={() => setShowGuide(false)} />
+            </View>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={[styles.controls, { paddingBottom: insets.bottom + space.md }]}>
+        {capture.notice ? (
+          <Notice tone="info" action={{ label: 'Dismiss', onPress: capture.clearNotice }}>
+            {capture.notice}
+          </Notice>
+        ) : null}
+
+        {error ? (
+          <Notice tone="error" live action={{ label: 'Dismiss', onPress: capture.clearError }}>
+            {error}
+          </Notice>
+        ) : null}
+
+        <View style={styles.settingsRow}>
           {!isRecording && !isProcessing && ultraWideAvailable ? (
             <View style={styles.lenses} accessibilityRole="radiogroup">
               {(['wide', 'ultra-wide'] as Lens[]).map((option) => {
@@ -367,7 +440,6 @@ export default function CaptureScreen() {
                     key={option}
                     style={[styles.lens, on && styles.lensOn]}
                     onPress={() => chooseLens(option)}
-                    hitSlop={{ top: space.md, bottom: space.sm }}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: on }}
                     accessibilityLabel={
@@ -383,100 +455,28 @@ export default function CaptureScreen() {
                 );
               })}
             </View>
-          ) : null}
-
-          {isRecording || isProcessing ? null : showTips ? (
-            <View style={styles.tipsCard}>
-              <View style={styles.tipsHeader}>
-                <Text style={styles.label}>TIPS FOR BEST RESULTS</Text>
-                <Pressable
-                  onPress={() => setShowTips(false)}
-                  hitSlop={space.md}
-                  accessibilityRole="button"
-                  accessibilityLabel="Hide tips"
-                >
-                  <Text style={styles.tipsToggleText}>Hide</Text>
-                </Pressable>
-              </View>
-              {TIPS.map((tip) => (
-                <View key={tip} style={styles.tipRow}>
-                  <Text style={styles.tipBullet}>–</Text>
-                  <Text style={styles.tipText}>{tip}</Text>
-                </View>
-              ))}
-            </View>
           ) : (
-            <Pressable
-              style={styles.tipsPill}
-              onPress={() => setShowTips(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Show tips"
-            >
-              <Text style={styles.tipsToggleText}>Tips</Text>
-            </Pressable>
+            <View style={styles.lensSpacer} />
           )}
+
+          <ExposureControl
+            exposure={exposure}
+            bias={bias}
+            device={device}
+            locked={isRecording || isProcessing}
+            onChange={setBias}
+          />
         </View>
+        {exposure === undefined ? null : (
+          <Text style={styles.helper}>
+            Brighter video can mean more blur. Use more light when you can.
+          </Text>
+        )}
 
-        <View style={styles.bottom} pointerEvents="box-none">
-          {/* Out of the way while recording: answering it mid-clip would restart
-              the session under the recording. It comes back afterwards. */}
-          {offeringMicrophone && !isRecording && !isProcessing ? (
-            <View style={styles.micCard}>
-              <Text style={styles.guideTitle}>{MICROPHONE_OFFER_TITLE}</Text>
-              <Text style={styles.guideBody}>{MICROPHONE_OFFER_REASON}</Text>
-              <View style={styles.micActions}>
-                <Pressable
-                  style={styles.micSkip}
-                  onPress={() => answerMicrophone(false)}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.micSkipText}>{MICROPHONE_OFFER_SKIP}</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.micAllow}
-                  onPress={() => answerMicrophone(true)}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.micAllowText}>{MICROPHONE_OFFER_ALLOW}</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : null}
-
-          {capture.notice ? (
-            <Pressable
-              style={styles.noticeCard}
-              onPress={capture.clearNotice}
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss notice"
-            >
-              <Text style={styles.noticeText}>{capture.notice}</Text>
-            </Pressable>
-          ) : null}
-
-          {error ? (
-            <Pressable
-              style={styles.errorCard}
-              onPress={capture.clearError}
-              accessibilityRole="button"
-              accessibilityLabel="Dismiss error"
-            >
-              <Text style={styles.errorText}>{error}</Text>
-            </Pressable>
-          ) : null}
-
-          {bitRate !== null ? (
-            <View style={styles.qualityMark}>
-              <Text style={styles.qualityMarkText}>PRO QUALITY</Text>
-            </View>
-          ) : null}
-
-          <View style={styles.timerRow}>
-            {isRecording ? <View style={styles.recDot} /> : null}
-            <Text style={[styles.timer, !isRecording && styles.timerIdle]}>
-              {formatElapsed(isRecording ? elapsedMs : 0)}
-            </Text>
-          </View>
+        <View style={styles.actionRow}>
+          <Text style={styles.sound} numberOfLines={1}>
+            {enableAudio ? 'Sound on' : 'No sound'}
+          </Text>
 
           <Pressable
             onPress={
@@ -493,27 +493,158 @@ export default function CaptureScreen() {
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
             style={styles.shutter}
           >
-            <View
-              style={[
-                styles.shutterCore,
-                isRecording ? styles.shutterCoreRecording : styles.shutterCoreIdle,
-                isProcessing || (isRecording && !canStop)
-                  ? styles.shutterCoreLocked
-                  : null,
-              ]}
-            >
-              {isRecording && !canStop ? (
-                <Text style={styles.countdown}>{lockedSeconds}</Text>
-              ) : null}
-            </View>
+            <RecordButtonFace
+              recording={isRecording}
+              lockedSeconds={isRecording && !canStop ? lockedSeconds : null}
+              dimmed={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
+            />
           </Pressable>
 
-          {allowanceNote ? (
-            <Text style={[styles.hint, !allowed && styles.hintLimit]}>{allowanceNote}</Text>
-          ) : null}
-          <Text style={styles.hint}>{hint}</Text>
+          <View style={styles.timerSlot}>
+            {isRecording ? <View style={styles.recDot} /> : null}
+            <Text style={[styles.timer, !isRecording && styles.timerIdle]}>
+              {formatElapsed(isRecording ? elapsedMs : 0)}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.hint}>{hint}</Text>
+        <AllowanceLine line={allowanceNote} allowance={allowance} weekday={weekdayOf} />
+      </View>
+
+      {/* Out of the way while recording: answering it mid-clip would restart
+          the session under the recording. It comes back afterwards. Closing it
+          without an answer leaves it unanswered, to be offered on the next visit. */}
+      <BottomSheet
+        visible={offeringMicrophone && !isRecording && !isProcessing}
+        title={MICROPHONE_OFFER_TITLE}
+        onClose={() => setOfferingMicrophone(false)}
+      >
+        <Text style={styles.sheetBody}>{MICROPHONE_OFFER_REASON}</Text>
+        <View style={styles.sheetActions}>
+          <ActionButton label={MICROPHONE_OFFER_ALLOW} onPress={() => answerMicrophone(true)} />
+          <ActionButton
+            variant="secondary"
+            label={MICROPHONE_OFFER_SKIP}
+            onPress={() => answerMicrophone(false)}
+          />
+        </View>
+      </BottomSheet>
+    </View>
+  );
+}
+
+/** The preview box's shape, width to height. */
+const PREVIEW_ASPECT_W = 3;
+const PREVIEW_ASPECT_H = 4;
+
+/** What the plate over the preview asks to be in frame, for the reference Mark will open on. */
+const GUIDE_PLATE: Record<CalibrationMethod, string> = {
+  stumps: 'Fit both stumps, release and bounce',
+  markers: 'Fit both markers, release and bounce',
+  ball: 'Fit the ball in hand, release and bounce',
+  height: 'Fit the whole bowler, release and bounce',
+};
+
+/**
+ * Corner brackets, a baseline and a plate saying what belongs in frame, drawn
+ * over the preview. A guide, never a detection result: nothing here looks at
+ * the picture. The ends of the baseline show the reference Mark will open on,
+ * stumps or markers; a ball or a bowler has no fixed ends to show.
+ */
+function GuideOverlay({ method, dimmed }: { method: CalibrationMethod; dimmed: boolean }) {
+  const ends = method === 'stumps' ? styles.stumpIcon : method === 'markers' ? styles.markerIcon : null;
+  return (
+    <View
+      style={[StyleSheet.absoluteFill, dimmed && styles.guideDimmed]}
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <View style={[styles.bracket, styles.bracketTopLeft]} />
+      <View style={[styles.bracket, styles.bracketTopRight]} />
+      <View style={[styles.bracket, styles.bracketBottomLeft]} />
+      <View style={[styles.bracket, styles.bracketBottomRight]} />
+      <View style={styles.baselineRow}>
+        {ends ? <View style={ends} /> : null}
+        <View style={styles.baseline} />
+        {ends ? <View style={ends} /> : null}
+      </View>
+      <View style={styles.guidePlateRow}>
+        <View style={styles.plate}>
+          <Text style={styles.plateText}>{GUIDE_PLATE[method]}</Text>
         </View>
       </View>
+    </View>
+  );
+}
+
+/**
+ * The exposure bias this recording asks for, starting from the Settings
+ * default. It is the same value, through the same clamp, that capture has
+ * always sent the camera; this only lets it change before recording. Locked
+ * while recording, and off on a camera that has no bias to set.
+ */
+function ExposureControl({
+  exposure,
+  bias,
+  device,
+  locked,
+  onChange,
+}: {
+  /** What is actually sent, after the camera's own limits. Undefined when unsupported. */
+  exposure: number | undefined;
+  bias: number;
+  device: { minExposureBias: number; maxExposureBias: number };
+  locked: boolean;
+  onChange: (bias: number) => void;
+}) {
+  const options: readonly number[] = EXPOSURE_BIAS_OPTIONS;
+  const at = options.indexOf(bias);
+  const supported = exposure !== undefined;
+  // Darker stops at the darkest option or the camera's floor, brighter at 0
+  // or the camera's ceiling: a step that would send the same value is off.
+  const canDarken = supported && !locked && at > 0 && exposure > device.minExposureBias;
+  const canBrighten =
+    supported && !locked && at >= 0 && at < options.length - 1 && exposure < device.maxExposureBias;
+
+  if (!supported) {
+    return (
+      <View style={styles.exposure}>
+        <Text style={styles.exposureAuto}>Exposure uses camera auto on this phone.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.exposure}>
+      <Text style={styles.exposureLabel}>Exposure</Text>
+      <Pressable
+        style={[styles.exposureStep, !canDarken && styles.off]}
+        onPress={() => onChange(options[at - 1])}
+        disabled={!canDarken}
+        accessibilityRole="button"
+        accessibilityLabel="Darker"
+        accessibilityState={{ disabled: !canDarken }}
+      >
+        <Text style={styles.exposureStepText}>−</Text>
+      </Pressable>
+      <Text
+        style={styles.exposureValue}
+        accessibilityLabel={`Exposure bias ${exposure}${locked ? ', locked while recording' : ''}`}
+      >
+        {formatBias(exposure)}
+      </Text>
+      <Pressable
+        style={[styles.exposureStep, !canBrighten && styles.off]}
+        onPress={() => onChange(options[at + 1])}
+        disabled={!canBrighten}
+        accessibilityRole="button"
+        accessibilityLabel="Brighter"
+        accessibilityState={{ disabled: !canBrighten }}
+      >
+        <Text style={styles.exposureStepText}>+</Text>
+      </Pressable>
     </View>
   );
 }
@@ -528,116 +659,201 @@ export default function CaptureScreen() {
  */
 function FramingGuide({ dimmed, onDismiss }: { dimmed: boolean; onDismiss: () => void }) {
   return (
-    <View style={[styles.guide, dimmed && styles.guideDimmed]} pointerEvents="box-none">
-      <View style={styles.guideBand} pointerEvents="none">
-        <View style={styles.guideEnd} />
-        <View style={styles.guideLine} />
-        <View style={styles.guideEnd} />
+    <View style={[styles.guideCard, dimmed && styles.guideDimmed]}>
+      <View style={styles.guideHeader}>
+        <Text style={styles.label}>FRAMING</Text>
+        <Pressable onPress={onDismiss} style={styles.guideHide} accessibilityRole="button">
+          <Text style={styles.guideHideText}>Hide</Text>
+        </Pressable>
       </View>
-      <View style={styles.guideCard}>
-        <View style={styles.guideHeader}>
-          <Text style={styles.label}>FRAMING</Text>
-          <Pressable onPress={onDismiss} hitSlop={space.md} accessibilityRole="button">
-            <Text style={styles.tipsToggleText}>Hide</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.guideTitle}>Fit both ends of your reference inside the guide</Text>
-        <Text style={styles.guideBody}>
-          Both sets of stumps, or both markers, close to the end bars. The scale comes from
-          that one distance, so the more of the frame it fills, the less the reading drifts.
-          Standing too far back reads low, and the error range cannot see it.
-        </Text>
-      </View>
+      <Text style={styles.guideTitle}>Fit both ends of your reference inside the guide</Text>
+      <Text style={styles.guideBody}>
+        Both sets of stumps, or both markers, close to the end bars. The scale comes from
+        that one distance, so the more of the frame it fills, the less the reading drifts.
+        Standing too far back reads low, and the error range cannot see it.
+      </Text>
     </View>
   );
 }
 
-const SHUTTER_SIZE = 88;
-const SHUTTER_CORE_SIZE = 68;
+/** The record button's ring. Kept by name: it is the target the thumb looks for. */
+const SHUTTER_SIZE = size.record;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   center: { alignItems: 'center', justifyContent: 'center' },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'space-between',
-    paddingHorizontal: space.lg,
-  },
-  top: { alignItems: 'stretch' },
-  bottom: { alignItems: 'center' },
+  bar: { paddingHorizontal: space.md },
 
   h2: { ...type.h2, color: colors.text, marginBottom: space.sm },
   body: { ...type.body, color: colors.muted, textAlign: 'center' },
   settingsNote: { marginTop: space.md },
+  permissionAction: { marginTop: space.lg },
   label: { ...type.label, color: colors.muted },
 
-  primaryButton: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
+  qualityMark: {
     borderRadius: radius.pill,
-    marginTop: space.lg,
+    borderWidth: stroke.hairline,
+    borderColor: colors.text,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
   },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
+  qualityMarkText: { ...type.label, color: colors.text },
+  qualityChip: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.control,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+  },
+  qualityChipText: { ...type.label, color: colors.muted },
 
+  previewArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  previewBox: { overflow: 'hidden', backgroundColor: colors.bg },
   scrim: { backgroundColor: colors.bg, opacity: opacity.scrim },
 
-  tipsCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+  // Opaque, so it reads over any picture.
+  plate: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+  },
+  plateText: { ...type.caption, color: colors.text, textAlign: 'center' },
+
+  guideDimmed: { opacity: opacity.inactive },
+  bracket: {
+    position: 'absolute',
+    width: space.lg,
+    height: space.lg,
+    borderColor: colors.text,
+  },
+  bracketTopLeft: {
+    top: space.md,
+    left: space.md,
+    borderTopWidth: stroke.medium,
+    borderLeftWidth: stroke.medium,
+  },
+  bracketTopRight: {
+    top: space.md,
+    right: space.md,
+    borderTopWidth: stroke.medium,
+    borderRightWidth: stroke.medium,
+  },
+  bracketBottomLeft: {
+    bottom: space.md,
+    left: space.md,
+    borderBottomWidth: stroke.medium,
+    borderLeftWidth: stroke.medium,
+  },
+  bracketBottomRight: {
+    bottom: space.md,
+    right: space.md,
+    borderBottomWidth: stroke.medium,
+    borderRightWidth: stroke.medium,
+  },
+  baselineRow: {
+    position: 'absolute',
+    left: space.xl,
+    right: space.xl,
+    bottom: space.xxl,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  baseline: {
+    flex: 1,
+    height: stroke.hairline,
+    backgroundColor: colors.text,
+    opacity: opacity.secondary,
+  },
+  // Outlined, like a drawing of the thing, never a filled detection box.
+  stumpIcon: {
+    width: space.sm,
+    height: space.lg,
+    borderWidth: stroke.hairline,
+    borderColor: colors.text,
+  },
+  markerIcon: {
+    width: space.sm,
+    height: space.sm,
+    borderWidth: stroke.hairline,
+    borderColor: colors.text,
+  },
+  guidePlateRow: {
+    position: 'absolute',
+    left: space.md,
+    right: space.md,
+    bottom: space.xxl + space.md,
+    alignItems: 'center',
+  },
+
+  guideSlot: { position: 'absolute', top: space.sm, left: space.sm, right: space.sm },
+  guideCard: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
     borderWidth: stroke.hairline,
     borderColor: colors.line,
     padding: space.md,
   },
-  tipsHeader: {
+  guideHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: space.sm,
   },
-  tipsToggleText: { ...type.caption, color: colors.muted },
-  tipRow: { flexDirection: 'row', marginTop: space.xs },
-  tipBullet: { ...type.caption, color: colors.muted, marginRight: space.sm },
-  tipText: { ...type.caption, color: colors.text, flex: 1 },
-  tipsPill: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.surface,
+  guideHide: { minHeight: size.target, minWidth: size.target, alignItems: 'flex-end', justifyContent: 'center' },
+  guideHideText: { ...type.caption, color: colors.text },
+  guideTitle: { ...type.body, color: colors.text, fontWeight: '700' },
+  guideBody: { ...type.caption, color: colors.muted, marginTop: space.xs },
+
+  controls: { paddingHorizontal: space.lg, paddingTop: space.sm, gap: space.sm },
+
+  settingsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  lenses: { flexDirection: 'row', gap: space.xs },
+  lensSpacer: { width: size.target },
+  lens: {
+    minWidth: size.target,
+    minHeight: size.target,
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
+  },
+  lensOn: { backgroundColor: colors.text, borderColor: colors.text },
+  lensText: { ...type.button, ...type.tabular, color: colors.text },
+  lensTextOn: { color: colors.bg },
+
+  exposure: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 1 },
+  exposureLabel: { ...type.caption, color: colors.muted },
+  exposureAuto: { ...type.caption, color: colors.muted, textAlign: 'right' },
+  exposureStep: {
+    width: size.target,
+    height: size.target,
     borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  exposureStepText: { ...type.h2, color: colors.text },
+  exposureValue: { ...type.button, ...type.tabular, color: colors.text, minWidth: space.lg, textAlign: 'center' },
+  off: { opacity: opacity.disabled },
+  helper: { ...type.caption, color: colors.muted },
 
-  errorCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: stroke.hairline,
-    borderColor: colors.danger,
-    padding: space.md,
-    marginBottom: space.md,
-  },
-  errorText: { ...type.caption, color: colors.danger },
-  // A fallback that worked, so it reads as information rather than an error.
-  noticeCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    padding: space.md,
-    marginBottom: space.md,
-  },
-  noticeText: { ...type.caption, color: colors.text },
-
-  timerRow: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: space.md,
+    justifyContent: 'space-between',
+    marginTop: space.xs,
   },
+  sound: { ...type.caption, color: colors.muted, flex: 1 },
+  shutter: {
+    width: SHUTTER_SIZE,
+    height: SHUTTER_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timerSlot: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   recDot: {
     width: space.sm,
     height: space.sm,
@@ -645,126 +861,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.danger,
     marginRight: space.sm,
   },
-  timer: {
-    ...type.h1,
-    ...type.tabular,
-    color: colors.text,
-  },
+  timer: { ...type.h2, ...type.tabular, color: colors.text },
   timerIdle: { color: colors.muted },
 
-  shutter: {
-    width: SHUTTER_SIZE,
-    height: SHUTTER_SIZE,
-    borderRadius: radius.pill,
-    borderWidth: stroke.heavy,
-    borderColor: colors.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shutterCore: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shutterCoreIdle: {
-    width: SHUTTER_CORE_SIZE,
-    height: SHUTTER_CORE_SIZE,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-  },
-  shutterCoreRecording: {
-    width: SHUTTER_CORE_SIZE * 0.6,
-    height: SHUTTER_CORE_SIZE * 0.6,
-    borderRadius: radius.sm,
-    backgroundColor: colors.danger,
-  },
-  shutterCoreLocked: { opacity: opacity.disabled },
-  countdown: { ...type.h2, ...type.tabular, color: colors.text },
+  hint: { ...type.caption, color: colors.muted, textAlign: 'center' },
 
-  hint: { ...type.caption, color: colors.muted, marginTop: space.md },
-  guide: { alignSelf: 'stretch' },
-  guideDimmed: { opacity: opacity.inactive },
-  guideBand: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: space.md,
-  },
-  guideEnd: {
-    width: stroke.heavy,
-    height: space.xl,
-    backgroundColor: colors.accent,
-  },
-  guideLine: {
-    flex: 1,
-    height: stroke.medium,
-    backgroundColor: colors.accent,
-    opacity: opacity.secondary,
-  },
-  guideCard: {
-    backgroundColor: colors.bg,
-    borderRadius: radius.md,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    padding: space.md,
-    marginBottom: space.md,
-  },
-  guideHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.sm,
-  },
-  guideTitle: { ...type.body, color: colors.text, fontWeight: '800' },
-  guideBody: { ...type.caption, color: colors.muted, marginTop: space.xs },
-  qualityMark: {
-    alignSelf: 'center',
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-    marginBottom: space.sm,
-  },
-  qualityMarkText: { ...type.label, color: colors.muted },
-  lenses: { flexDirection: 'row', alignSelf: 'center', marginBottom: space.md },
-  lens: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    backgroundColor: colors.bg,
-    paddingHorizontal: space.md,
-    paddingVertical: space.xs,
-    marginHorizontal: space.xs,
-  },
-  lensOn: { backgroundColor: colors.text, borderColor: colors.text },
-  lensText: { ...type.caption, ...type.tabular, color: colors.text },
-  lensTextOn: { color: colors.bg, fontWeight: '800' },
-  switchingText: { ...type.caption, color: colors.muted },
-  micCard: {
-    alignSelf: 'stretch',
-    backgroundColor: colors.bg,
-    borderRadius: radius.md,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    padding: space.md,
-    marginBottom: space.md,
-  },
-  micActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: space.md },
-  micSkip: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-    marginRight: space.sm,
-  },
-  micSkipText: { ...type.caption, color: colors.text },
-  micAllow: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.md,
-    paddingVertical: space.sm,
-  },
-  micAllowText: { ...type.caption, color: colors.bg, fontWeight: '800' },
-  // The allowance is worth reading at a glance once it has run out.
-  hintLimit: { color: colors.warn },
+  sheetBody: { ...type.body, color: colors.text, marginTop: space.sm },
+  sheetActions: { gap: space.sm, marginTop: space.lg },
 });
