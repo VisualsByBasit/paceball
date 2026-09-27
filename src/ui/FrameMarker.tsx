@@ -1,31 +1,57 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, opacity, radius, stroke, type } from './tokens';
+import type { MarkConfidence } from '../types';
 
 const MARKER_SIZE = 28;
+/** A square turned 45 degrees whose corners reach the marker's edge. */
+const DIAMOND_SIDE = MARKER_SIZE / Math.SQRT2;
 
 type FrameMarkerProps = {
   /** Centre of the marker, in the displayed frame's own pixels. */
   left: number;
   top: number;
   label: string;
-  /** Ball points carry the measurement, so they get the accent. */
-  ball: boolean;
-  /** Drawn heavier — the point being placed, or the one being looked at. */
+  /**
+   * The point being placed, or the one being looked at: lime and drawn heavier.
+   * Everything else is white. Lime is for what is happening now.
+   */
   active: boolean;
+  /**
+   * How well the ball could be seen on a bounce mark. Seen is the plain
+   * crosshair. Uncertain is a hollow diamond, and a guess is a crossed ring
+   * that names itself, so neither can pass for a clean mark at a glance.
+   */
+  confidence?: MarkConfidence;
 };
 
-/** A crosshair and caption over a marked point on a frame. Shared by Mark and Analysis. */
-export function FrameMarker({ left, top, label, ball, active }: FrameMarkerProps) {
-  const tint = ball ? colors.accent : colors.text;
+/** A crosshair and caption over a marked point on a frame. Shared by Mark, Result and Analysis. */
+export function FrameMarker({ left, top, label, active, confidence = 'seen' }: FrameMarkerProps) {
+  const tint = active ? colors.accent : colors.text;
+  const shape = active ? styles.heavy : styles.light;
   return (
     <View
       pointerEvents="none"
       style={[styles.marker, { left: left - MARKER_SIZE / 2, top: top - MARKER_SIZE / 2 }]}
     >
-      <View style={[styles.ring, { borderColor: tint }, active && styles.ringActive]} />
-      <View style={[styles.tickV, { backgroundColor: tint }]} />
-      <View style={[styles.tickH, { backgroundColor: tint }]} />
-      <Text style={[styles.label, { color: tint }]}>{label}</Text>
+      {confidence === 'uncertain' ? (
+        <View style={[styles.diamond, shape, { borderColor: tint }]} />
+      ) : (
+        <View style={[styles.ring, shape, { borderColor: tint }]} />
+      )}
+      {confidence === 'guessed' ? (
+        <>
+          <View style={[styles.tickH, styles.crossA, { backgroundColor: tint }]} />
+          <View style={[styles.tickH, styles.crossB, { backgroundColor: tint }]} />
+        </>
+      ) : (
+        <>
+          <View style={[styles.tickV, { backgroundColor: tint }]} />
+          <View style={[styles.tickH, { backgroundColor: tint }]} />
+        </>
+      )}
+      <Text style={[styles.label, { color: tint }]}>
+        {confidence === 'guessed' ? 'Guessed' : label}
+      </Text>
     </View>
   );
 }
@@ -43,12 +69,20 @@ const styles = StyleSheet.create({
     width: MARKER_SIZE,
     height: MARKER_SIZE,
     borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    opacity: opacity.inactive,
   },
-  ringActive: { borderWidth: stroke.medium, opacity: opacity.full },
+  diamond: {
+    position: 'absolute',
+    width: DIAMOND_SIDE,
+    height: DIAMOND_SIDE,
+    transform: [{ rotate: '45deg' }],
+  },
+  light: { borderWidth: stroke.hairline, opacity: opacity.secondary },
+  heavy: { borderWidth: stroke.medium, opacity: opacity.full },
   tickV: { position: 'absolute', width: stroke.hairline, height: MARKER_SIZE },
   tickH: { position: 'absolute', height: stroke.hairline, width: MARKER_SIZE },
+  // The crosshair turned into an X, so a guessed point reads as struck out.
+  crossA: { transform: [{ rotate: '45deg' }] },
+  crossB: { transform: [{ rotate: '-45deg' }] },
   label: {
     ...type.label,
     position: 'absolute',

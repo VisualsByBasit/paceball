@@ -503,7 +503,7 @@ export default function ResultScreen() {
             calB={calB!}
             release={release!}
             bounce={bounce!}
-            guessed={markConfidence === 'guessed'}
+            confidence={markConfidence!}
             // The straight line is the distance the reading was taken over, so
             // without a reading there is nothing for it to stand for.
             connect={measured}
@@ -643,7 +643,7 @@ function Evidence({
   calB,
   release,
   bounce,
-  guessed,
+  confidence,
   connect,
 }: {
   framesDir: string | undefined;
@@ -654,7 +654,7 @@ function Evidence({
   calB: Point;
   release: Point;
   bounce: Point;
-  guessed: boolean;
+  confidence: MarkConfidence;
   connect: boolean;
 }) {
   const { height: screenHeight } = useWindowDimensions();
@@ -724,16 +724,16 @@ function Evidence({
 
             {refsOnFrame ? (
               <>
-                <FrameMarker label={spec.a.short} ball={false} active={false} left={at(calA).x} top={at(calA).y} />
-                <FrameMarker label={spec.b.short} ball={false} active={false} left={at(calB).x} top={at(calB).y} />
+                <FrameMarker label={spec.a.short} active={false} left={at(calA).x} top={at(calA).y} />
+                <FrameMarker label={spec.b.short} active={false} left={at(calB).x} top={at(calB).y} />
               </>
             ) : null}
             <PathDots points={dots} />
-            <FrameMarker label="Release" ball active left={at(release).x} top={at(release).y} />
+            <FrameMarker label="Release" active left={at(release).x} top={at(release).y} />
             <FrameMarker
-              label={guessed ? 'Guessed' : 'Bounce'}
-              ball
-              active={!guessed}
+              label="Bounce"
+              active={confidence !== 'guessed'}
+              confidence={confidence}
               left={at(bounce).x}
               top={at(bounce).y}
             />

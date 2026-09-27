@@ -527,10 +527,10 @@ export default function MarkScreen() {
                 <FrameMarker
                   key={s.key}
                   label={s.short}
-                  ball={s.ball}
                   left={point.x * fit.scale}
                   top={point.y * fit.scale}
                   active={s.key === activeKey}
+                  confidence={s.key === 'bounce' ? markConfidence : undefined}
                 />
               );
             })}

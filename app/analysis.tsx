@@ -475,10 +475,11 @@ function Replay({
                 <FrameMarker
                   key={m.key}
                   label={m.label}
-                  ball={m.ball}
                   left={at.left}
                   top={at.top}
                   active={m.ball}
+                  // Absent on records saved before it was asked, which read as seen.
+                  confidence={m.key === 'bounce' ? session.markConfidence : undefined}
                 />
               );
             })}
