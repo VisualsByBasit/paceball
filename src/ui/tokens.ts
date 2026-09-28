@@ -48,6 +48,9 @@ export const size = {
   loupe: 96,
   /** The emblem shown once a purchase is confirmed. */
   emblem: 96,
+  /** The widest the Result speedometer is drawn, and its dial's stroke. */
+  gauge: 280,
+  gaugeStroke: 10,
   /** A delivery row's minimum height. */
   row: 80,
   /** A delivery row's release-frame thumbnail. */

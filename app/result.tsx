@@ -38,6 +38,7 @@ import { BottomSheet } from '../src/ui/BottomSheet';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { Notice } from '../src/ui/Notice';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
+import { SpeedGauge } from '../src/ui/SpeedGauge';
 import { WicketLock } from '../src/ui/WicketLock';
 import { PathDots, pointsAlong } from '../src/ui/motion/PathDots';
 import { READING_LABEL, readingView, type NoReading } from '../src/ui/reading';
@@ -459,6 +460,9 @@ export default function ResultScreen() {
             <Text style={styles.label} accessibilityElementsHidden importantForAccessibility="no">
               {READING_LABEL}
             </Text>
+            {/* The dial sweeps with the count; the number and its range stay
+                beneath it, and the wicket lands with both. */}
+            <SpeedGauge reading={view} unit={unit} width={width - space.lg * 2} />
             <ReadingBlock
               reading={view}
               size={width < size.compactBelow ? 'heroCompact' : 'hero'}

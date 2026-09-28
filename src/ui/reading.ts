@@ -25,6 +25,8 @@ export type MeasuredReading = {
   unit: string;
   /** The error range, as it sits under the number: "± 3.1 km/h". */
   range: string;
+  /** The same range as a number in the display unit, for drawing it. */
+  error: number;
   method: string;
   /** The whole reading in one sentence, so a screen reader never splits it. */
   spoken: string;
@@ -51,6 +53,7 @@ export function readingView(state: MeasurementState, unit: SpeedUnit): ReadingVi
     speed,
     unit: label,
     range: `± ${error} ${label}`,
+    error,
     method: READING_METHOD,
     spoken: `Average speed, release to bounce: ${speed} ${unitSpoken(unit)}, plus or minus ${error}.`,
   };
