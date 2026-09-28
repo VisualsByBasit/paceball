@@ -50,7 +50,7 @@ test('the preview shows the whole frame in a 3:4 box, with a guide that never cl
   ]) {
     assert.ok(capture.includes(`${method}: '${line}'`), method);
   }
-  assert.match(capture, /<GuideOverlay method=\{calibrationMethod\} dimmed=\{isRecording\} \/>/);
+  assert.match(capture, /<GuideOverlay\s+method=\{calibrationMethod\}\s+dimmed=\{isRecording\}\s+rotation=\{rotation\}\s+box=\{box\}\s+\/>/);
 });
 
 test('the quality chip says Standard unless the higher bitrate is really requested', () => {
@@ -120,4 +120,31 @@ test('exposure steps across the camera\'s whole range, above 0 as well as below'
   assert.doesNotMatch(capture, /EXPOSURE_BIAS_OPTIONS/);
   assert.match(capture, /onChange\(stepExposure\(exposure, 1, device\)\)/);
   assert.match(capture, /onChange\(stepExposure\(exposure, -1, device\)\)/);
+});
+
+test('held sideways, the overlay turns to meet the phone and the recording does not', () => {
+  const { uiRotation } = require('../src/capture/orientation.ts');
+  assert.equal(uiRotation('up'), 0);
+  assert.equal(uiRotation(undefined), 0);
+  assert.equal(uiRotation('right'), -90);
+  assert.equal(uiRotation('left'), 90);
+  assert.equal(uiRotation('down'), 0, 'upside down is left alone');
+
+  const capture = read(CAPTURE);
+  // Physical orientation, from vision-camera itself: nothing new installed.
+  assert.match(capture, /const rotation = uiRotation\(useOrientation\('device'\)\);/);
+  // The guide's baseline, stumps and label turn to the landscape framing.
+  assert.match(capture, /<RotateInPlace deg=\{rotation\} style=\{\[styles\.guideFrame, frame\]\}>/);
+  assert.match(capture, /width: box\.height,\s*height: box\.width,/);
+  // Labels and controls turn in place: lens chips, exposure, timer, sound,
+  // the quality chip and the record button's countdown.
+  assert.ok((capture.match(/<RotateInPlace deg=\{rotation\}/g) ?? []).length >= 10);
+  assert.match(read('src/ui/RotateInPlace.tsx'), /transform: \[\{ rotate: `\$\{turn\.value\}deg` \}\]/);
+  // The recording is untouched: no orientation reaches the camera, the
+  // recorder, or what Mark is handed.
+  const camera = capture.slice(capture.indexOf('<Camera'), capture.indexOf('/>', capture.indexOf('<Camera')));
+  assert.doesNotMatch(camera, /rotation|orientation/i);
+  const onFinished = capture.slice(capture.indexOf('const onFinished'), capture.indexOf('const onAudioFailure'));
+  assert.doesNotMatch(onFinished, /rotation|orientation/i);
+  assert.doesNotMatch(read('src/capture/useCapture.ts'), /useOrientation|uiRotation/);
 });

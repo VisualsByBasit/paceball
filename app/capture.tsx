@@ -19,6 +19,7 @@ import {
   useCameraDevices,
   useCameraPermission,
   useMicrophonePermission,
+  useOrientation,
   useVideoOutput,
 } from 'react-native-vision-camera';
 import {
@@ -54,6 +55,8 @@ import { AppBar } from '../src/ui/AppBar';
 import { BottomSheet } from '../src/ui/BottomSheet';
 import { Notice } from '../src/ui/Notice';
 import { RecordButtonFace } from '../src/ui/RecordButtonFace';
+import { RotateInPlace } from '../src/ui/RotateInPlace';
+import { uiRotation } from '../src/capture/orientation';
 import { formatBias } from '../src/ui/format';
 import { colors, motion, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 import type { CalibrationMethod } from '../src/types';
@@ -264,6 +267,11 @@ export default function CaptureScreen() {
   // The preview is contained in a 3:4 box, as large as the space allows.
   const [area, setArea] = useState({ w: 0, h: 0 });
 
+  // Which way the phone is physically held. The screen stays portrait-locked;
+  // only what is drawn over the preview turns to meet it, as in a camera app.
+  // Read-only: the recording's own orientation is not touched.
+  const rotation = uiRotation(useOrientation('device'));
+
   // Offered on the first visit, once the camera itself is allowed so two system
   // dialogs never stack. Answering it restarts the session for sound, which is
   // why it happens here and not while a bowler is running in.
@@ -362,11 +370,15 @@ export default function CaptureScreen() {
           backDisabled={isRecording || isProcessing}
           right={bitRate !== null ? (
             <View style={styles.qualityMark}>
-              <Text style={styles.qualityMarkText}>PRO QUALITY</Text>
+              <RotateInPlace deg={rotation}>
+                <Text style={styles.qualityMarkText}>PRO QUALITY</Text>
+              </RotateInPlace>
             </View>
           ) : (
             <View style={styles.qualityChip}>
-              <Text style={styles.qualityChipText}>STANDARD</Text>
+              <RotateInPlace deg={rotation}>
+                <Text style={styles.qualityChipText}>STANDARD</Text>
+              </RotateInPlace>
             </View>
           )}
         />
@@ -396,7 +408,12 @@ export default function CaptureScreen() {
           />
           </Animated.View>
 
-          <GuideOverlay method={calibrationMethod} dimmed={isRecording} />
+          <GuideOverlay
+            method={calibrationMethod}
+            dimmed={isRecording}
+            rotation={rotation}
+            box={box}
+          />
 
           {switchingLens ? (
             <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
@@ -447,9 +464,11 @@ export default function CaptureScreen() {
                         : 'Standard lens, 1x'
                     }
                   >
-                    <Text style={[styles.lensText, on && styles.lensTextOn]}>
-                      {LENS_LABEL[option]}
-                    </Text>
+                    <RotateInPlace deg={rotation}>
+                      <Text style={[styles.lensText, on && styles.lensTextOn]}>
+                        {LENS_LABEL[option]}
+                      </Text>
+                    </RotateInPlace>
                   </Pressable>
                 );
               })}
@@ -462,6 +481,7 @@ export default function CaptureScreen() {
             exposure={exposure}
             device={device}
             locked={isRecording || isProcessing}
+            rotation={rotation}
             onChange={setBias}
           />
         </View>
@@ -472,9 +492,13 @@ export default function CaptureScreen() {
         )}
 
         <View style={styles.actionRow}>
-          <Text style={styles.sound} numberOfLines={1}>
-            {enableAudio ? 'Sound on' : 'No sound'}
-          </Text>
+          <View style={styles.soundSlot}>
+            <RotateInPlace deg={rotation} style={styles.soundTurn}>
+              <Text style={styles.sound} numberOfLines={1}>
+                {enableAudio ? 'Sound on' : 'No sound'}
+              </Text>
+            </RotateInPlace>
+          </View>
 
           <Pressable
             onPress={
@@ -491,18 +515,22 @@ export default function CaptureScreen() {
             accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
             style={styles.shutter}
           >
-            <RecordButtonFace
-              recording={isRecording}
-              lockedSeconds={isRecording && !canStop ? lockedSeconds : null}
-              dimmed={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
-            />
+            <RotateInPlace deg={rotation}>
+              <RecordButtonFace
+                recording={isRecording}
+                lockedSeconds={isRecording && !canStop ? lockedSeconds : null}
+                dimmed={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
+              />
+            </RotateInPlace>
           </Pressable>
 
           <View style={styles.timerSlot}>
             {isRecording ? <View style={styles.recDot} /> : null}
-            <Text style={[styles.timer, !isRecording && styles.timerIdle]}>
-              {formatElapsed(isRecording ? elapsedMs : 0)}
-            </Text>
+            <RotateInPlace deg={rotation}>
+              <Text style={[styles.timer, !isRecording && styles.timerIdle]}>
+                {formatElapsed(isRecording ? elapsedMs : 0)}
+              </Text>
+            </RotateInPlace>
           </View>
         </View>
 
@@ -550,7 +578,29 @@ const GUIDE_PLATE: Record<CalibrationMethod, string> = {
  * the picture. The ends of the baseline show the reference Mark will open on,
  * stumps or markers; a ball or a bowler has no fixed ends to show.
  */
-function GuideOverlay({ method, dimmed }: { method: CalibrationMethod; dimmed: boolean }) {
+function GuideOverlay({
+  method,
+  dimmed,
+  rotation,
+  box,
+}: {
+  method: CalibrationMethod;
+  dimmed: boolean;
+  /** How far the phone is turned: the pitch then runs along the box's long side. */
+  rotation: number;
+  box: { width: number; height: number };
+}) {
+  // Held sideways, the framing is the box turned a quarter: laid out in a
+  // frame with the box's sides swapped, centred on it, then turned in place.
+  const turned = rotation !== 0;
+  const frame = turned
+    ? {
+        width: box.height,
+        height: box.width,
+        left: (box.width - box.height) / 2,
+        top: (box.height - box.width) / 2,
+      }
+    : { width: box.width, height: box.height, left: 0, top: 0 };
   const ends = method === 'stumps' ? styles.stumpIcon : method === 'markers' ? styles.markerIcon : null;
   return (
     <View
@@ -563,16 +613,18 @@ function GuideOverlay({ method, dimmed }: { method: CalibrationMethod; dimmed: b
       <View style={[styles.bracket, styles.bracketTopRight]} />
       <View style={[styles.bracket, styles.bracketBottomLeft]} />
       <View style={[styles.bracket, styles.bracketBottomRight]} />
-      <View style={styles.baselineRow}>
-        {ends ? <View style={ends} /> : null}
-        <View style={styles.baseline} />
-        {ends ? <View style={ends} /> : null}
-      </View>
-      <View style={styles.guidePlateRow}>
-        <View style={styles.plate}>
-          <Text style={styles.plateText}>{GUIDE_PLATE[method]}</Text>
+      <RotateInPlace deg={rotation} style={[styles.guideFrame, frame]}>
+        <View style={styles.baselineRow}>
+          {ends ? <View style={ends} /> : null}
+          <View style={styles.baseline} />
+          {ends ? <View style={ends} /> : null}
         </View>
-      </View>
+        <View style={styles.guidePlateRow}>
+          <View style={styles.plate}>
+            <Text style={styles.plateText}>{GUIDE_PLATE[method]}</Text>
+          </View>
+        </View>
+      </RotateInPlace>
     </View>
   );
 }
@@ -587,12 +639,15 @@ function ExposureControl({
   exposure,
   device,
   locked,
+  rotation,
   onChange,
 }: {
   /** What is actually sent, after the camera's own limits. Undefined when unsupported. */
   exposure: number | undefined;
   device: { minExposureBias: number; maxExposureBias: number };
   locked: boolean;
+  /** How far to turn the labels so they read upright on a phone held sideways. */
+  rotation: number;
   onChange: (bias: number) => void;
 }) {
   const supported = exposure !== undefined;
@@ -605,14 +660,18 @@ function ExposureControl({
   if (!supported) {
     return (
       <View style={styles.exposure}>
-        <Text style={styles.exposureAuto}>Exposure uses camera auto on this phone.</Text>
+        <RotateInPlace deg={rotation}>
+          <Text style={styles.exposureAuto}>Exposure uses camera auto on this phone.</Text>
+        </RotateInPlace>
       </View>
     );
   }
 
   return (
     <View style={styles.exposure}>
-      <Text style={styles.exposureLabel}>Exposure</Text>
+      <RotateInPlace deg={rotation}>
+        <Text style={styles.exposureLabel}>Exposure</Text>
+      </RotateInPlace>
       <Pressable
         style={[styles.exposureStep, !canDarken && styles.off]}
         onPress={() => onChange(stepExposure(exposure, -1, device))}
@@ -621,7 +680,9 @@ function ExposureControl({
         accessibilityLabel="Darker"
         accessibilityState={{ disabled: !canDarken }}
       >
-        <Text style={styles.exposureStepText}>−</Text>
+        <RotateInPlace deg={rotation}>
+          <Text style={styles.exposureStepText}>−</Text>
+        </RotateInPlace>
       </Pressable>
       <Text
         style={styles.exposureValue}
@@ -637,7 +698,9 @@ function ExposureControl({
         accessibilityLabel="Brighter"
         accessibilityState={{ disabled: !canBrighten }}
       >
-        <Text style={styles.exposureStepText}>+</Text>
+        <RotateInPlace deg={rotation}>
+          <Text style={styles.exposureStepText}>+</Text>
+        </RotateInPlace>
       </Pressable>
     </View>
   );
@@ -772,6 +835,7 @@ const styles = StyleSheet.create({
     borderWidth: stroke.hairline,
     borderColor: colors.text,
   },
+  guideFrame: { position: 'absolute' },
   guidePlateRow: {
     position: 'absolute',
     left: space.md,
@@ -840,7 +904,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: space.xs,
   },
-  sound: { ...type.caption, color: colors.muted, flex: 1 },
+  soundSlot: { flex: 1, alignItems: 'flex-start' },
+  soundTurn: { alignSelf: 'flex-start' },
+  sound: { ...type.caption, color: colors.muted },
   shutter: {
     width: SHUTTER_SIZE,
     height: SHUTTER_SIZE,
