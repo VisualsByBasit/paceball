@@ -75,3 +75,15 @@ export function revealStart(value: number, still: boolean): { shown: number; lan
   'worklet';
   return still ? { shown: value, landed: 1 } : { shown: 0, landed: 0 };
 }
+
+/**
+ * The text React itself holds for the counter. The count is written straight
+ * to the native view from the UI thread, but React owns the TextInput's text
+ * prop too, and re-sends it on any later commit: saving, the wicket locking,
+ * a focus change. Before landing that is the starting figure; from the moment
+ * it lands it is the final reading, so no later commit can put anything else
+ * on screen.
+ */
+export function heldText(landed: boolean, value: number, decimals: number, startShown: number): string {
+  return landed ? value.toFixed(decimals) : countUpText(startShown, value, decimals);
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -19,7 +19,7 @@ import Animated, {
 } from 'react-native-reanimated';
 // Reanimated's own peer, pinned by the worklets override in package.json.
 import { scheduleOnRN } from 'react-native-worklets';
-import { countUpText, revealStart } from '../reading';
+import { countUpText, heldText, revealStart } from '../reading';
 import { motion } from '../tokens';
 
 /**
@@ -83,11 +83,18 @@ export function CountUpReading({
   const shown = useSharedValue(start.shown);
   const landed = useSharedValue(start.landed);
 
+  // Whether the count has landed, on the JS side: from then on React's own
+  // copy of the text is the final reading. See heldText.
+  const [done, setDone] = useState(still);
+
   const onLandedRef = useRef(onLanded);
   useEffect(() => {
     onLandedRef.current = onLanded;
   }, [onLanded]);
-  const land = useCallback(() => onLandedRef.current?.(), []);
+  const land = useCallback(() => {
+    setDone(true);
+    onLandedRef.current?.();
+  }, []);
 
   useEffect(() => {
     const from = revealStart(value, still);
@@ -133,7 +140,9 @@ export function CountUpReading({
       <AnimatedTextInput
         style={[style, styles.live, colour]}
         allowFontScaling={allowFontScaling}
-        defaultValue={countUpText(start.shown, value, decimals)}
+        // Controlled, so every React commit carries the right text: the start
+        // while counting, the final reading once landed, and never a reset.
+        value={heldText(done, value, decimals, start.shown)}
         animatedProps={liveText}
         editable={false}
         caretHidden

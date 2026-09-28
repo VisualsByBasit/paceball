@@ -175,3 +175,25 @@ test('the reading pieces take every colour and size from tokens', () => {
     );
   }
 });
+
+test('once the count lands it holds the final reading through any later render', () => {
+  const { heldText } = require('../src/ui/reading.ts');
+  // React's own copy of the text: the start while counting, the reading after.
+  assert.equal(heldText(false, 124.8, 1, 0), '0.0');
+  assert.equal(heldText(true, 124.8, 1, 0), '124.8');
+  assert.equal(heldText(true, 124.8, 1, 124.8), '124.8');
+
+  const count = read('src/ui/motion/CountUpReading.tsx');
+  // Controlled by that text, never an uncontrolled defaultValue React would
+  // re-send as "0.0" on the next commit (the bug: it dropped back to zero
+  // about a second after landing, when the wicket lock re-rendered Result).
+  assert.match(count, /value=\{heldText\(done, value, decimals, start\.shown\)\}/);
+  assert.doesNotMatch(count, /defaultValue=/);
+  assert.match(count, /const land = useCallback\(\(\) => \{\s*setDone\(true\);/);
+  // Nothing a parent re-render changes can restart the count: the effect
+  // depends on the value and stillness only, and the callback is read by ref.
+  assert.match(count, /\}, \[value, still, shown, landed, land\]\);/);
+  assert.match(count, /const land = useCallback\([\s\S]*?\}, \[\]\);/);
+  // The screen never remounts the reading with a changing key.
+  assert.doesNotMatch(read('app/result.tsx'), /<ReadingBlock[^>]*\bkey=/);
+});
