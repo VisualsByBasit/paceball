@@ -28,7 +28,7 @@ import {
   type CaptureResult,
 } from '../src/capture/useCapture';
 import { Screen } from '../src/ui/Screen';
-import { captureExposure } from '../src/capture/exposure';
+import { captureExposure, exposureSteps, stepExposure } from '../src/capture/exposure';
 import { highBitRate, profileFrom } from '../src/capture/bitrate';
 import { deviceForLens, hasUltraWide, LENS_LABEL, type Lens } from '../src/capture/lenses';
 import {
@@ -48,7 +48,6 @@ import {
   usePurchases,
 } from '../src/purchases';
 import { getSettings, updateSettings, useSettings } from '../src/settings';
-import { EXPOSURE_BIAS_OPTIONS } from '../src/settings/settings';
 import { ActionButton } from '../src/ui/ActionButton';
 import { AllowanceLine } from '../src/ui/AllowanceLine';
 import { AppBar } from '../src/ui/AppBar';
@@ -461,7 +460,6 @@ export default function CaptureScreen() {
 
           <ExposureControl
             exposure={exposure}
-            bias={bias}
             device={device}
             locked={isRecording || isProcessing}
             onChange={setBias}
@@ -587,26 +585,22 @@ function GuideOverlay({ method, dimmed }: { method: CalibrationMethod; dimmed: b
  */
 function ExposureControl({
   exposure,
-  bias,
   device,
   locked,
   onChange,
 }: {
   /** What is actually sent, after the camera's own limits. Undefined when unsupported. */
   exposure: number | undefined;
-  bias: number;
   device: { minExposureBias: number; maxExposureBias: number };
   locked: boolean;
   onChange: (bias: number) => void;
 }) {
-  const options: readonly number[] = EXPOSURE_BIAS_OPTIONS;
-  const at = options.indexOf(bias);
   const supported = exposure !== undefined;
-  // Darker stops at the darkest option or the camera's floor, brighter at 0
-  // or the camera's ceiling: a step that would send the same value is off.
-  const canDarken = supported && !locked && at > 0 && exposure > device.minExposureBias;
-  const canBrighten =
-    supported && !locked && at >= 0 && at < options.length - 1 && exposure < device.maxExposureBias;
+  // Steps from what is actually sent, a whole unit at a time, as far as this
+  // camera goes each way. Locked while recording.
+  const steps = supported ? exposureSteps(exposure, device) : { darker: false, brighter: false };
+  const canDarken = !locked && steps.darker;
+  const canBrighten = !locked && steps.brighter;
 
   if (!supported) {
     return (
@@ -621,7 +615,7 @@ function ExposureControl({
       <Text style={styles.exposureLabel}>Exposure</Text>
       <Pressable
         style={[styles.exposureStep, !canDarken && styles.off]}
-        onPress={() => onChange(options[at - 1])}
+        onPress={() => onChange(stepExposure(exposure, -1, device))}
         disabled={!canDarken}
         accessibilityRole="button"
         accessibilityLabel="Darker"
@@ -637,7 +631,7 @@ function ExposureControl({
       </Text>
       <Pressable
         style={[styles.exposureStep, !canBrighten && styles.off]}
-        onPress={() => onChange(options[at + 1])}
+        onPress={() => onChange(stepExposure(exposure, 1, device))}
         disabled={!canBrighten}
         accessibilityRole="button"
         accessibilityLabel="Brighter"

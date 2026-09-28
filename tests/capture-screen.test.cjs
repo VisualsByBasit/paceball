@@ -30,8 +30,8 @@ test('exposure starts from Settings, goes through the same clamp, and is never s
 test('the exposure control is locked while recording and says so when the camera has none', () => {
   const capture = read(CAPTURE);
   assert.match(capture, /locked=\{isRecording \|\| isProcessing\}/);
-  assert.match(capture, /const canDarken = supported && !locked && at > 0 && exposure > device\.minExposureBias;/);
-  assert.match(capture, /supported && !locked && at >= 0 && at < options\.length - 1 && exposure < device\.maxExposureBias/);
+  assert.match(capture, /const canDarken = !locked && steps\.darker;/);
+  assert.match(capture, /const canBrighten = !locked && steps\.brighter;/);
   assert.match(capture, /Exposure uses camera auto on this phone\./);
   assert.match(capture, /Brighter video can mean more blur\. Use more light when you can\./);
   assert.match(capture, /exposureStep: \{\s*width: size\.target,\s*height: size\.target,/);
@@ -98,4 +98,26 @@ test('Capture and its pieces take every colour and size from tokens', () => {
     );
   }
   assert.match(read(CAPTURE), /const LENS_FADE_OUT_MS = motion\.lens\.out;\s*const LENS_FADE_IN_MS = motion\.lens\.in;/);
+});
+
+test('exposure steps across the camera\'s whole range, above 0 as well as below', () => {
+  const { exposureSteps, stepExposure } = require('../src/capture/exposure.ts');
+  const wide = { minExposureBias: -12, maxExposureBias: 12 };
+  // The bug: the control stepped through the Settings defaults, -4 to 0, so it
+  // could never go brighter than 0 on any camera.
+  assert.equal(stepExposure(0, 1, wide), 1);
+  assert.equal(stepExposure(1, 1, wide), 2);
+  assert.equal(stepExposure(-4, -1, wide), -5);
+  assert.deepEqual(exposureSteps(0, wide), { darker: true, brighter: true });
+  // Held to the camera's own ends, and off where a step would change nothing.
+  assert.equal(stepExposure(12, 1, wide), 12);
+  assert.deepEqual(exposureSteps(12, wide), { darker: true, brighter: false });
+  assert.deepEqual(exposureSteps(-12, wide), { darker: false, brighter: true });
+  // A camera that really stops at 0 stops there, honestly.
+  assert.deepEqual(exposureSteps(0, { minExposureBias: -2, maxExposureBias: 0 }), { darker: true, brighter: false });
+  // And Capture no longer steps through the Settings list at all.
+  const capture = read(CAPTURE);
+  assert.doesNotMatch(capture, /EXPOSURE_BIAS_OPTIONS/);
+  assert.match(capture, /onChange\(stepExposure\(exposure, 1, device\)\)/);
+  assert.match(capture, /onChange\(stepExposure\(exposure, -1, device\)\)/);
 });
