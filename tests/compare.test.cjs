@@ -160,3 +160,12 @@ test('the verdict comes first, and only a clear gap names a faster delivery', ()
   assert.match(compare, /<ReadingBlock reading=\{view\} size="reading" \/>/);
   assert.match(compare, /largeText \? styles\.sidesStacked : styles\.sides/);
 });
+
+test('a link carrying an implausible reading is refused, not compared', () => {
+  // History never offers one (compareSelectability), but a route could still
+  // carry its id here.
+  const compare = read('app/compare.tsx');
+  assert.match(compare, /async function loadComparison\(idA: string, idB: string, unit: SpeedUnit\)/);
+  assert.match(compare, /if \(implausible\(reading, unit\)\) \{\s*return \{\s*status: 'error',/);
+  assert.match(compare, /loadComparison\(idA, idB, unit\)/);
+});

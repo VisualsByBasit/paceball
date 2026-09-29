@@ -15,6 +15,7 @@ import { measurementState } from '../src/physics/measurementState';
 import { canCompare, useEntitlements, usePurchases } from '../src/purchases';
 import { useSettings, type SpeedUnit } from '../src/settings';
 import { orderForCompare } from '../src/ui/compareSelection';
+import { implausible } from '../src/ui/gauge';
 import { speedVerdict, type SpeedVerdict } from '../src/ui/speedVerdict';
 import { AppBar } from '../src/ui/AppBar';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
@@ -61,7 +62,7 @@ async function playerName(id: string): Promise<string> {
  * comparison itself is still getComparison's, and anything it throws past those
  * checks is shown as it is. Nothing here ever stands in a zero.
  */
-async function loadComparison(idA: string, idB: string): Promise<Loaded> {
+async function loadComparison(idA: string, idB: string, unit: SpeedUnit): Promise<Loaded> {
   if (!idA || !idB || idA === idB) {
     return {
       status: 'error',
@@ -89,11 +90,20 @@ async function loadComparison(idA: string, idB: string): Promise<Loaded> {
         body: 'One of these deliveries is no longer saved. It may have been deleted since you picked it.',
       };
     }
-    if (measurementState(session).kind !== 'measured') {
+    const reading = measurementState(session);
+    if (reading.kind !== 'measured') {
       return {
         status: 'error',
         title: 'Only measured deliveries can be compared',
         body: "One of these has no reading: its bounce wasn't seen, or its marks can't produce a speed with an error range.",
+      };
+    }
+    // History never offers one, but a link could still carry it here.
+    if (implausible(reading, unit)) {
+      return {
+        status: 'error',
+        title: 'One of these readings needs checking',
+        body: 'It is off the scale or its range is very wide, so a comparison would say more about the marks than the bowling. It stays in History as it is.',
       };
     }
     records.push(session);
@@ -168,7 +178,7 @@ function Comparison() {
   useEffect(() => {
     let alive = true;
     setLoaded({ status: 'loading' });
-    loadComparison(idA, idB)
+    loadComparison(idA, idB, unit)
       .then((next) => {
         if (alive) setLoaded(next);
       })
@@ -184,7 +194,7 @@ function Comparison() {
     return () => {
       alive = false;
     };
-  }, [idA, idB]);
+  }, [idA, idB, unit]);
 
   const header = (
     <View style={styles.appBar}>
