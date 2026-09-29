@@ -79,6 +79,54 @@ test('the native splash is the app\'s own near-black, so the launch intro follow
   assert.ok(plugin, 'expo-splash-screen is configured');
   const bg = read('src/ui/tokens.ts').match(/bg: '(#[0-9A-Fa-f]{6})'/)[1];
   assert.equal(plugin[1].backgroundColor, bg);
-  // No new assets: the default icon stays.
+  // Dark theme too, so a phone in dark mode gets the same near-black.
+  assert.equal(plugin[1].dark.backgroundColor, bg);
+  // No splash image: Android 12+ shows the launcher icon on it.
   assert.equal(plugin[1].image, undefined);
+  assert.equal(plugin[1].dark.image, undefined);
+});
+
+/** Width, height and colour type straight from a PNG's IHDR. */
+function pngHeader(file) {
+  const bytes = fs.readFileSync(path.join(root, file));
+  assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], `${file} is a PNG`);
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), colorType: bytes[25] };
+}
+
+test('the launcher icon is the website logo, copied into the app, never read from website/', () => {
+  const app = appJson();
+  assert.equal(app.icon, './assets/icon.png');
+  // The same file byte for byte: no new artwork.
+  assert.ok(fs.readFileSync(path.join(root, 'assets', 'icon.png'))
+    .equals(fs.readFileSync(path.join(root, 'website', 'public', 'logo.png'))));
+  const icon = pngHeader('assets/icon.png');
+  assert.equal(icon.width, icon.height, 'square');
+  for (const [key, value] of Object.entries(app)) {
+    assert.doesNotMatch(JSON.stringify(value), /website\//, `app.json ${key} points into website/`);
+  }
+});
+
+test('the adaptive icon keeps the logo inside the safe zone on the near-black', () => {
+  const adaptive = appJson().android.adaptiveIcon;
+  const bg = read('src/ui/tokens.ts').match(/bg: '(#[0-9A-Fa-f]{6})'/)[1];
+  assert.equal(adaptive.backgroundColor, bg);
+  assert.equal(adaptive.foregroundImage, './assets/adaptive-icon.png');
+  const foreground = pngHeader('assets/adaptive-icon.png');
+  const logo = pngHeader('assets/icon.png');
+  assert.equal(foreground.width, foreground.height);
+  // RGBA, so the margin can be transparent.
+  assert.equal(foreground.colorType, 6);
+  // Android shows the middle 72 of 108 dp and keeps a 66 dp circle safe. The
+  // logo, unscaled, spans two thirds of the canvas: the 72 dp the mask shows,
+  // with the ball well inside the safe circle.
+  assert.ok(Math.abs(logo.width / foreground.width - 72 / 108) < 0.01);
+});
+
+test('the EAS upload carries the icon assets', () => {
+  for (const file of ['.easignore', '.gitignore']) {
+    const rules = read(file).split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+    for (const rule of rules) {
+      assert.doesNotMatch(rule, /^\/?assets\/?$|^\*\.png$/, `${file} would drop assets/: ${rule}`);
+    }
+  }
 });
