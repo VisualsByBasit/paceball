@@ -160,3 +160,11 @@ test('the kit adds no 3D library and paints only with tokens', () => {
     assert.doesNotMatch(source, /—/, file);
   }
 });
+
+test('the wicket lock is the kit wicket: bails fall with a shadow, then the set lights lime', () => {
+  const lock = read('src/ui/WicketLock.tsx');
+  assert.match(lock, /<Wicket3D x=\{width \/ 2\} y=\{foot\} height=\{stumpHeight\} glow=\{lime\} bails=\{bails\} \/>/);
+  assert.match(lock, /const dy = \(seated\.value - 1\) \* drop;/);
+  assert.match(lock, /const shadowOpacity = useDerivedValue\(\(\) => opacity\.inactive \* seated\.value\);/);
+  assert.doesNotMatch(lock, /backgroundColor/, 'no flat bars left');
+});

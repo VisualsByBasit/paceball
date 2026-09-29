@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
 import { BlurMask, Group, Oval, Path, Rect, Shader, Skia } from '@shopify/react-native-skia';
-import { useDerivedValue, type SharedValue } from 'react-native-reanimated';
+import { useDerivedValue } from 'react-native-reanimated';
 import { colors, opacity as opacities } from '../tokens';
 import { wicketLayout, type Camera } from './geometry';
 import { effect, MATERIAL } from './materials';
 
+/** Something Reanimated drives, shared or derived: anything with a value to read. */
+export type Driven<T> = { readonly value: T };
 /** A number that may move: a plain value, or one Reanimated drives. */
-export type Animatable = number | SharedValue<number>;
+export type Animatable = number | Driven<number>;
 
 export function val(v: Animatable): number {
   'worklet';
@@ -145,8 +147,8 @@ export function Wicket3D({
   y: number;
   height: number;
   glow?: Animatable;
-  lean?: SharedValue<number[]>;
-  bails?: SharedValue<BailMotion[]>;
+  lean?: Driven<number[]>;
+  bails?: Driven<BailMotion[]>;
   shadow?: boolean;
 }) {
   const layout = wicketLayout(x, y, height);
@@ -210,7 +212,7 @@ function Stump({
   w: number;
   h: number;
   glow: Animatable;
-  lean?: SharedValue<number[]>;
+  lean?: Driven<number[]>;
 }) {
   const transform = useDerivedValue(() => [
     { translateX: x },
@@ -243,7 +245,7 @@ function Bail({
   w: number;
   h: number;
   glow: Animatable;
-  bails?: SharedValue<BailMotion[]>;
+  bails?: Driven<BailMotion[]>;
 }) {
   const motion = useDerivedValue(() => (bails ? bails.value[index] ?? STILL : STILL));
   const transform = useDerivedValue(() => [

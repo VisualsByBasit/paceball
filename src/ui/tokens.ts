@@ -96,14 +96,14 @@ export const size = {
   tabBar: 64,
   /** Screens narrower than this show the Result reading at heroCompact, not hero. */
   compactBelow: 380,
-  /** The wicket under a completed reading: three stumps and a bail. */
+  /** The wicket under a completed reading: three lit stumps and two bails, and room for their shadows. */
   wicket: {
-    width: 36,
-    height: 40,
+    width: 72,
+    height: 80,
     stump: 4,
     bail: 3,
-    /** How far the bail falls to sit on the stumps. */
-    drop: 4,
+    /** How far the bails fall to sit on the stumps. */
+    drop: 6,
   },
 } as const;
 
