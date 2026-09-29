@@ -77,3 +77,15 @@ test('the video share copy uses no em dashes', () => {
     assert.doesNotMatch(read(file), /—/, file);
   }
 });
+
+test('a finished clip plays back muted from its own file before it is shared', () => {
+  const video = read('src/export/VideoActions.tsx');
+  const done = video.slice(video.indexOf("{phase.kind === 'done' ? ("), video.indexOf(') : (', video.indexOf("{phase.kind === 'done' ? (")));
+  // The exporter's output file, remounted for each new clip.
+  assert.match(done, /<ClipPreview key=\{phase\.videoPath\} uri=\{phase\.videoPath\} \/>/);
+  assert.ok(done.indexOf('<ClipPreview') < done.indexOf('label="Share video"'));
+  const preview = video.slice(video.indexOf('function ClipPreview('));
+  assert.match(preview, /useVideoPlayer\(uri, \(p\) => \{\s*p\.muted = true;/);
+  assert.match(preview, /contentFit="contain"/);
+  assert.match(video, /height: size\.clipPreview,/);
+});

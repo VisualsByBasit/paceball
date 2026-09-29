@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { getSession } from '../data';
 import { measurementState } from '../physics/measurementState';
 import type { Session } from '../types';
 import { ActionButton } from '../ui/ActionButton';
 import { Notice } from '../ui/Notice';
-import { colors, size, space, type } from '../ui/tokens';
+import { colors, radius, size, space, stroke, type } from '../ui/tokens';
 import { saveVideoToGallery, shareVideoExport } from './deliveryActions';
 import { createSessionVideoExport, isCancelledExport, type VideoExportTask } from './renderSessionVideo';
 
@@ -108,6 +109,7 @@ export function VideoActions({ sessionId, watermark = true, onUseImage }: {
       {phase.kind === 'done' ? (
         <>
           <Notice tone="success">Video clip ready.</Notice>
+          <ClipPreview key={phase.videoPath} uri={phase.videoPath} />
           <ActionButton
             label="Share video"
             busy={busy ? 'Opening...' : null}
@@ -141,7 +143,41 @@ export function VideoActions({ sessionId, watermark = true, onUseImage }: {
   );
 }
 
+/**
+ * The clip that was written, played from its own file before it is shared:
+ * exactly what Share and Save will send. Muted, like every replay, whether or
+ * not the clip carries sound.
+ */
+function ClipPreview({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.muted = true;
+    p.loop = true;
+  });
+  return (
+    <View style={styles.preview}>
+      <VideoView
+        player={player}
+        style={styles.previewVideo}
+        contentFit="contain"
+        nativeControls
+        // Drawn inside the sheet's Modal, where a SurfaceView can sit over it.
+        surfaceType="textureView"
+        accessibilityLabel="Preview of the video clip, muted"
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  preview: {
+    height: size.clipPreview,
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    backgroundColor: colors.bg,
+    overflow: 'hidden',
+  },
+  previewVideo: { flex: 1 },
   container: { gap: space.sm, marginTop: space.md },
   row: { flexDirection: 'row', alignItems: 'center', minHeight: size.target, marginBottom: space.sm },
   rowText: { flex: 1, marginRight: space.md },
