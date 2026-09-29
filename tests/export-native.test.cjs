@@ -45,10 +45,13 @@ Module._load = function(request, parent, main) {
       return skia.Font(typeface, fontSize);
     },
   };
-  if (request === '../ui/tokens') return { colors: {
-    bg: '#0A0B0D', surface: '#14161A', text: '#FFFFFF', muted: '#8A9099', accent: '#D4FF3F',
-    warn: '#FFC247',
-  } };
+  if (request === '../ui/tokens') return {
+    colors: {
+      bg: '#0A0B0D', surface: '#14161A', line: '#1F232A', control: '#626A76', text: '#FFFFFF',
+      muted: '#8A9099', accent: '#D4FF3F', warn: '#FFC247',
+    },
+    shareCard: { lavender: '#B7B5E0', panel: '#15181E', limeDeep: '#1D2A07' },
+  };
   if (request === 'expo-media-library/legacy') return {
     requestPermissionsAsync: async (...args) => { requests.push(args); return permission; },
     saveToLibraryAsync: async (uri) => { saved.push(uri); },

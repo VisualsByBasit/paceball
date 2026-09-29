@@ -378,6 +378,8 @@ function requireSession(id: string): Session {
 export async function renderExport(options: {
   sessionId: string;
   watermark: boolean;
+  /** The unit the card writes the speed and its range in. km/h if not given. */
+  unit?: 'kmh' | 'mph';
 }): Promise<{ imagePath: string; videoPath: string | null }> {
   const session = requireSession(options.sessionId);
   if (measurementState(session).kind !== 'measured') {
@@ -389,7 +391,7 @@ export async function renderExport(options: {
   try { playerName = readPlayer(session.playerId)?.name ?? null; } catch { playerName = null; }
   // Keep native rendering out of startup and data-only consumers.
   const { renderSessionImage } = await import('../export/renderSessionImage');
-  return renderSessionImage(session, options.watermark, { playerName });
+  return renderSessionImage(session, options.watermark, { playerName, unit: options.unit });
 }
 
 export async function listPlayers(): Promise<Player[]> {
