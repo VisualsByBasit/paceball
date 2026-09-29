@@ -84,6 +84,19 @@ export const size = {
   gaugeSmall: 200,
   /** A delivery row's minimum height. */
   row: 80,
+  /** Stats: the narrowest a KPI tile may be at the user's text size, before tiles stack. */
+  kpiMin: 104,
+  /** Stats: the lit round badge an icon sits in, and the icon inside it. */
+  iconBadge: 40,
+  icon: 22,
+  /** Stats: the plot height of Speed over time, and of Deliveries per day. */
+  chart: 180,
+  bars: 120,
+  /** Stats: a bounce confidence gauge's width, and the measured donut's diameter. */
+  halfGauge: 128,
+  donut: 128,
+  /** Stats: the tooltip over Speed over time. */
+  tooltip: 168,
   /** The finished video clip, played back muted in the share sheet before it is shared. */
   clipPreview: 200,
   /** A settings row's minimum height: one line and its value, Android's standard. */
@@ -128,6 +141,9 @@ export const opacity = {
   secondary: 0.6,
   scrim: 0.75,
   full: 1,
+  /** Stats: a range drawn as a translucent band, and the soft fill under a line. */
+  band: 0.2,
+  faint: 0.12,
 } as const;
 
 /**

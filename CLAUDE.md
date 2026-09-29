@@ -198,7 +198,10 @@ type.mono for measured data only. type.tabular for numbers that change
 in place, like timers and frame counters.
 
 Numbers are the hero. The interface is flat: cards, lists, buttons and
-sheets have no shadows, no gradients and no glassmorphism.
+sheets have no shadows, no gradients and no glassmorphism. The one
+exception, at AB's request, is the Stats dashboard's cards (GlossCard:
+a soft gradient, a lit top edge, a soft shadow, lit icon badges), with
+its charts drawn in Skia; its text is still plain views that wrap.
 
 The pictures are 3D: the ball, stumps and bails, the pitch and the
 floodlit stadium, the speedometer, the launch intro, the purchase

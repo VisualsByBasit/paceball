@@ -101,7 +101,10 @@ test('one rule, used everywhere: best, hero, trend, Stats, Compare and the tags'
   assert.match(history, /check=\{check\}/);
   // Stats: every figure from the deliveries that count.
   const stats = read('app/stats.tsx');
-  assert.match(stats, /personalBest\(deliveries, unit\)/);
+  assert.match(stats, /statsSummary\(deliveries, unit, Date\.now\(\)\)/);
+  const summary = read('src/ui/stats.ts');
+  assert.match(summary, /best: personalBest\(list, unit\),/);
+  assert.match(summary, /const counted = list\.filter\(\(d\) => !needsChecking\(d\.state, unit\)\);/);
   // Analysis shows it as computed, with the tag.
   const analysis = read('app/analysis.tsx');
   assert.match(analysis, /\{needsChecking\(state, unit\) \? \(\s*<CheckTag center \/>/);

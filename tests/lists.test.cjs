@@ -89,18 +89,21 @@ test('Stats: the best is free, the rest is Pro, and every number is a saved read
     { id: 'new', createdAt: 2, state: { kind: 'measured', speedKmh: 120, errorKmh: 3 } },
     { id: 'old', createdAt: 1, state: { kind: 'measured', speedKmh: 130, errorKmh: 3 } },
   ];
-  assert.equal(latestMeasured(list).id, 'new');
-  assert.equal(latestMeasured([]), null);
-  assert.equal(measuredCount(list), 2);
+  assert.equal(latestMeasured(list, 'kmh').id, 'new');
+  assert.equal(latestMeasured([], 'kmh'), null);
+  assert.equal(measuredCount(list, 'kmh'), 2);
 
   const stats = read('app/stats.tsx');
   assert.match(stats, /const pro = canSeeStats\(entitlements\);/);
-  assert.match(stats, /<Tile title="Personal best" wide/);
-  for (const name of ['Measured deliveries', 'Latest reading', 'Speed over time']) assert.ok(stats.includes(name), name);
-  assert.match(stats, /label="See Pro stats"\s+onPress=\{\(\) => router\.push\(\{ pathname: '\/paywall', params: \{ context: 'stats' \} \}\)\}/);
-  // Points with range bars, never a line through them, and no sample data.
-  assert.doesNotMatch(stats, /<Path\b|<Polyline|<Line\b|MOCK_|sampleData/);
-  assert.match(stats, /state: measurementState\(s\)/);
+  assert.match(stats, /<TileHead icon="best" title="Personal best" \/>/);
+  for (const name of ['Deliveries', 'Measured', 'This week', 'Speed over time', 'Deliveries per day', 'Bounce confidence', 'Measured vs no speed']) {
+    assert.ok(stats.includes(`'${name}'`), name);
+  }
+  assert.match(stats, /const toPaywall = \(\) => router\.push\(\{ pathname: '\/paywall', params: \{ context: 'stats' \} \}\);/);
+  assert.match(stats, /label="See Pro stats"\s+onPress=\{toPaywall\}/);
+  // No sample data; the charts are drawn from the summary alone (stats.test).
+  assert.doesNotMatch(stats, /MOCK_|sampleData|mockData/);
+  assert.match(stats, /const state = measurementState\(s\);/);
   assert.match(read('app/index.tsx'), /onPress=\{\(\) => router\.push\('\/stats'\)\}/);
   assert.match(read('src/purchases/gates.ts'), /export function canSeeStats\(entitlements: Entitlements\): boolean \{\s*return entitlements\.isPro;/);
 });
