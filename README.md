@@ -89,7 +89,7 @@ app/                     Screens (Expo Router): home, setup, capture, mark, resu
 src/physics/             Calibration, speed and the uncertainty model
 src/capture/             Recording and frame-extraction helpers
 src/data/                On-phone storage (MMKV), validation, players and comparisons
-src/export/              The share card renderer and the video export plan
+src/export/              The share card, and the video clip's plan and share actions
 src/purchases/           RevenueCat, the Pro entitlement and the weekly allowance
 src/diagnostics/         Opt-in Sentry setup and its privacy filter
 src/ui/                  Design tokens and shared components
@@ -121,6 +121,8 @@ What can leave the phone, and when:
 - **Google Play and RevenueCat, when subscribing or restoring:** the purchase, an anonymous ID and device details.
 - **Sentry, only after opting in:** crash reports, as above.
 - **Whatever the user chooses to share,** such as a result card.
+
+Deliveries can be shared as an image card or as a short video clip with the reading burned in. Free exports carry a "PACEBALL · FREE" strip between the speed and its range; Pro's are clean.
 
 Permissions: the camera; the microphone, optional, to keep the sound of the delivery (it measures the same without); and adding an image to the gallery when saving one. Reading the gallery is blocked in the manifest. Replays are muted by default on every clip, and exports are silent by default.
 

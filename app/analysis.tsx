@@ -19,6 +19,7 @@ import { listFrames } from '../src/capture/useFrames';
 import { getSession, renderExport } from '../src/data';
 import { saveExportToGallery, shareExport } from '../src/export/deliveryActions';
 import { SessionActions } from '../src/export/SessionActions';
+import { VideoActions } from '../src/export/VideoActions';
 import { CALIBRATION_SPECS, formatMetres, travelWarning } from '../src/physics/calibration';
 import { measurementState } from '../src/physics/measurementState';
 import { canExportWithoutWatermark, useEntitlements } from '../src/purchases';
@@ -29,6 +30,7 @@ import { useSettings } from '../src/settings';
 import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 import { AppBar } from '../src/ui/AppBar';
 import { BottomSheet } from '../src/ui/BottomSheet';
+import { ShareChoice } from '../src/ui/ShareChoice';
 import { Notice } from '../src/ui/Notice';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
 import { readingView } from '../src/ui/reading';
@@ -359,6 +361,8 @@ function Replay({
   // so the video stage keeps its full height whether or not they are open.
   const [sharing, setSharing] = useState(false);
   const [working, setWorking] = useState(false);
+  // Read when a clip is made, as the image card's gate is: Pro's clip is clean.
+  const entitlements = useEntitlements();
   // What the reading block shows: the speed with its range, or nothing at all.
   const view = readingView(state, unit);
 
@@ -643,14 +647,27 @@ function Replay({
                 </Pressable>
               </View>
               <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
-                <CleanExport sessionId={session.id} onLeave={() => setSharing(false)} />
-                <SessionActions
-                  sessionId={session.id}
-                  onDeleted={() => {
-                    // The record is gone, so there is nothing left to replay.
-                    setSharing(false);
-                    onBack();
-                  }}
+                <ShareChoice
+                  image={
+                    <>
+                      <CleanExport sessionId={session.id} onLeave={() => setSharing(false)} />
+                      <SessionActions
+                        sessionId={session.id}
+                        onDeleted={() => {
+                          // The record is gone, so there is nothing left to replay.
+                          setSharing(false);
+                          onBack();
+                        }}
+                      />
+                    </>
+                  }
+                  video={(useImage) => (
+                    <VideoActions
+                      sessionId={session.id}
+                      watermark={!canExportWithoutWatermark(entitlements)}
+                      onUseImage={useImage}
+                    />
+                  )}
                 />
               </ScrollView>
             </View>

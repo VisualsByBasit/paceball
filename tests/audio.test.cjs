@@ -179,14 +179,17 @@ test('playback starts muted on every clip, with a visible switch', () => {
 });
 
 test('an export is silent unless sound was switched on for that export', () => {
-  const debug = read('app/debug.tsx');
-  assert.match(debug, /const \[includeAudio, setIncludeAudio\] = useState\(false\);/);
-  // Taken for this export, then switched back off for the next one.
-  assert.match(debug, /const withAudio = includeAudio;\s*setIncludeAudio\(false\);/);
-  assert.match(debug, /createSessionVideoExport\(session, \{ isPro, includeAudio: withAudio \}\)/);
-  assert.match(debug, /includeAudio \? 'sound included' : 'silent export'/);
-  // The plan, which is not changed here, still defaults to no audio track.
+  // The real share flow, which replaced the debug spike.
+  const video = read('src/export/VideoActions.tsx');
+  assert.match(video, /const \[withSound, setWithSound\] = useState\(false\);/);
+  assert.match(video, /createSessionVideoExport\(session, \{ isPro: !watermark, includeAudio: withSound \}\)/);
+  // Switched back off once an export ends, however it ends, for the next one.
+  assert.match(video, /finally \{[\s\S]*?setWithSound\(false\);/);
+  assert.match(video, /Include original sound/);
+  assert.match(video, /withSound \? 'The clip keeps the sound of the delivery\.' : 'Off: the clip is silent\.'/);
+  // The plan still defaults to no audio track, and native removes the track then.
   assert.match(read('src/export/videoPlan.ts'), /includeAudio: options\.includeAudio \?\? false/);
+  assert.doesNotMatch(read('app/debug.tsx'), /createSessionVideoExport|includeAudio/);
 });
 
 test('fps, frame count and dimensions are read off the video track only', () => {
@@ -242,7 +245,7 @@ test('new copy uses no em dashes', () => {
     read('app/setup/how-it-works.tsx').match(/Sound is recorded too[^']*/)[0],
     microphone.SOUND_FALLBACK_NOTICE,
     'Sound off', 'Sound on', 'Open system settings', 'Microphone',
-    read('app/debug.tsx').match(/'sound included' : 'silent export'/)[0],
+    read('src/export/VideoActions.tsx').match(/'The clip keeps the sound of the delivery\.' : 'Off: the clip is silent\.'/)[0],
   ];
   for (const line of copy) assert.doesNotMatch(line, /—/, line);
 

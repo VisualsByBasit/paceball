@@ -13,6 +13,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createPlayer, getActivePlayer, saveSession } from '../src/data';
 import { SessionActions } from '../src/export/SessionActions';
+import { VideoActions } from '../src/export/VideoActions';
 import { restoredGeometry } from '../src/data/geometry';
 import {
   CALIBRATION_SPECS,
@@ -35,6 +36,7 @@ import { useSettings } from '../src/settings';
 import { ActionButton } from '../src/ui/ActionButton';
 import { AppBar } from '../src/ui/AppBar';
 import { BottomSheet } from '../src/ui/BottomSheet';
+import { ShareChoice } from '../src/ui/ShareChoice';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { Notice } from '../src/ui/Notice';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
@@ -567,13 +569,24 @@ export default function ResultScreen() {
 
       {largeText ? null : footer}
 
-      {/* Nothing to put on a share card without a measured speed. Pro's card
-          is clean, as it is in Analysis; everyone else's carries the mark. */}
+      {/* Nothing to put on a share card or clip without a measured speed.
+          Pro's are clean, as in Analysis; everyone else's carry the mark. */}
       <BottomSheet visible={sharing} title="Share reading" onClose={() => setSharing(false)}>
         {savedId && measured ? (
-          <SessionActions
-            sessionId={savedId}
-            watermark={!canExportWithoutWatermark(entitlements)}
+          <ShareChoice
+            image={
+              <SessionActions
+                sessionId={savedId}
+                watermark={!canExportWithoutWatermark(entitlements)}
+              />
+            }
+            video={(useImage) => (
+              <VideoActions
+                sessionId={savedId}
+                watermark={!canExportWithoutWatermark(entitlements)}
+                onUseImage={useImage}
+              />
+            )}
           />
         ) : null}
       </BottomSheet>

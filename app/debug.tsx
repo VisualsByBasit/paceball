@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,22 +10,17 @@ import {
 import { Redirect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Directory, File } from 'expo-file-system';
-import { isAvailableAsync as canShare, shareAsync } from 'expo-sharing';
 import { listSessions } from '../src/data';
 import { SessionActions } from '../src/export/SessionActions';
-import {
-  createSessionVideoExport,
-  type VideoExportResult,
-  type VideoExportTask,
-} from '../src/export/renderSessionVideo';
 import { usePurchases } from '../src/purchases';
 import { colors, radius, space, stroke, type } from '../src/ui/tokens';
 import { errorMessage } from '../src/ui/format';
 import type { Session } from '../src/types';
 
 /**
- * Development tool: every saved session's raw fields and file paths, the
- * Media3 export spike and the Pro override. Not a screen anyone ships; release
+ * Development tool: every saved session's raw fields and file paths, and
+ * the Pro override. Video export lives in the share sheet on Result and
+ * Analysis now. Not a screen anyone ships; release
  * builds redirect away from the route. It follows the tokens only so it stays
  * readable on a dark phone.
  */
@@ -187,127 +182,12 @@ function DebugScreen() {
                   </View>
                 ))}
 
-                {__DEV__ ? <VideoExportSpike session={session} /> : null}
               </View>
             );
           })}
         </>
       )}
     </ScrollView>
-  );
-}
-
-/**
- * Device checkpoint for the Media3 spike. It intentionally lives on
- * the existing debug route and is stripped from production UI. The generated
- * MP4 stays in cache unless the tester opens the system share sheet.
- */
-function VideoExportSpike({ session }: { session: Session }) {
-  const { isPro } = usePurchases();
-  const taskRef = useRef<VideoExportTask | null>(null);
-  // Off until switched on, and back off after every export: a shared file is
-  // silent unless sound was chosen for that one.
-  const [includeAudio, setIncludeAudio] = useState(false);
-  const [exportedWithAudio, setExportedWithAudio] = useState(false);
-  const [progress, setProgress] = useState<number | null>(null);
-  const [result, setResult] = useState<VideoExportResult | null>(null);
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-
-  useEffect(() => () => {
-    void taskRef.current?.cancel();
-  }, []);
-
-  const start = useCallback(async () => {
-    setResult(null);
-    setExportError(null);
-    setProgress(0);
-    setRunning(true);
-    let subscription: { remove: () => void } | null = null;
-    const withAudio = includeAudio;
-    setIncludeAudio(false);
-    try {
-      const task = createSessionVideoExport(session, { isPro, includeAudio: withAudio });
-      taskRef.current = task;
-      subscription = task.onProgress(setProgress);
-      const done = await task.result;
-      setExportedWithAudio(withAudio);
-      setResult(done);
-      setProgress(100);
-    } catch (error) {
-      setExportError(errorMessage(error));
-      setProgress(null);
-    } finally {
-      subscription?.remove();
-      taskRef.current = null;
-      setRunning(false);
-    }
-  }, [includeAudio, isPro, session]);
-
-  const cancel = useCallback(async () => {
-    await taskRef.current?.cancel();
-  }, []);
-
-  const share = useCallback(async () => {
-    if (!result) return;
-    try {
-      if (!await canShare()) {
-        setExportError('Sharing is not available on this device.');
-        return;
-      }
-      await shareAsync(result.outputPath, { mimeType: 'video/mp4', dialogTitle: 'Share delivery video' });
-    } catch (error) {
-      setExportError(errorMessage(error));
-    }
-  }, [result]);
-
-  return (
-    <View style={styles.videoSpike}>
-      <Text style={styles.overrideLabel}>MEDIA3 VIDEO SPIKE · DEVICE ONLY</Text>
-      <Text style={styles.videoHelp}>
-        {isPro ? 'Pro: clean overlay' : 'Free: Paceball watermark'} ·{' '}
-        {includeAudio ? 'sound included' : 'silent export'}
-      </Text>
-      <View style={styles.overrideRow}>
-        <Pressable
-          style={[styles.overrideChoice, includeAudio && styles.overrideChoiceOn]}
-          onPress={() => setIncludeAudio((value) => !value)}
-          disabled={running}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: includeAudio, disabled: running }}
-          accessibilityLabel="Include sound in this export"
-        >
-          <Text style={[styles.overrideChoiceText, includeAudio && styles.overrideChoiceTextOn]}>
-            Sound {includeAudio ? 'on' : 'off'}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.overrideChoice, styles.videoPrimary]}
-          onPress={running ? cancel : start}
-          accessibilityRole="button"
-        >
-          <Text style={styles.videoPrimaryText}>
-            {running ? 'Cancel export' : 'Export marked clip'}
-          </Text>
-        </Pressable>
-      </View>
-      {progress !== null ? <Text style={styles.videoHelp}>Progress: {progress}%</Text> : null}
-      {exportError ? <Text style={styles.error}>Export: {exportError}</Text> : null}
-      {result ? (
-        <>
-          <Text style={styles.videoResult} selectable>
-            {formatBytes(result.inputBytes)} → {formatBytes(result.outputBytes)} ·{' '}
-            {(result.elapsedMs / 1_000).toFixed(1)}s encode · {result.clipDurationMs}ms clip{`\n`}
-            canvas {result.canvasWidth}×{result.canvasHeight} · source rotation{' '}
-            {result.sourceRotationDegrees}° · {result.coordinateMode} ·{' '}
-            {exportedWithAudio ? 'with sound' : 'silent'}
-          </Text>
-          <Pressable style={styles.checkButton} onPress={share} accessibilityRole="button">
-            <Text style={styles.checkButtonText}>Open exported MP4 in share sheet</Text>
-          </Pressable>
-        </>
-      ) : null}
-    </View>
   );
 }
 
@@ -427,14 +307,4 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   checkValueBad: { color: colors.danger },
-  videoSpike: {
-    borderTopWidth: stroke.hairline,
-    borderTopColor: colors.line,
-    marginTop: space.md,
-    paddingTop: space.md,
-  },
-  videoHelp: { ...type.caption, color: colors.muted, marginBottom: space.sm },
-  videoPrimary: { backgroundColor: colors.accent, borderColor: colors.accent },
-  videoPrimaryText: { ...type.caption, color: colors.bg, fontWeight: '800' },
-  videoResult: { ...type.caption, ...type.mono, color: colors.text, marginTop: space.sm },
 });

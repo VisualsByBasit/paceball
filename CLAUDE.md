@@ -170,7 +170,7 @@ Expo SDK 57 · expo-router · react-native-vision-camera v5 (Nitro API)
 · expo-media-library · expo-sharing · expo-video · expo-haptics
 · RevenueCat (react-native-purchases) · @sentry/react-native
 · Reanimated · local Kotlin module for frame extraction and the Media3
-video export spike (Media3 pinned to expo-video's version)
+video export (Media3 pinned to expo-video's version)
 
 Use `npx expo install`, never plain `npm install`, for native packages.
 
@@ -216,7 +216,17 @@ onboarding. It renders the store's offering and buys and restores
 through RevenueCat. A purchase the store confirms with the `pro`
 entitlement replaces it with the celebration, once; a restore never
 does, and the route shows nothing when opened any other way. Result and
-Analysis give Pro a card without the watermark. Video export is a development-only spike on the debug screen.
+Analysis share either an image card or a video clip, chosen in the
+share sheet; Pro's carry no watermark, everyone else's carry the
+"PACEBALL · FREE" strip between the speed and its range. The clip runs
+from 0.5 s before release to 0.75 s after bounce, timed from the video
+track's own frame times, at most 1080 on the long edge and never scaled
+up. Its HUD shows the whole reading on an opaque plate from the first
+frame; the reference marks throughout (stumps and markers only), the
+release mark from the release frame and the bounce, the straight
+connector and "Marked, not tracked" from the bounce frame. It is silent
+unless "Include original sound" is switched on for that export. A clip
+that cannot be made says so and offers the image instead.
 
 Not built: pre-flight check · a players screen (src/data/PlayersScreen.tsx
 exists but is not routed, so profiles cannot be switched and a height
