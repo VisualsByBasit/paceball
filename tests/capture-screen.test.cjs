@@ -122,12 +122,36 @@ test('exposure steps across the camera\'s whole range, above 0 as well as below'
   assert.match(capture, /onChange\(stepExposure\(exposure, -1, device\)\)/);
 });
 
+test('held sideways either way, rotated content lands with its bottom on the ground', () => {
+  const { uiRotation } = require('../src/capture/orientation.ts');
+  // Where the ground is on the portrait-locked screen, as seen on the phone:
+  // vision-camera reports 'right' with the phone turned anticlockwise, so the
+  // ground runs along the screen's left edge, and 'left' the mirror of that.
+  const groundSide = { right: 'left', left: 'right' };
+  // Where the bottom of rotated content ends up. RN turns clockwise for a
+  // positive angle, with y pointing down the screen.
+  const bottomAfter = (deg) => {
+    const t = (deg * Math.PI) / 180;
+    const x = Math.round(-Math.sin(t));
+    const y = Math.round(Math.cos(t));
+    return x === -1 ? 'left' : x === 1 ? 'right' : y === 1 ? 'bottom' : 'top';
+  };
+  for (const orientation of ['right', 'left']) {
+    // The guide's baseline is drawn along the bottom of its frame, and text
+    // reads upright when its bottom faces the ground: one check pins both.
+    assert.equal(bottomAfter(uiRotation(orientation)), groundSide[orientation], orientation);
+  }
+  assert.equal(bottomAfter(uiRotation('up')), 'bottom');
+  // The baseline really is the bottom of the turned frame.
+  assert.match(read(CAPTURE), /baselineRow: \{[^}]*bottom: space\.xxl,/);
+});
+
 test('held sideways, the overlay turns to meet the phone and the recording does not', () => {
   const { uiRotation } = require('../src/capture/orientation.ts');
   assert.equal(uiRotation('up'), 0);
   assert.equal(uiRotation(undefined), 0);
-  assert.equal(uiRotation('right'), -90);
-  assert.equal(uiRotation('left'), 90);
+  assert.equal(uiRotation('right'), 90);
+  assert.equal(uiRotation('left'), -90);
   assert.equal(uiRotation('down'), 0, 'upside down is left alone');
 
   const capture = read(CAPTURE);
