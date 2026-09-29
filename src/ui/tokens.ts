@@ -45,6 +45,17 @@ export const scene = {
   specular: '#FFFFFF',
 } as const;
 
+/**
+ * The share card's own few colours, beside `colors`: the lavender grey its
+ * labels are set in, its panels' lit top, and the dark lime inside its pill
+ * and upgrade bar. Only the card renderer reads these.
+ */
+export const shareCard = {
+  lavender: '#B7B5E0',
+  panel: '#15181E',
+  limeDeep: '#1D2A07',
+} as const;
+
 export const space = {
   xs: 4,
   sm: 8,
