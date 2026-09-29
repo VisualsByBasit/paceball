@@ -12,7 +12,7 @@
  */
 
 /** What sent the user to the paywall, and so where the celebration returns them. */
-export type CelebrationFrom = 'export' | 'limit' | 'compare' | 'pro' | 'onboarding';
+export type CelebrationFrom = 'export' | 'limit' | 'compare' | 'stats' | 'pro' | 'onboarding';
 
 let armed: CelebrationFrom | null = null;
 
@@ -48,6 +48,8 @@ export function celebrationExit(from: CelebrationFrom): {
       return { label: 'Continue export', to: 'back' };
     case 'compare':
       return { label: 'Compare deliveries', to: 'back' };
+    case 'stats':
+      return { label: 'See my stats', to: 'back' };
     case 'pro':
       return { label: 'Done', to: 'back' };
   }

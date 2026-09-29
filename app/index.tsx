@@ -192,14 +192,16 @@ export default function Index() {
       <View style={styles.top}>
         <Text style={styles.wordmark}>Paceball</Text>
         {bowler ? (
-          // The first letter of the bowler's name, in place of a photo.
-          <View
+          // The first letter of the bowler's name, in place of a photo. It
+          // opens Stats, which shows the personal best to everyone.
+          <Pressable
             style={styles.avatar}
-            accessible
-            accessibilityLabel={`Bowling as ${bowler}`}
+            onPress={() => router.push('/stats')}
+            accessibilityRole="button"
+            accessibilityLabel={`Stats for ${bowler}`}
           >
             <Text style={styles.avatarText}>{bowler.trim().charAt(0).toUpperCase()}</Text>
-          </View>
+          </Pressable>
         ) : null}
       </View>
 

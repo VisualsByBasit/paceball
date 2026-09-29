@@ -45,3 +45,11 @@ export function canRecordHighBitrate(entitlements: Entitlements): boolean {
 export function canExportWithoutWatermark(entitlements: Entitlements): boolean {
   return entitlements.isPro;
 }
+
+/**
+ * Stats beyond the personal best are Pro, and so is the History trend. The
+ * personal best stays free everywhere.
+ */
+export function canSeeStats(entitlements: Entitlements): boolean {
+  return entitlements.isPro;
+}

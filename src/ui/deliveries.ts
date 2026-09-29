@@ -69,3 +69,16 @@ export function compareFooterLabel(picked: number): string {
   if (picked === 1) return 'Choose 1 more delivery';
   return 'Compare 2 deliveries';
 }
+
+/**
+ * The newest measured delivery, for "Latest reading". Deliveries arrive newest
+ * first, as listSessions returns them. Null when none is measured.
+ */
+export function latestMeasured<T extends ListedDelivery>(deliveries: readonly T[]): T | null {
+  return deliveries.find((d) => d.state.kind === 'measured') ?? null;
+}
+
+/** How many deliveries carry a reading: guessed and unusable ones do not count. */
+export function measuredCount(deliveries: readonly ListedDelivery[]): number {
+  return deliveries.filter((d) => d.state.kind === 'measured').length;
+}

@@ -68,7 +68,8 @@ test('no badges, no countdowns, no savings and no social proof', () => {
   assert.doesNotMatch(paywall, /trialBadge|DAYS FREE/);
   // Only what the build ships.
   assert.match(paywall, /'Unlimited analyses',\s*'Watermark-free exports',\s*'Higher recording quality',\s*'Compare deliveries',/);
-  assert.doesNotMatch(paywall, /'Your stats'/);
+  assert.match(paywall, /'Compare deliveries',\s*'Your stats',/);
+  assert.match(paywall, /stats: \{\s*headline: \(trial\) =>\s*trial === null \? 'See your stats\.' : `See your stats\. \$\{trial\} days free\.`,\s*dismiss: 'Continue with personal best only',/);
 });
 
 test('a purchase in progress says so and cannot be sent twice; a cancelled one says nothing', () => {

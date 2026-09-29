@@ -22,7 +22,7 @@ import { ctaFor, planTerms, renewalLine } from '../src/ui/paywallCopy';
 import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 
 /** What sent the user here. Same layout; the headline speaks to what they just tried. */
-type PaywallContext = 'export' | 'limit' | 'compare' | 'pro' | 'onboarding';
+type PaywallContext = 'export' | 'limit' | 'compare' | 'stats' | 'pro' | 'onboarding';
 
 type Copy = {
   /**
@@ -50,6 +50,11 @@ const COPY: Record<PaywallContext, Copy> = {
       trial === null ? 'Compare your deliveries.' : `Compare your deliveries. ${trial} days free.`,
     dismiss: 'Continue without comparison',
   },
+  stats: {
+    headline: (trial) =>
+      trial === null ? 'See your stats.' : `See your stats. ${trial} days free.`,
+    dismiss: 'Continue with personal best only',
+  },
   // Opened from Settings rather than by being blocked, so it leads with the lot.
   pro: {
     headline: (trial) =>
@@ -73,6 +78,7 @@ const VALUES = [
   'Watermark-free exports',
   'Higher recording quality',
   'Compare deliveries',
+  'Your stats',
 ];
 
 const PLAN_ORDER: PlanPeriod[] = ['annual', 'monthly'];
@@ -81,7 +87,11 @@ const PLAN_NAME: Record<PlanPeriod, string> = { annual: 'Annual', monthly: 'Mont
 
 function parseContext(value: string | string[] | undefined): PaywallContext {
   const raw = Array.isArray(value) ? value[0] : value;
-  return raw === 'limit' || raw === 'compare' || raw === 'pro' || raw === 'onboarding'
+  return raw === 'limit' ||
+    raw === 'compare' ||
+    raw === 'stats' ||
+    raw === 'pro' ||
+    raw === 'onboarding'
     ? raw
     : 'export';
 }
