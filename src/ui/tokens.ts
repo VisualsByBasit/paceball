@@ -16,6 +16,35 @@ export const colors = {
   muted: '#8A9099',
 } as const;
 
+/**
+ * The 3D cricket kit's materials: a floodlit ground at night, painted wood and
+ * brushed metal. Only the kit's shaders read these, as lit surfaces; nothing
+ * flat in the interface is painted with them. The ball stays `colors.accent`.
+ */
+export const scene = {
+  /** The sky above the stands, and the dark the floodlights cut through. */
+  night: '#04050A',
+  /** Floodlit air around the lights and over the ground. */
+  haze: '#1B2433',
+  /** The lamps themselves, and the light they throw. */
+  floodlight: '#EEF3FF',
+  /** Outfield grass, in its two mowing stripes. */
+  turf: '#18361F',
+  turfDeep: '#0F2716',
+  /** The strip: rolled, dry and a touch lighter where it is worn. */
+  pitch: '#7E6C4B',
+  pitchWorn: '#9C8962',
+  /** Painted crease lines. */
+  crease: '#E6EAEE',
+  /** Painted stumps and bails. */
+  wood: '#F3EEE2',
+  /** Brushed metal, for the instrument's bezel, needle hub and the Pro badge. */
+  metal: '#9AA1AB',
+  metalDark: '#23272E',
+  /** What a lit surface reflects: the floodlight's colour, a little warm. */
+  specular: '#FFFFFF',
+} as const;
+
 export const space = {
   xs: 4,
   sm: 8,
