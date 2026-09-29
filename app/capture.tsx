@@ -362,7 +362,8 @@ export default function CaptureScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Pro quality is named only when the higher bitrate is really being
           requested; everything else, Pro included before it is measured, is
-          standard. */}
+          standard. The chip stays upright whichever way the phone is held: a
+          word turned inside the app bar's short row gets clipped. */}
       <View style={styles.bar}>
         <AppBar
           title="Capture"
@@ -370,15 +371,11 @@ export default function CaptureScreen() {
           backDisabled={isRecording || isProcessing}
           right={bitRate !== null ? (
             <View style={styles.qualityMark}>
-              <RotateInPlace deg={rotation}>
-                <Text style={styles.qualityMarkText}>PRO QUALITY</Text>
-              </RotateInPlace>
+              <Text style={styles.qualityMarkText}>PRO QUALITY</Text>
             </View>
           ) : (
             <View style={styles.qualityChip}>
-              <RotateInPlace deg={rotation}>
-                <Text style={styles.qualityChipText}>STANDARD</Text>
-              </RotateInPlace>
+              <Text style={styles.qualityChipText}>STANDARD</Text>
             </View>
           )}
         />

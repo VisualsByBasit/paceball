@@ -160,9 +160,14 @@ test('held sideways, the overlay turns to meet the phone and the recording does 
   // The guide's baseline, stumps and label turn to the landscape framing.
   assert.match(capture, /<RotateInPlace deg=\{rotation\} style=\{\[styles\.guideFrame, frame\]\}>/);
   assert.match(capture, /width: box\.height,\s*height: box\.width,/);
-  // Labels and controls turn in place: lens chips, exposure, timer, sound,
-  // the quality chip and the record button's countdown.
-  assert.ok((capture.match(/<RotateInPlace deg=\{rotation\}/g) ?? []).length >= 10);
+  // Labels and controls turn in place: lens chips, exposure, timer, sound
+  // and the record button's countdown.
+  assert.ok((capture.match(/<RotateInPlace deg=\{rotation\}/g) ?? []).length >= 9);
+  // The quality chip in the app bar never turns: it stays upright and whole.
+  const bar = capture.slice(capture.indexOf('<AppBar'), capture.indexOf('/>', capture.indexOf('</View>', capture.indexOf('STANDARD'))));
+  assert.match(bar, /PRO QUALITY/);
+  assert.match(bar, /STANDARD/);
+  assert.doesNotMatch(bar, /RotateInPlace|rotation/);
   assert.match(read('src/ui/RotateInPlace.tsx'), /transform: \[\{ rotate: `\$\{turn\.value\}deg` \}\]/);
   // The recording is untouched: no orientation reaches the camera, the
   // recorder, or what Mark is handed.
