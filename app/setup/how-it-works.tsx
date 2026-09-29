@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionButton } from '../../src/ui/ActionButton';
 import { AppBar } from '../../src/ui/AppBar';
+import { WhereToStand } from '../../src/ui/WhereToStand';
 import { colors, radius, size, space, stroke, type } from '../../src/ui/tokens';
 
 const RECORDING =
@@ -100,6 +101,17 @@ export default function HowItWorksScreen() {
           </Text>
         ))}
 
+        {/* Opened from Home, the placement guide is here too, to reopen any
+            time. In setup it is the very next step, so it is not shown twice. */}
+        {isOnboarding ? null : (
+          <View style={styles.where}>
+            <Text style={styles.whereTitle} accessibilityRole="header">
+              Where to stand
+            </Text>
+            <WhereToStand />
+          </View>
+        )}
+
         <View style={styles.card}>
           <Text style={styles.cardLabel}>WHAT YOU GET, AND WHAT YOU DON'T</Text>
           {HONESTY.map((line) => (
@@ -149,6 +161,9 @@ const styles = StyleSheet.create({
   stepBody: { ...type.body, color: colors.muted },
 
   plain: { ...type.body, color: colors.text, fontWeight: '700', marginTop: space.md },
+
+  where: { marginTop: space.xl },
+  whereTitle: { ...type.h2, color: colors.text },
 
   card: {
     backgroundColor: colors.surface,

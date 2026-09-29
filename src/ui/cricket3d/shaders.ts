@@ -155,9 +155,14 @@ half4 main(float2 xy) {
 
 /**
  * The ground under the floodlights, seen in perspective from a camera `camH`
- * metres up. Every pixel below the horizon is traced to the ground: the strip
- * in the middle, rolled and worn, the outfield either side in mowing stripes,
- * creases painted at the wicket, a pool of floodlight, and haze into the dark.
+ * metres up. Every pixel below the horizon is traced to the ground: the strip,
+ * rolled and worn, the outfield in mowing stripes, creases painted at the
+ * wicket, a pool of floodlight, and haze into the dark.
+ *
+ * Two ways round. Along (`across` 0): looking down the pitch from behind one
+ * end, with the wicket `stumpZ` metres away. Across (`across` 1): side-on,
+ * the pitch running left to right with its middle `stumpZ` metres away and a
+ * wicket at each end, 20.12 m apart.
  */
 export const PITCH = `
 uniform float2 origin;
@@ -165,6 +170,7 @@ uniform float horizon;
 uniform float focal;
 uniform float camH;
 uniform float stumpZ;
+uniform float across;
 uniform float3 light;
 uniform float3 turf;
 uniform float3 turfDeep;
@@ -183,27 +189,39 @@ half4 main(float2 xy) {
   if (dy <= 0.0) { return half4(0.0); }
   float z = focal * camH / dy;
   float x = (xy.x - origin.x) * z / focal;
-  float aa = z / focal * 1.5;
+  // Along the pitch (u) and across it from its centre line (v), whichever way round it lies.
+  float u = mix(z, x, across);
+  float v = mix(x, z - stumpZ, across);
+  float aaX = z / focal * 1.5;
+  float aaZ = z * z / (focal * camH) * 1.5;
+  float aaU = mix(aaZ, aaX, across);
+  float aaV = mix(aaX, aaZ, across);
 
-  float stripe = smoothstep(0.45, 0.55, abs(fract(z / 5.0) - 0.5) * 2.0);
+  float stripe = smoothstep(0.45, 0.55, abs(fract(u / 5.0) - 0.5) * 2.0);
   float3 grass = mix(turf, turfDeep, stripe * 0.8);
   grass *= 0.9 + 0.2 * noise(float2(x * 9.0, z * 3.0));
 
-  float3 strip = mix(pitch, pitchWorn, noise(float2(x * 1.3, z * 0.45)) * 0.8);
-  strip *= 0.86 + 0.1 * noise(float2(x * 40.0, z * 14.0)) + 0.08 * noise(float2(x * 160.0, z * 60.0));
+  // Where the wicket is: one, stumpZ away, or two, 10.06 m either side of the middle.
+  float uu = mix(u, abs(u), across);
+  float wicketU = mix(stumpZ, 10.06, across);
+
+  float3 strip = mix(pitch, pitchWorn, noise(float2(v * 1.3, u * 0.45)) * 0.8);
+  strip *= 0.86 + 0.1 * noise(float2(v * 40.0, u * 14.0)) + 0.08 * noise(float2(v * 160.0, u * 60.0));
   // The ball's landing area in front of the stumps, scuffed lighter.
-  strip = mix(strip, pitchWorn, 0.5 * exp(-sq(x / 0.5) - sq((z - stumpZ + 4.0) / 2.5)));
-  float onStrip = 1.0 - smoothstep(1.52, 1.52 + aa, abs(x));
+  strip = mix(strip, pitchWorn, 0.5 * exp(-sq(v / 0.5) - sq((uu - wicketU + 4.0) / 2.5)));
+  float onStrip = 1.0 - smoothstep(1.52, 1.52 + aaV, abs(v));
+  onStrip *= 1.0 - across * smoothstep(11.0, 11.0 + aaU, abs(u));
   float3 col = mix(grass, strip, onStrip);
 
-  // Creases at the wicket: bowling crease through the stumps, popping crease in front.
-  float lines = band(z, stumpZ, 0.04, aa * 8.0) * (1.0 - smoothstep(1.32, 1.32 + aa, abs(x)));
-  lines = max(lines, band(z, stumpZ - 1.22, 0.04, aa * 8.0) * (1.0 - smoothstep(1.83, 1.83 + aa, abs(x))));
-  lines = max(lines, band(abs(x), 1.32, 0.03, aa) * step(stumpZ - 1.22, z) * step(z, stumpZ + 0.2));
+  // Creases at each wicket: bowling crease through the stumps, popping crease in front.
+  float lines = band(uu, wicketU, 0.04, aaU * 2.0) * (1.0 - smoothstep(1.32, 1.32 + aaV, abs(v)));
+  lines = max(lines, band(uu, wicketU - 1.22, 0.04, aaU * 2.0) * (1.0 - smoothstep(1.83, 1.83 + aaV, abs(v))));
+  lines = max(lines, band(abs(v), 1.32, 0.03, aaV) * step(wicketU - 1.22, uu) * step(uu, wicketU + 0.2));
   col = mix(col, crease, lines * 0.9);
 
-  // The floodlight pool round the wicket, a raking light across it, and haze.
-  float pool = exp(-sq(x / 4.5) - sq((z - stumpZ) / 9.0));
+  // The floodlight pool over the play, a raking light across it, and haze.
+  float pool = mix(exp(-sq(x / 4.5) - sq((z - stumpZ) / 9.0)),
+                   exp(-sq(v / 7.0) - sq(u / 17.0)), across);
   col *= 0.35 + 0.95 * pool + 0.12 * max(dot(float3(0.0, -1.0, 0.0), light), 0.0);
   col += flood * pool * 0.05;
   // Nearer the camera, out of the pool of light.
@@ -250,8 +268,10 @@ half4 main(float2 xy) {
   // The stands: a darker band under the horizon, with points of light.
   float stand = smoothstep(h - 0.11, h - 0.09, uv.y) * (1.0 - smoothstep(h - 0.005, h + 0.005, uv.y));
   col = mix(col, night * 0.8, stand * 0.7);
-  float2 cell = floor(float2(uv.x * size.x / 5.0, uv.y * size.y / 5.0));
-  float dots = step(0.992, hash(cell)) * stand;
+  float2 grid = float2(uv.x * size.x / 5.0, uv.y * size.y / 5.0);
+  float2 cell = floor(grid);
+  float round_ = 1.0 - smoothstep(0.12, 0.28, length(fract(grid) - 0.5));
+  float dots = step(0.992, hash(cell)) * round_ * stand;
   col += flood * dots * 0.18;
 
   float l = lamp(uv, float2(0.14, h * 0.42), aspect) + lamp(uv, float2(0.86, h * 0.36), aspect);

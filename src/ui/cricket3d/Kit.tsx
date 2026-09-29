@@ -274,12 +274,15 @@ export function Pitch3D({
   height,
   cam,
   stumpZ,
+  across = false,
   opacity = 1,
 }: {
   width: number;
   height: number;
   cam: Camera;
   stumpZ: number;
+  /** Side-on: the pitch runs left to right, its middle stumpZ away, a wicket at each end. */
+  across?: boolean;
   opacity?: Animatable;
 }) {
   const source = effect('pitch');
@@ -289,6 +292,7 @@ export function Pitch3D({
     focal: cam.focal,
     camH: cam.camH,
     stumpZ,
+    across: across ? 1 : 0,
     light: MATERIAL.light,
     turf: MATERIAL.turf,
     turfDeep: MATERIAL.turfDeep,

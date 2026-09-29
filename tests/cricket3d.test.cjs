@@ -29,7 +29,7 @@ const DEFAULTS = {
   turfDeep: c(scene.turfDeep), pitch: c(scene.pitch), pitchWorn: c(scene.pitchWorn), crease: c(scene.crease),
   flood: c(scene.floodlight), haze: c(scene.haze), night: c(scene.night), metal: c(scene.metal),
   metalDark: c(scene.metalDark), face: c(colors.bg), lift: c(colors.surface), edgeGlow: c(colors.accent),
-  alpha: 1, glow: 0, horizontal: 0, groundShade: 1, spin: 0.5, tilt: -1.2, intensity: 1, sweep: 0.5,
+  alpha: 1, across: 0, glow: 0, horizontal: 0, groundShade: 1, spin: 0.5, tilt: -1.2, intensity: 1, sweep: 0.5,
 };
 
 /** Draws one shader over a w x h surface and returns its RGBA pixels. */

@@ -49,8 +49,32 @@ test('where to stand draws no ball path, and the last step says "Let\'s bowl"', 
   assert.match(camera, /Film side-on\. Keep it steady\./);
   assert.doesNotMatch(camera, /ballPath|ballDot|BALL_DOTS/);
   assert.match(camera, /label=\{isOnboarding \? "Let's bowl" : 'Got it'\}/);
-  // Its three tips are the existing ones.
-  assert.equal(camera.slice(camera.indexOf('const REQUIREMENTS'), camera.indexOf('];', camera.indexOf('const REQUIREMENTS'))).split("',").length - 1, 3);
+  // Its three tips are the existing ones, now in the shared guide.
+  const guide = read('src/ui/WhereToStand.tsx');
+  assert.doesNotMatch(guide, /ballPath|ballDot|BALL_DOTS|Ball3D|pointsAlong/);
+  const tips = guide.slice(guide.indexOf('export const PLACEMENT_REQUIREMENTS'), guide.indexOf('];', guide.indexOf('export const PLACEMENT_REQUIREMENTS')));
+  assert.equal(tips.split("',").length - 1, 3);
+});
+
+test('the placement guide is one component, in setup and in How it works', () => {
+  assert.match(read('app/setup/camera.tsx'), /<WhereToStand \/>/);
+  const how = read('app/setup/how-it-works.tsx');
+  assert.match(how, /\{isOnboarding \? null : \(\s*<View style=\{styles\.where\}>[\s\S]*?<WhereToStand \/>/);
+  // Drawn once, in one place, with the 3D kit: the pitch side-on, both wickets, the phone.
+  for (const file of ['app/setup/camera.tsx', 'app/setup/how-it-works.tsx']) {
+    assert.doesNotMatch(read(file), /function Diagram|PLACEMENT_REQUIREMENTS = /, file);
+  }
+  const guide = read('src/ui/WhereToStand.tsx');
+  assert.match(guide, /<Pitch3D [^>]*across \/>/);
+  assert.match(guide, /l\.wickets\.map\(\(w, i\) => \(\s*<Wicket3D /);
+  assert.match(guide, />Stand here</);
+  assert.match(guide, /5–8 m back/);
+  require('./register.cjs');
+  const { placementLayout } = require('../src/ui/placement.ts');
+  const l = placementLayout(340);
+  assert.equal(l.standOff, 6.5, 'inside the 5 to 8 m the guide asks for');
+  assert.ok(l.wickets[0].x > 0 && l.wickets[1].x < 340, 'both wickets in the picture');
+  assert.ok(l.phone.y > l.pitchY && l.phone.y < l.height, 'the phone in front of the pitch');
 });
 
 test('the setup screens take every colour and size from tokens', () => {
