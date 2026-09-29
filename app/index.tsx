@@ -6,10 +6,12 @@ import { releaseFrameUri } from '../src/capture/useFrames';
 import { getActivePlayer, listSessions } from '../src/data';
 import { measurementState } from '../src/physics/measurementState';
 import { allowanceLine, usePurchases } from '../src/purchases';
-import { useSettings } from '../src/settings';
+import { featuring, updateSettings, useSettings } from '../src/settings';
 import { ActionButton } from '../src/ui/ActionButton';
 import { AllowanceLine } from '../src/ui/AllowanceLine';
+import { BottomSheet } from '../src/ui/BottomSheet';
 import { DeliveryCard } from '../src/ui/DeliveryCard';
+import { DeliveryRow } from '../src/ui/DeliveryRow';
 import { EmptyState } from '../src/ui/EmptyState';
 import { LitEdge } from '../src/ui/LitEdge';
 import { CricketStill, FloodlitPanel } from '../src/ui/cricket3d';
@@ -17,7 +19,7 @@ import { ReadingBlock } from '../src/ui/ReadingBlock';
 import { SpeedGauge } from '../src/ui/SpeedGauge';
 import { useReveal } from '../src/ui/motion/useReveal';
 import { TabBar } from '../src/ui/TabBar';
-import { measuredThisWeek, needsChecking, personalBest } from '../src/ui/deliveries';
+import { countingDeliveries, heroDelivery, measuredThisWeek, needsChecking, personalBest } from '../src/ui/deliveries';
 import { errorMessage, formatWhen } from '../src/ui/format';
 import { readingView } from '../src/ui/reading';
 import { colors, radius, size, space, stroke, type } from '../src/ui/tokens';
@@ -33,7 +35,7 @@ const LOGO = require('../assets/icon.png');
 type Loaded =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; bowler: string | null; sessions: Session[] };
+  | { status: 'ready'; playerId: string | null; bowler: string | null; sessions: Session[] };
 
 /** The day of the week a time falls on, as the phone names it. */
 function weekdayOf(t: number): string {
@@ -44,7 +46,7 @@ export default function Index() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
-  const { unit } = useSettings();
+  const { unit, featuredDelivery } = useSettings();
   const { isPro, allowance, refreshAnalyses } = usePurchases();
   const largeText = useLargeText();
   const { width: screenWidth } = useWindowDimensions();
@@ -65,7 +67,7 @@ export default function Index() {
         // The active player, so the name shown is the one deliveries are saved to.
         const player = await getActivePlayer();
         const sessions = player ? await listSessions({ playerId: player.id }) : [];
-        if (alive) setLoaded({ status: 'ready', bowler: player?.name ?? null, sessions });
+        if (alive) setLoaded({ status: 'ready', playerId: player?.id ?? null, bowler: player?.name ?? null, sessions });
       } catch (e) {
         if (alive) setLoaded({ status: 'error', message: errorMessage(e) });
       }
@@ -83,10 +85,25 @@ export default function Index() {
     [sessions]
   );
   const best = useMemo(() => personalBest(listed, unit), [listed, unit]);
-  const bestView = best ? readingView(best.state, unit) : null;
+  // The hero: the delivery this player chose, or the best when they chose none
+  // or their choice is gone or no longer counts. Named the personal best only
+  // when it is the highest estimate.
+  const playerId = loaded.status === 'ready' ? loaded.playerId : null;
+  const chosenId = playerId ? featuredDelivery[playerId] : null;
+  const hero = useMemo(() => heroDelivery(listed, unit, chosenId), [listed, unit, chosenId]);
+  const heroView = hero ? readingView(hero.delivery.state, unit) : null;
   // The hero's needle sweeps once it is laid out. Home is not pushed, so there
   // is no transition to wait for.
-  const heroReveal = useReveal({ ready: bestView?.kind === 'measured', afterTransition: false });
+  const heroReveal = useReveal({ ready: heroView?.kind === 'measured', afterTransition: false });
+  const [picking, setPicking] = useState(false);
+  // Newest first, only readings that count: the ones the hero may show.
+  const choices = useMemo(() => countingDeliveries(listed, unit), [listed, unit]);
+  const choose = (id: string) => {
+    if (!playerId) return;
+    // Picking the best follows the best, so a faster delivery later takes over.
+    updateSettings(featuring(featuredDelivery, playerId, best && id === best.id ? null : id));
+    setPicking(false);
+  };
 
   const open = (id: string) => router.push({ pathname: '/analysis', params: { id } });
 
@@ -139,19 +156,22 @@ export default function Index() {
               <Text style={styles.muted}>Film a delivery and mark what you can see.</Text>
             </View>
           </View>
-        ) : best && bestView?.kind === 'measured' ? (
+        ) : hero && heroView?.kind === 'measured' ? (
           <Pressable
-            onPress={() => open(best.id)}
+            onPress={() => setPicking(true)}
             accessibilityRole="button"
-            accessibilityLabel={`Personal best. ${bestView.spoken} Highest estimate. Open it.`}
+            accessibilityLabel={`${hero.title}. ${heroView.spoken} Choose the delivery shown here.`}
           >
             <FloodlitPanel style={styles.hero}>
-              <Text style={styles.heroLabel}>PERSONAL BEST</Text>
-              <View style={styles.heroGauge} onLayout={heroReveal.onLayout}>
-                <SpeedGauge reading={bestView} unit={unit} width={size.gaugeSmall} sweep={heroReveal} />
+              <View style={styles.heroHead}>
+                <Text style={styles.heroLabel}>{hero.title.toUpperCase()}</Text>
+                <Text style={styles.heroChange}>CHANGE</Text>
               </View>
-              <ReadingBlock reading={bestView} size="heroCompact" />
-              <Text style={styles.caption}>Highest estimate · {formatWhen(best.createdAt)}</Text>
+              <View style={styles.heroGauge} onLayout={heroReveal.onLayout}>
+                <SpeedGauge reading={heroView} unit={unit} width={size.gaugeSmall} sweep={heroReveal} />
+              </View>
+              <ReadingBlock reading={heroView} size="heroCompact" />
+              <Text style={styles.caption}>{formatWhen(hero.delivery.createdAt)}</Text>
             </FloodlitPanel>
           </Pressable>
         ) : (
@@ -279,6 +299,46 @@ export default function Index() {
       {/* Settings is reachable before setup too: restoring a purchase after a
           reinstall should not wait on setting up a player first. */}
       <TabBar current="home" />
+
+      {/* What the hero shows: any measured reading that counts. */}
+      <BottomSheet visible={picking} title="Shown on Home" onClose={() => setPicking(false)}>
+        {hero ? (
+          <ActionButton
+            variant="secondary"
+            label="Open this delivery"
+            onPress={() => {
+              setPicking(false);
+              open(hero.delivery.id);
+            }}
+            style={styles.pickerOpen}
+          />
+        ) : null}
+        <Text style={styles.pickerNote}>
+          Choose the delivery Home shows. Only measured readings are listed. Anything slower than your
+          best is shown as a featured delivery, never as your personal best.
+        </Text>
+        {choices.map((d) => {
+          const view = readingView(d.state, unit);
+          const selected = hero?.delivery.id === d.id;
+          return (
+            <Pressable
+              key={d.id}
+              onPress={() => choose(d.id)}
+              accessibilityRole="radio"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`${formatWhen(d.createdAt)}. ${view.kind === 'measured' ? view.spoken : ''}${best?.id === d.id ? ' Personal best.' : ''}`}
+            >
+              <DeliveryRow
+                thumb={releaseFrameUri(d.session)}
+                reading={view}
+                when={formatWhen(d.createdAt)}
+                best={best?.id === d.id}
+                state={selected ? 'selected' : 'normal'}
+              />
+            </Pressable>
+          );
+        })}
+      </BottomSheet>
     </View>
   );
 }
@@ -362,7 +422,11 @@ const styles = StyleSheet.create({
   },
   pillValue: { ...type.h2, ...type.tabular, color: colors.text },
   pillLabel: { ...type.caption, color: colors.muted },
-  heroLabel: { ...type.label, color: colors.muted, alignSelf: 'flex-start' },
+  heroHead: { flexDirection: 'row', alignSelf: 'stretch', alignItems: 'flex-start', gap: space.sm },
+  heroLabel: { ...type.label, color: colors.muted, flex: 1, flexShrink: 1 },
+  heroChange: { ...type.label, color: colors.text },
+  pickerOpen: { marginTop: space.md },
+  pickerNote: { ...type.caption, color: colors.muted, marginVertical: space.md },
   heroGauge: { marginTop: space.sm, marginBottom: space.xs },
 
   placeholder: {

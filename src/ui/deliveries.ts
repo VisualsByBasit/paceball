@@ -51,6 +51,32 @@ export function personalBest<T extends ListedDelivery>(deliveries: readonly T[],
   return best;
 }
 
+export const HERO_BEST = 'Personal best · Highest estimate';
+export const HERO_FEATURED = 'Featured delivery';
+
+/**
+ * What Home's hero shows: the delivery the player chose, while it is saved and
+ * its reading counts, otherwise the personal best. It is called the personal
+ * best only when it is the highest estimate, so a slower delivery is never
+ * named one. Null with nothing that counts.
+ */
+export function heroDelivery<T extends ListedDelivery>(
+  deliveries: readonly T[],
+  unit: SpeedUnit,
+  chosenId: string | null | undefined
+): { delivery: T; isBest: boolean; title: string } | null {
+  const best = personalBest(deliveries, unit);
+  if (best === null || best.state.kind !== 'measured') return null;
+  const chosen = chosenId
+    ? deliveries.find((d) => d.id === chosenId && countsAsReading(d.state, unit))
+    : undefined;
+  const delivery = chosen ?? best;
+  const isBest =
+    delivery.id === best.id ||
+    (delivery.state.kind === 'measured' && delivery.state.speedKmh >= best.state.speedKmh);
+  return { delivery, isBest, title: isBest ? HERO_BEST : HERO_FEATURED };
+}
+
 /** The start of the local day a time falls in. */
 function dayStart(t: number): number {
   const d = new Date(t);

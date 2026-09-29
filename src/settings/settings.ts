@@ -40,6 +40,12 @@ export type Settings = {
    * every recording. Set when the offer is answered either way, never cleared.
    */
   microphoneAsked: boolean;
+  /**
+   * The delivery each player chose for Home's hero, by player id. Absent means
+   * the personal best. Only a choice: a delivery that is deleted or no longer
+   * counts falls back to the best wherever this is read.
+   */
+  featuredDelivery: Record<string, string>;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -50,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastRecording: null,
   onboardingPaywallShown: false,
   microphoneAsked: false,
+  featuredDelivery: {},
 };
 
 export const SPEED_UNITS: SpeedUnit[] = ['kmh', 'mph'];
@@ -102,5 +109,31 @@ export function parseSettings(raw: unknown): Settings {
     lastRecording: parseRecordingProfile(value.lastRecording) ?? DEFAULT_SETTINGS.lastRecording,
     onboardingPaywallShown: value.onboardingPaywallShown === true,
     microphoneAsked: value.microphoneAsked === true,
+    featuredDelivery: parseFeatured(value.featuredDelivery),
   };
+}
+
+/** Player id to delivery id, keeping only string pairs. */
+function parseFeatured(value: unknown): Record<string, string> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [player, delivery] of Object.entries(value as Record<string, unknown>)) {
+    if (player && typeof delivery === 'string' && delivery) out[player] = delivery;
+  }
+  return out;
+}
+
+/**
+ * The settings patch that shows `deliveryId` on a player's Home hero, or,
+ * given null, goes back to the personal best.
+ */
+export function featuring(
+  current: Record<string, string>,
+  playerId: string,
+  deliveryId: string | null
+): { featuredDelivery: Record<string, string> } {
+  const next = { ...current };
+  if (deliveryId === null) delete next[playerId];
+  else next[playerId] = deliveryId;
+  return { featuredDelivery: next };
 }

@@ -31,14 +31,16 @@ test('the personal best is a measured reading with its range, or it says there i
   const home = read(HOME);
   assert.match(home, /state: measurementState\(s\)/);
   assert.match(home, /const best = useMemo\(\(\) => personalBest\(listed, unit\), \[listed, unit\]\);/);
-  // The hero: the Result speedometer, small, and the reading with its range.
-  assert.match(home, /<ReadingBlock reading=\{bestView\} size="heroCompact" \/>/);
-  assert.match(home, /<SpeedGauge reading=\{bestView\} unit=\{unit\} width=\{size\.gaugeSmall\} sweep=\{heroReveal\} \/>/);
-  // Only inside the measured branch: no gauge without a measured best.
-  const measured = home.slice(home.indexOf("best && bestView?.kind === 'measured' ? ("), home.indexOf('Nothing measured yet'));
+  // The hero: the Result speedometer, small, and the reading with its range,
+  // for the chosen delivery or the best (heroDelivery, in hero.test).
+  assert.match(home, /<ReadingBlock reading=\{heroView\} size="heroCompact" \/>/);
+  assert.match(home, /<SpeedGauge reading=\{heroView\} unit=\{unit\} width=\{size\.gaugeSmall\} sweep=\{heroReveal\} \/>/);
+  // Only inside the measured branch: no gauge without a measured reading.
+  const measured = home.slice(home.indexOf("hero && heroView?.kind === 'measured' ? ("), home.indexOf('Nothing measured yet'));
   assert.match(measured, /<SpeedGauge/);
   assert.equal((home.match(/<SpeedGauge /g) ?? []).length, 1);
-  assert.match(home, /Highest estimate/);
+  // Named by what it is: the best only when it is the highest estimate.
+  assert.match(measured, /\{hero\.title\.toUpperCase\(\)\}/);
   assert.match(home, /Nothing measured yet\. The fastest saved delivery shows here\./);
   assert.doesNotMatch(home, /formatSpeed|errorIn\(/);
 });
