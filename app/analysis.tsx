@@ -33,6 +33,8 @@ import { BottomSheet } from '../src/ui/BottomSheet';
 import { ShareChoice } from '../src/ui/ShareChoice';
 import { Notice } from '../src/ui/Notice';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
+import { CheckTag } from '../src/ui/CheckTag';
+import { needsChecking } from '../src/ui/deliveries';
 import { readingView } from '../src/ui/reading';
 import { errorMessage } from '../src/ui/format';
 import { first } from '../src/ui/routeParams';
@@ -399,7 +401,14 @@ function Replay({
 
       <View style={styles.stats}>
         {view.kind === 'measured' ? (
-          <ReadingBlock reading={view} size="reading" />
+          <>
+            <ReadingBlock reading={view} size="reading" />
+            {/* Off the scale or a very wide range: shown as computed, never
+                counted toward a best, Stats or Compare. */}
+            {needsChecking(state, unit) ? (
+              <CheckTag center />
+            ) : null}
+          </>
         ) : (
           <Text style={styles.noSpeed}>No speed measured</Text>
         )}

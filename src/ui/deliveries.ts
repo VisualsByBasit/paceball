@@ -1,18 +1,45 @@
 import type { MeasurementState } from '../physics/measurementState';
+import type { SpeedUnit } from '../settings/settings';
+import { implausible } from './gauge';
 
 /** A delivery as a list reads it: which one, when, and what it can honestly show. */
 export type ListedDelivery = { id: string; createdAt: number; state: MeasurementState };
 
 /**
+ * Whether a delivery's reading counts toward a best, the Home hero, Stats and
+ * Compare: measured, and not implausible by the rules the "Off the scale" and
+ * "very wide range" cautions use. An implausible reading is still saved and
+ * listed, with "Check this reading"; it just never counts.
+ */
+export function countsAsReading(
+  state: MeasurementState,
+  unit: SpeedUnit
+): state is Extract<MeasurementState, { kind: 'measured' }> {
+  return state.kind === 'measured' && !implausible(state, unit);
+}
+
+/** A measured reading that breaks either rule, for its "Check this reading" tag. */
+export function needsChecking(state: MeasurementState, unit: SpeedUnit): boolean {
+  return state.kind === 'measured' && implausible(state, unit);
+}
+
+/** Only the deliveries whose readings count, in the order given. */
+export function countingDeliveries<T extends ListedDelivery>(deliveries: readonly T[], unit: SpeedUnit): T[] {
+  return deliveries.filter((d) => countsAsReading(d.state, unit));
+}
+
+/**
  * The personal best: the highest measured speed, and of equals the most
  * recent. Only a measured delivery counts, read through its own
- * measurementState, so its range is the recomputed one. Null with nothing
- * measured: a best of 0.0 would not be a reading.
+ * measurementState, so its range is the recomputed one, and never an
+ * implausible one: a best off the scale would be the marks' mistake, not the
+ * bowler's pace. Null with nothing that counts: a best of 0.0 would not be a
+ * reading.
  */
-export function personalBest(deliveries: readonly ListedDelivery[]): ListedDelivery | null {
-  let best: ListedDelivery | null = null;
+export function personalBest<T extends ListedDelivery>(deliveries: readonly T[], unit: SpeedUnit): T | null {
+  let best: T | null = null;
   for (const delivery of deliveries) {
-    if (delivery.state.kind !== 'measured') continue;
+    if (!countsAsReading(delivery.state, unit)) continue;
     if (best === null || best.state.kind !== 'measured') {
       best = delivery;
       continue;
@@ -71,16 +98,19 @@ export function compareFooterLabel(picked: number): string {
 }
 
 /**
- * The newest measured delivery, for "Latest reading". Deliveries arrive newest
- * first, as listSessions returns them. Null when none is measured.
+ * The newest delivery whose reading counts, for "Latest reading". Deliveries
+ * arrive newest first, as listSessions returns them. Null when none counts.
  */
-export function latestMeasured<T extends ListedDelivery>(deliveries: readonly T[]): T | null {
-  return deliveries.find((d) => d.state.kind === 'measured') ?? null;
+export function latestMeasured<T extends ListedDelivery>(deliveries: readonly T[], unit: SpeedUnit): T | null {
+  return deliveries.find((d) => countsAsReading(d.state, unit)) ?? null;
 }
 
-/** How many deliveries carry a reading: guessed and unusable ones do not count. */
-export function measuredCount(deliveries: readonly ListedDelivery[]): number {
-  return deliveries.filter((d) => d.state.kind === 'measured').length;
+/**
+ * How many deliveries carry a reading that counts: guessed, unusable and
+ * implausible ones do not.
+ */
+export function measuredCount(deliveries: readonly ListedDelivery[], unit: SpeedUnit): number {
+  return countingDeliveries(deliveries, unit).length;
 }
 
 /** A week, for Home's "This week": the seven days up to now, not a calendar week. */

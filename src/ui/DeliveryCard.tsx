@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { CheckTag } from './CheckTag';
 import type { ReadingView } from './reading';
 import { colors, radius, size, space, stroke, type } from './tokens';
 
@@ -13,6 +14,8 @@ type DeliveryCardProps = {
   best?: boolean;
   /** Full width, for large text, where a row of narrow cards would clip. */
   wide?: boolean;
+  /** The reading is off the scale or its range very wide: "Check this reading". */
+  check?: boolean;
 };
 
 /**
@@ -20,7 +23,7 @@ type DeliveryCardProps = {
  * with its range, or the reason it has none, and when. Like DeliveryRow it is
  * only a look; Home decides what a press does.
  */
-export function DeliveryCard({ thumb, reading, when, best = false, wide = false }: DeliveryCardProps) {
+export function DeliveryCard({ thumb, reading, when, best = false, wide = false, check = false }: DeliveryCardProps) {
   const [failed, setFailed] = useState(false);
   return (
     <View style={[styles.card, wide && styles.wide]}>
@@ -52,6 +55,7 @@ export function DeliveryCard({ thumb, reading, when, best = false, wide = false 
             <Text style={styles.range} numberOfLines={1}>
               {reading.range}
             </Text>
+            {check ? <CheckTag /> : null}
           </>
         ) : (
           // Neutral: a delivery without a speed is not an error.

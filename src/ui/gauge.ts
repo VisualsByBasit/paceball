@@ -1,4 +1,5 @@
 import type { SpeedUnit } from '../settings/settings';
+import { errorIn, speedIn } from './units';
 
 /** Where the dial starts and how far it sweeps, clockwise, in degrees from three o'clock. */
 export const GAUGE_START_DEG = 150;
@@ -66,17 +67,37 @@ export const OFF_SCALE_CAUTION =
 export const WIDE_RANGE_KMH = 25;
 export const WIDE_RANGE_CAUTION = 'The range is very wide. Re-marking or a clearer clip will narrow it.';
 
+/** The tag a reading that fails either rule carries in lists, beside its speed. */
+export const CHECK_READING = 'Check this reading';
+
 /**
- * What a measured reading should say beside itself, if anything. Display
- * only: the reading and its range are exactly what was computed.
+ * What a measured reading should say beside itself, if anything: off the
+ * dial's fixed scale (the speed or the top of its range, in the unit shown),
+ * or a range wider than WIDE_RANGE_KMH either side. Display only: the reading
+ * and its range are exactly what was computed.
+ *
+ * This is the one place those two rules live. Every caution, every "Check this
+ * reading" tag, and every decision about where a reading counts (the personal
+ * best, the Home hero, Stats, Compare) reads them from here.
  */
 export function readingCautions(
   reading: { speedKmh: number; errorKmh: number },
-  shown: { value: number; error: number },
   unit: SpeedUnit
 ): string[] {
   const cautions: string[] = [];
-  if (offScale(shown.value, shown.error, unit)) cautions.push(OFF_SCALE_CAUTION);
+  if (offScale(speedIn(reading.speedKmh, unit), errorIn(reading.errorKmh, unit), unit)) {
+    cautions.push(OFF_SCALE_CAUTION);
+  }
   if (reading.errorKmh > WIDE_RANGE_KMH) cautions.push(WIDE_RANGE_CAUTION);
   return cautions;
+}
+
+/**
+ * Whether a measured reading breaks either rule above. It is still saved,
+ * shown with CHECK_READING, re-markable, deletable and shareable; it is only
+ * never a personal best, never the Home hero, never in Stats and never offered
+ * for Compare.
+ */
+export function implausible(reading: { speedKmh: number; errorKmh: number }, unit: SpeedUnit): boolean {
+  return readingCautions(reading, unit).length > 0;
 }

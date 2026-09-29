@@ -41,11 +41,11 @@ test('ranges that exactly touch count as too close', () => {
 });
 
 test('not-seen and unusable deliveries cannot be selected in History', () => {
-  assert.deepEqual(compareSelectability({ kind: 'measured', speedKmh: 120, errorKmh: 4 }), {
+  assert.deepEqual(compareSelectability({ kind: 'measured', speedKmh: 120, errorKmh: 4 }, 'kmh'), {
     selectable: true,
   });
   for (const kind of ['not-seen', 'unusable']) {
-    const result = compareSelectability({ kind });
+    const result = compareSelectability({ kind }, 'kmh');
     assert.equal(result.selectable, false, kind);
     assert.ok(result.reason.length > 0, `${kind} says why`);
   }
@@ -53,7 +53,7 @@ test('not-seen and unusable deliveries cannot be selected in History', () => {
   // History wires the rule into the row: blocked rows are disabled and dimmed,
   // and only rows that are selectable get a pick marker.
   const history = read('app/history.tsx');
-  assert.match(history, /selectability: compareSelectability\(reading\)/);
+  assert.match(history, /selectability: compareSelectability\(reading, unit\)/);
   assert.match(history, /const blocked = select !== null && !select\.selectability\.selectable;/);
   assert.match(history, /disabled=\{blocked\}/);
   assert.match(history, /blocked && styles\.off/);

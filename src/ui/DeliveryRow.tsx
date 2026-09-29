@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
+import { CheckTag } from './CheckTag';
 import type { ReadingView } from './reading';
 import { colors, opacity, radius, size, space, stroke, type } from './tokens';
 
@@ -20,6 +21,8 @@ type DeliveryRowProps = {
   best?: boolean;
   /** A tick box at the end, while picking deliveries. Null outside that. */
   pick?: { picked: boolean } | null;
+  /** The reading is off the scale or its range very wide: "Check this reading". */
+  check?: boolean;
 };
 
 /**
@@ -36,6 +39,7 @@ export function DeliveryRow({
   reason = null,
   best = false,
   pick = null,
+  check = false,
 }: DeliveryRowProps) {
   return (
     <View
@@ -66,6 +70,7 @@ export function DeliveryRow({
         <Text style={styles.meta} numberOfLines={1}>
           {state === 'deleting' ? 'Deleting…' : detail ? `${when} · ${detail}` : when}
         </Text>
+        {check && reading.kind === 'measured' ? <CheckTag /> : null}
         {state === 'blocked' && reason ? <Text style={styles.reason}>{reason}</Text> : null}
       </View>
       {pick ? <View style={[styles.pick, pick.picked && styles.pickOn]} /> : null}

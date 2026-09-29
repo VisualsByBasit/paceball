@@ -30,7 +30,8 @@ import { AppBar } from '../src/ui/AppBar';
 import { DeliveryRow } from '../src/ui/DeliveryRow';
 import { EmptyState } from '../src/ui/EmptyState';
 import { TabBar } from '../src/ui/TabBar';
-import { compareFooterLabel, groupByDay } from '../src/ui/deliveries';
+import { compareFooterLabel, countsAsReading, groupByDay, needsChecking } from '../src/ui/deliveries';
+import { CHECK_READING } from '../src/ui/gauge';
 import { readingView } from '../src/ui/reading';
 import { colors, motion, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 import { errorIn, formatSpeed, speedIn, unitLabel, unitSpoken } from '../src/ui/units';
@@ -95,12 +96,14 @@ async function loadTrend(playerId: string, range: Range): Promise<TrendState> {
  * checked, so it is left off rather than drawn on trust. Best and average follow
  * the points that remain.
  */
-function readTrend(state: TrendState, states: Map<string, MeasurementState>): TrendState {
+function readTrend(state: TrendState, states: Map<string, MeasurementState>, unit: SpeedUnit): TrendState {
   if (state.status !== 'ready') return state;
   const points: TrendPoint[] = [];
   for (const point of state.trend.points) {
     const reading = states.get(point.id);
-    if (reading?.kind !== 'measured') continue;
+    // An implausible reading stays in the list with "Check this reading", but
+    // is never the best and never a point on the trend.
+    if (!reading || !countsAsReading(reading, unit)) continue;
     points.push({ ...point, speedKmh: reading.speedKmh, errorKmh: reading.errorKmh });
   }
   const count = points.length;
@@ -192,10 +195,10 @@ export default function HistoryScreen() {
     [sessions]
   );
 
-  const allTimeRead = useMemo(() => readTrend(allTime, states), [allTime, states]);
+  const allTimeRead = useMemo(() => readTrend(allTime, states, unit), [allTime, states, unit]);
   const rangedRead = useMemo(
-    () => (ranged ? { range: ranged.range, state: readTrend(ranged.state, states) } : null),
-    [ranged, states]
+    () => (ranged ? { range: ranged.range, state: readTrend(ranged.state, states, unit) } : null),
+    [ranged, states, unit]
   );
 
   const chart: TrendState =
@@ -230,9 +233,10 @@ export default function HistoryScreen() {
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
 
+  // Only readings that could be compared: measured and plausible.
   const measuredCount = useMemo(
-    () => [...states.values()].filter((s) => s.kind === 'measured').length,
-    [states]
+    () => [...states.values()].filter((s) => countsAsReading(s, unit)).length,
+    [states, unit]
   );
 
   const cancelCompare = useCallback(() => {
@@ -484,7 +488,7 @@ export default function HistoryScreen() {
                   selecting
                     ? {
                         picked: picked.includes(item.id),
-                        selectability: compareSelectability(reading),
+                        selectability: compareSelectability(reading, unit),
                         onToggle: () => setPicked((current) => togglePick(current, item.id)),
                       }
                     : null
@@ -734,6 +738,7 @@ function SessionRow({
   // Travel comes off the same marks as the speed, so it is read out only when
   // the speed is. It stays on the record either way.
   const measured = reading.kind === 'measured';
+  const check = needsChecking(reading, unit);
   // Not-seen and unusable rows have no speed to compare, so in select mode they
   // are dimmed, cannot be tapped, and say why.
   const blocked = select !== null && !select.selectability.selectable;
@@ -752,7 +757,7 @@ function SessionRow({
       accessibilityState={select ? { checked: select.picked, disabled: blocked } : undefined}
       accessibilityLabel={
         view.kind === 'measured'
-          ? `${formatWhen(session.createdAt)}. ${view.spoken}${isBest ? ' Personal best.' : ''}`
+          ? `${formatWhen(session.createdAt)}. ${view.spoken}${isBest ? ' Personal best.' : ''}${check ? ` ${CHECK_READING}.` : ''}`
           : reading.kind === 'not-seen'
             ? `${formatWhen(session.createdAt)}, no speed, the bounce was not seen`
             : `${formatWhen(session.createdAt)}, no speed, it can't be measured from what was saved`
@@ -767,6 +772,7 @@ function SessionRow({
         state={select?.picked ? 'selected' : blocked ? 'blocked' : 'normal'}
         reason={select && !select.selectability.selectable ? select.selectability.reason : null}
         pick={select && select.selectability.selectable ? { picked: select.picked } : null}
+        check={check}
       />
     </Pressable>
   );

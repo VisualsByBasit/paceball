@@ -1,4 +1,6 @@
 import type { MeasurementState } from '../physics/measurementState';
+import type { SpeedUnit } from '../settings/settings';
+import { implausible } from './gauge';
 
 /** Compare takes exactly this many deliveries. */
 export const COMPARE_COUNT = 2;
@@ -6,13 +8,17 @@ export const COMPARE_COUNT = 2;
 export type Selectability = { selectable: true } | { selectable: false; reason: string };
 
 /**
- * Only a measured delivery has a speed and a range to compare. The reason is
- * shown on the dimmed row, so it stays short.
+ * Only a measured delivery has a speed and a range to compare, and only a
+ * plausible one is offered: a reading off the scale or with a very wide range
+ * would make any verdict about the marks, not the bowling. The reason is shown
+ * on the dimmed row, so it stays short.
  */
-export function compareSelectability(reading: MeasurementState): Selectability {
+export function compareSelectability(reading: MeasurementState, unit: SpeedUnit): Selectability {
   switch (reading.kind) {
     case 'measured':
-      return { selectable: true };
+      return implausible(reading, unit)
+        ? { selectable: false, reason: "Can't compare: check this reading" }
+        : { selectable: true };
     case 'not-seen':
       return { selectable: false, reason: "Can't compare: bounce not seen" };
     case 'unusable':

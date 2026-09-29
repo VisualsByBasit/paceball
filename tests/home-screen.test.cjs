@@ -30,7 +30,7 @@ test('Home greets the active bowler and leads with recording', () => {
 test('the personal best is a measured reading with its range, or it says there is none', () => {
   const home = read(HOME);
   assert.match(home, /state: measurementState\(s\)/);
-  assert.match(home, /const best = useMemo\(\(\) => personalBest\(listed\), \[listed\]\);/);
+  assert.match(home, /const best = useMemo\(\(\) => personalBest\(listed, unit\), \[listed, unit\]\);/);
   // The hero: the Result speedometer, small, and the reading with its range.
   assert.match(home, /<ReadingBlock reading=\{bestView\} size="heroCompact" \/>/);
   assert.match(home, /<SpeedGauge reading=\{bestView\} unit=\{unit\} width=\{size\.gaugeSmall\} sweep=\{heroReveal\} \/>/);

@@ -39,15 +39,14 @@ test('the dial is fixed at 0 to 180 km/h and 0 to 110 mph, never stretched', () 
 });
 
 test('cautions for a reading off the scale or with a very wide range, display only', () => {
-  const at = (speedKmh, errorKmh) =>
-    readingCautions({ speedKmh, errorKmh }, { value: speedKmh, error: errorKmh }, 'kmh');
+  const at = (speedKmh, errorKmh) => readingCautions({ speedKmh, errorKmh }, 'kmh');
   assert.deepEqual(at(124.8, 3.1), []);
   assert.deepEqual(at(176, 12), [OFF_SCALE_CAUTION]);
   assert.deepEqual(at(120, 26), [WIDE_RANGE_CAUTION]);
   assert.equal(OFF_SCALE_CAUTION, 'This reading is faster than a bowled ball can be. Check the reference and your marks.');
   assert.equal(WIDE_RANGE_CAUTION, 'The range is very wide. Re-marking or a clearer clip will narrow it.');
   const result = read('app/result.tsx');
-  assert.match(result, /readingCautions\(state, \{ value: view\.value, error: view\.error \}, unit\)/);
+  assert.match(result, /readingCautions\(state, unit\)/);
   assert.match(result, /<Notice key=\{line\} tone="caution">\{line\}<\/Notice>/);
 });
 

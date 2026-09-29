@@ -9,7 +9,7 @@ import { useSettings, type SpeedUnit } from '../src/settings';
 import { ActionButton } from '../src/ui/ActionButton';
 import { AppBar } from '../src/ui/AppBar';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
-import { latestMeasured, measuredCount, personalBest, type ListedDelivery } from '../src/ui/deliveries';
+import { countingDeliveries, latestMeasured, measuredCount, personalBest, type ListedDelivery } from '../src/ui/deliveries';
 import { errorMessage, formatWhen } from '../src/ui/format';
 import { readingView, type MeasuredReading } from '../src/ui/reading';
 import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
@@ -64,13 +64,13 @@ export default function StatsScreen() {
   }, [isFocused]);
 
   const deliveries = loaded.status === 'ready' ? loaded.deliveries : [];
-  const best = useMemo(() => personalBest(deliveries), [deliveries]);
-  const latest = useMemo(() => latestMeasured(deliveries), [deliveries]);
-  const count = useMemo(() => measuredCount(deliveries), [deliveries]);
-  // Oldest to newest, measured only, each with its own recomputed range.
+  const best = useMemo(() => personalBest(deliveries, unit), [deliveries, unit]);
+  const latest = useMemo(() => latestMeasured(deliveries, unit), [deliveries, unit]);
+  const count = useMemo(() => measuredCount(deliveries, unit), [deliveries, unit]);
+  // Oldest to newest, measured and plausible only, each with its own recomputed range.
   const points = useMemo(
     () =>
-      [...deliveries]
+      countingDeliveries(deliveries, unit)
         .reverse()
         .flatMap((d) => {
           const view = readingView(d.state, unit);

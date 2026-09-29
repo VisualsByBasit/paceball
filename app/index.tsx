@@ -17,7 +17,7 @@ import { ReadingBlock } from '../src/ui/ReadingBlock';
 import { SpeedGauge } from '../src/ui/SpeedGauge';
 import { useReveal } from '../src/ui/motion/useReveal';
 import { TabBar } from '../src/ui/TabBar';
-import { measuredThisWeek, personalBest } from '../src/ui/deliveries';
+import { measuredThisWeek, needsChecking, personalBest } from '../src/ui/deliveries';
 import { errorMessage, formatWhen } from '../src/ui/format';
 import { readingView } from '../src/ui/reading';
 import { colors, radius, size, space, stroke, type } from '../src/ui/tokens';
@@ -82,7 +82,7 @@ export default function Index() {
     () => sessions.map((s) => ({ id: s.id, createdAt: s.createdAt, state: measurementState(s), session: s })),
     [sessions]
   );
-  const best = useMemo(() => personalBest(listed), [listed]);
+  const best = useMemo(() => personalBest(listed, unit), [listed, unit]);
   const bestView = best ? readingView(best.state, unit) : null;
   // The hero's needle sweeps once it is laid out. Home is not pushed, so there
   // is no transition to wait for.
@@ -223,6 +223,7 @@ export default function Index() {
                       when={formatWhen(d.createdAt)}
                       best={best?.id === d.id}
                       wide={largeText}
+                      check={needsChecking(d.state, unit)}
                     />
                   </Pressable>
                 );
