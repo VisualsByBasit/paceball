@@ -135,7 +135,7 @@ and an export is silent unless sound is switched on for that export.
 ## Ownership
 
 - AB owns: app/, website/, src/ui/, src/capture/, src/physics/, src/types/,
-  src/settings/, src/purchases/, modules/frame-extractor/, and the build
+  src/settings/, src/purchases/, modules/frame-extractor/, assets/, and the build
   config at the root (app.json, eas.json, package.json, index.js,
   metro.config.js, tsconfig.json, .gitignore, .easignore)
 - MU owns: src/data/, src/export/, src/diagnostics/
@@ -200,9 +200,15 @@ glassmorphism.
 ## Screens
 
 Built: index (home) · setup/player · setup/how-it-works · setup/camera
-· capture · mark · result · analysis · history · compare · settings
-· diagnostics (the privacy screen) · paywall · celebration · debug
-(development only; release builds redirect it home)
+· capture · mark · result · analysis · history · compare · stats (from
+the Home avatar; personal best free, the rest Pro) · settings (a list
+of groups; each opens as settings?page=player, measurement, recording,
+pro or about) · diagnostics (the privacy screen) · paywall
+· celebration · debug (development only; release builds redirect it
+home). A launch intro plays over the root stack on a cold start only.
+
+Home, History and Settings carry the tab bar. The launcher icon and
+adaptive icon come from assets/, a copy of the website's logo.
 
 The paywall is reached from Capture (the weekly limit), Analysis (the
 clean export), History (compare), Settings, and once at the end of

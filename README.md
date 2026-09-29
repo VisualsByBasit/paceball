@@ -1,53 +1,22 @@
 # Paceball
 
-Paceball is an Android cricket bowling-speed analyser built with Expo and React Native. Record a delivery side-on, mark a known distance plus the ball's release and bounce frames, and Paceball calculates the **average speed to the bounce** with an uncertainty range. Recordings, marked points and measurements are processed locally; Paceball has no account system or measurement backend.
+Paceball measures how fast a cricket ball was bowled, from a video recorded on an Android phone.
+You mark a known distance and the ball at release and at bounce; it returns the average speed with its own error range.
 
-The project is being built for the RevenueCat Shipaton and Next Gen. Its central design rule is that an honest missing result is better than a confident invented one.
+## Screenshots
 
-## What Paceball refuses to invent
-
-- **No speed without a defensible bounce mark.** If the ball was not visible and the bounce was guessed, the delivery can still be saved, but it has no speed and is excluded from trends, comparisons and exports.
-- **No spin rate or RPM.** A normal phone recording at roughly 60 fps cannot support that measurement.
-- **No tracked flight path yet.** The current guide joins the points the user actually marked. It is labelled mark-to-mark and is not presented as automatic ball tracking.
-- **No release-speed claim.** The reported number is average speed from release to bounce; release speed would be higher because the ball slows in flight.
-- **No false confidence from poor framing.** Paceball warns when the chosen reference fills too little of the frame. That framing error is real and is not covered by the calculated uncertainty range.
-
-## How the measurement works
-
-1. Choose a known reference: the 20.12 m between the stumps, a measured marker distance, the ball diameter, or the bowler's saved height.
-2. Mark both ends of that reference. Their pixel separation establishes pixels per metre.
-3. Mark the release and bounce frames and positions.
-4. Convert the marked travel from pixels to metres, and the frame difference to seconds using the frame rate read from that recording.
-5. Calculate distance divided by time and convert it to km/h or mph.
-
-Every measured speed is accompanied by an error range. The range combines frame-timing uncertainty, reference-length uncertainty, and pixel-marking uncertainty for both the calibration and delivery marks. An uncertain but visible bounce receives a wider range; a guessed bounce receives no speed.
-
-## Current features
-
-- Live Android video capture with frame-by-frame marking, on the standard or ultra-wide lens where the phone has one
-- Sound recorded with the video when the microphone is allowed; declining records video only and measures exactly the same way
-- Stumps, markers, ball and player-height calibration
-- Per-reading uncertainty and bounce-confidence handling
-- Per-player local storage; profile switching is not yet exposed in the app
-- Local History, Trends and delivery comparison
-- Slow-motion delivery replay, muted by default on every clip, with a sound switch
-- Shareable PNG result cards: watermarked for free users, clean for Pro
-- A weekly free allowance and a RevenueCat-backed Pro entitlement
-- Optional, consent-gated JavaScript and native crash reports through Sentry
-
-Video export with a burned-in replay HUD is a development-only spike on the debug screen, not part of the supported export flow. Its exports are silent by default and carry sound only when it is switched on for that export.
+_Screenshots to come: Home, Capture, Mark, Result and the share card._
 
 ## Requirements
 
-- Git
-- Node.js and npm
-- Android Studio with an Android SDK, platform tools and a configured emulator or USB-connected Android device
-- A Java version supported by the installed Android Gradle Plugin (JDK 17 is the usual Expo/React Native setup)
-- Android 9 / API 28 or newer for frame-accurate extraction
+- **Node.js 24** and npm (Codemagic builds on Node 24 too; see `codemagic.yaml`)
+- **An Android phone**, Android 9 (API 28) or newer, with USB debugging on. The camera, frame extraction and export need real hardware; an emulator cannot reproduce the recording workflow.
+- **An Expo account**, for EAS builds (`npx eas-cli login`)
+- For local builds only: Android Studio with the Android SDK, and JDK 17
 
-Paceball includes native Android code and native React Native dependencies. **Expo Go cannot run it.** Use a development build or a locally compiled Android app.
+Paceball has native code (a local Kotlin module and native libraries), so **Expo Go cannot run it**. It runs in a development build.
 
-## Clean-clone setup
+## Install and run
 
 ```bash
 git clone https://github.com/VisualsByBasit/paceball.git
@@ -55,141 +24,108 @@ cd paceball
 npm ci
 ```
 
-No environment variables are required to exercise the measurement flow, local storage, History, Analysis, tests or the paywall UI.
+Make a development build once, and install it on the phone. Either in the cloud:
 
-### Run locally on Android
+```bash
+npx eas-cli build --profile development --platform android
+```
 
-Start an emulator or connect an Android phone with USB debugging enabled, then build and install the development app:
+or on this machine, with the phone connected:
 
 ```bash
 npx expo run:android --device
 ```
 
-For later JavaScript-only runs, start Metro for the installed development client:
+Then, for every JavaScript change, start Metro for the installed development client:
 
 ```bash
 npx expo start --dev-client
 ```
-
-The first native build downloads Android and Gradle dependencies and can take several minutes. Camera behaviour, frame extraction and export should be verified on a physical phone; an emulator cannot meaningfully reproduce the complete recording workflow.
-
-### EAS development build
-
-If you use Expo Application Services and are signed into an Expo account:
-
-```bash
-npx eas-cli build --profile development --platform android
-npx expo start --dev-client
-```
-
-The checked-in `eas.json` also provides `preview` (APK) and `production` profiles.
-
-## Running without a RevenueCat key
-
-Leave `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` unset. Paceball then:
-
-- does not configure RevenueCat or contact Google Play for purchases;
-- treats the user as free;
-- renders a clearly labelled mock offering so judges can inspect the paywall; and
-- disables purchasing and reports that the store is not connected.
-
-The mock offering is presentation data only. It never fabricates a successful purchase or Pro entitlement, and it never appears in a build that has a key: there the paywall shows the store's own offering, or says the plans could not be loaded.
-
-For a build connected to the real store, provide RevenueCat's **public Android SDK key** through the build environment:
-
-```text
-EXPO_PUBLIC_REVENUECAT_ANDROID_KEY=...
-```
-
-Real purchase testing also requires the matching Google Play application, products, offering and `pro` entitlement to be configured in RevenueCat. Do not commit private service credentials.
-
-## Optional Sentry diagnostics
-
-JavaScript and native crash reports are supported. Both are off by default, and nothing is sent unless the build carries a public DSN and the user opts in inside the app:
-
-```text
-EXPO_PUBLIC_SENTRY_DSN=...
-```
-
-- JavaScript reports pass through the privacy scrubber in `src/diagnostics/privacy.ts`, which builds a new event from an allow-list: reviewed static error messages only, no names, paths, breadcrumbs, screenshots or view hierarchy.
-- Native reports come from Sentry's native SDK and may contain limited technical device and crash state that the app cannot filter. The in-app privacy screen says so.
-- Development builds do not upload source maps (`SENTRY_DISABLE_AUTO_UPLOAD` in `eas.json`). Preview and production builds upload them when the private build credentials (`SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`) are set in the EAS environment. None belongs in the repository.
-
-`docs/sentry-setup.md` walks through setting up the project and checking a preview build end to end.
 
 ## Tests
 
-The automated suite covers storage recovery, measurement uncertainty, privacy filtering, purchases and allowances, exports, comparison, camera fallbacks and UI contracts.
-
 ```bash
 npm test
-npm run typecheck
+npx tsc --noEmit
 ```
 
-The test total changes as coverage grows, so this README intentionally does not pin a count. A successful run ends with zero failed tests, and typecheck completes without emitting files.
+The suite covers the measurement and uncertainty model, storage and recovery, purchases and the weekly allowance, the privacy filter, exports, comparison, camera fallbacks and the screens' contracts. It grows with the app, so no count is written here. A good run ends with no failures, and the typecheck prints nothing.
 
-## Website
+## Building
 
-`website/` is the public site, live at <https://paceballpro.vercel.app>: the landing page, the privacy policy and the terms. It is a separate Next.js project with its own `package.json`, deployed on Vercel with `website` as the root directory. The app never imports from it, and Metro, the root typecheck and the EAS upload all leave it out.
+`eas.json` has three profiles: `development` (development client), `preview` (installable APK) and `production` (Play Store AAB).
 
-```bash
-cd website
-npm ci
-npm run lint
-npm run build
-```
+- **EAS cloud:** `npx eas-cli build --profile production --platform android`
+- **Codemagic:** `codemagic.yaml` runs the same build on a Codemagic machine with `eas build --local`, so it uses no EAS build quota. It reads its secrets from a Codemagic environment group named `expo`, and saves `paceball.aab` as the artifact.
 
-## Repository layout
+## Environment variables
+
+Set these in the EAS environment or the Codemagic group, never in the repository. Only the names are listed here.
+
+| Name | What it does |
+|---|---|
+| `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` | RevenueCat's public Android SDK key. Turns on the real paywall, purchases and restores. |
+| `EXPO_PUBLIC_SENTRY_DSN` | Sentry's public DSN. Makes optional crash reports available; nothing is sent until the user opts in. |
+| `SENTRY_AUTH_TOKEN` | Build time only. Lets preview and production builds upload source maps to Sentry. |
+| `SENTRY_ORG` | Build time only. The Sentry organisation the source maps go to. |
+| `SENTRY_PROJECT` | Build time only. The Sentry project the source maps go to. |
+| `EXPO_TOKEN` | An Expo access token, so a CI machine such as Codemagic can run EAS without logging in. |
+
+**The app runs without any of them.** With no RevenueCat key it never contacts RevenueCat or Google Play, treats everyone as free, and shows a sample paywall labelled as a sample, with purchasing switched off. It never pretends a purchase happened. With no Sentry DSN, crash reporting says it is not available in this build and nothing is sent. Measuring, History, Analysis, the share card and the tests all work with no keys at all.
+
+### Crash reports
+
+JavaScript and native crash reports are supported. Both are off by default, and nothing is sent unless the build carries a DSN and the user turns them on in the app.
+
+- JavaScript reports pass through the allow-list in `src/diagnostics/privacy.ts`: reviewed static error messages only, no names, paths, breadcrumbs, screenshots or view hierarchy.
+- Native reports come from Sentry's native SDK and may contain limited technical device and crash state that the app cannot filter. The in-app privacy screen says so.
+- Development builds do not upload source maps (`SENTRY_DISABLE_AUTO_UPLOAD` in `eas.json`). `docs/sentry-setup.md` walks through the rest.
+
+## Project structure
 
 ```text
-app/                     Expo Router screens and user flows
-src/capture/             Frame extraction orchestration and capture helpers
-src/data/                MMKV persistence, validation, profiles and queries
-src/diagnostics/         Consent-gated Sentry setup and privacy scrubber
-src/export/              Result-card rendering and export preparation
-src/physics/             Calibration, speed and uncertainty model
-src/purchases/           RevenueCat adapter, entitlement and allowance rules
-src/settings/            Local app preferences
-src/types/               Shared domain contracts
-src/ui/                  Design tokens and reusable interface components
-modules/frame-extractor/ Local Expo/Kotlin module for video metadata and frames
-website/                 Public site: landing page, privacy policy and terms
+app/                     Screens (Expo Router): home, setup, capture, mark, result,
+                         analysis, history, compare, stats, settings, privacy, paywall
+src/physics/             Calibration, speed and the uncertainty model
+src/capture/             Recording and frame-extraction helpers
+src/data/                On-phone storage (MMKV), validation, players and comparisons
+src/export/              The share card renderer and the video export plan
+src/purchases/           RevenueCat, the Pro entitlement and the weekly allowance
+src/diagnostics/         Opt-in Sentry setup and its privacy filter
+src/ui/                  Design tokens and shared components
+src/settings/, src/types/ Preferences and shared types
+modules/frame-extractor/ Local Kotlin module: video metadata, frames, Media3 export
+assets/                  Launcher icon
+website/                 The public site (separate Next.js project, never imported)
 tests/                   Node test suite
-docs/                    Engineering handoffs, the audit and the device test plan
-scripts/                 Review tooling
+docs/                    Design brief, handoffs and the device test plan
 ```
 
-The `docs/` directory records engineering handoffs, review boundaries and implementation decisions as evidence of how the project was built in public.
+## Honesty rules
+
+These are held by tests, not only by intention.
+
+- **No seen bounce, no speed.** Every bounce mark says whether the ball was seen, uncertain or guessed. A guessed bounce gives no speed at all, and nothing measured from it is shown, exported or counted into a trend. The delivery can still be saved without a reading.
+- **No speed without its range.** Every reading carries an error range worked out for that delivery from frame timing, the reference length and how precisely each mark could be placed. The app has no way to show a speed alone.
+- **Average speed, release to bounce.** That is what is measured, and it is always labelled that way. Release speed is higher, because the ball slows in the air.
+- **Nothing that cannot be measured.** No spin, no RPM, no tracked flight path: the line on screen joins the two marks the user placed and says "Marked, not tracked".
+- **A warning when the marks look wrong,** and when the reference was small in frame, which is an error the range cannot cover.
 
 ## Privacy
 
-Paceball never uploads videos or measurements and does not require an account. Recordings, the sound recorded with them, extracted frames, player profiles and readings live in app storage, and the measurement runs on the phone. Android's own backup may copy app data to the user's backup, and anything a user explicitly saves or shares can remain outside the app.
+Paceball never uploads videos or measurements, has no account, and runs the measurement on the phone. Android's own backup may copy app data to the user's backup, and anything the user saves or shares can remain outside the app.
 
 What can leave the phone, and when:
 
-- **RevenueCat and Google Play, on every launch** of a build with a RevenueCat key: the app asks RevenueCat whether this phone has Pro, and Google Play for the plans, their prices and any existing purchase. This check is not optional, and it is named as such.
-- **Google Play and RevenueCat, when subscribing or restoring:** the purchase, an anonymous app user ID and device details such as the Android and app version.
-- **Sentry, only after opting in:** crash reports, as described above.
+- **RevenueCat and Google Play, on every launch** of a build with a RevenueCat key: whether this phone has Pro, and the plans, their prices and any existing purchase. This check is not optional.
+- **Google Play and RevenueCat, when subscribing or restoring:** the purchase, an anonymous ID and device details.
+- **Sentry, only after opting in:** crash reports, as above.
 - **Whatever the user chooses to share,** such as a result card.
 
-None of these is given videos, sound, player names, marked points or speeds by Paceball.
+Permissions: the camera; the microphone, optional, to keep the sound of the delivery (it measures the same without); and adding an image to the gallery when saving one. Reading the gallery is blocked in the manifest. Replays are muted by default on every clip, and exports are silent by default.
 
-Permissions: the camera, to record; the microphone, optional, to keep the sound of the delivery (recording works without it); and permission to add an image to the gallery when saving one, where Android asks. Reading the gallery is blocked in the manifest.
+The in-app privacy screen and <https://paceballpro.vercel.app/privacy> say the same thing, and tests hold both to it.
 
-The in-app privacy screen (Settings, Privacy and crash reports) and the website's privacy policy, <https://paceballpro.vercel.app/privacy>, say the same thing, and tests hold both to it.
+## Licence
 
-Deleting a delivery removes its private video, extracted frames and stored record. Uninstalling removes app-private data, subject to Android backup and copies the user previously saved or shared.
-
-## Current limitations
-
-- Android only
-- Live capture only; video import is deliberately unavailable
-- Approximately 60 fps capture through third-party Android camera APIs; 120 fps is not promised
-- Manual calibration, release and bounce marking
-- Average speed to bounce, not radar-certified release speed
-- No automatic trajectory, spin measurement or cloud synchronisation
-- Native features require a development or production build and physical-device verification
-
-## License
-
-Paceball is released under the [MIT License](LICENSE). The license file is at the repository root so it is visible from the project landing page.
+MIT. See [LICENSE](LICENSE).
