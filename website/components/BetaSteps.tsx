@@ -1,9 +1,8 @@
 import { BETA_NOTES, BETA_REQUEST_NOTES, betaFlow } from "@/lib/beta";
+import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "./buttons";
 
-const primary =
-  "inline-flex items-center rounded-full bg-accent px-6 py-3 font-semibold text-bg transition-opacity hover:opacity-90";
-const secondary =
-  "inline-flex items-center rounded-full border border-muted px-6 py-3 font-semibold transition-colors hover:border-text";
+const primary = PRIMARY_BUTTON;
+const secondary = SECONDARY_BUTTON;
 
 /**
  * How to get the beta. The Play opt-in link only ever appears as step 2, after
@@ -27,8 +26,8 @@ export function BetaSteps() {
     <div className="max-w-2xl">
       <ol className="space-y-4">
         {flow.steps.map((step, index) => (
-          <li key={step.href} className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-5">
-            <span className="w-14 shrink-0 font-mono text-sm text-muted">Step {index + 1}</span>
+          <li key={step.href} className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-6">
+            <span className="w-16 shrink-0 font-mono text-caption text-muted">Step {index + 1}</span>
             <a
               href={step.href}
               target="_blank"
@@ -48,10 +47,10 @@ export function BetaSteps() {
 
 function Notes({ notes }: { notes: readonly string[] }) {
   return (
-    <ul className="mt-6 space-y-2 text-muted">
+    <ul className="mt-6 space-y-2 text-body text-muted">
       {notes.map((note) => (
-        <li key={note} className="flex gap-3">
-          <span aria-hidden="true" className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted" />
+        <li key={note} className="flex gap-4">
+          <span aria-hidden="true" className="mt-2 h-2 w-2 shrink-0 rounded-full bg-muted" />
           <span>{note}</span>
         </li>
       ))}

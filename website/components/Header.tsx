@@ -7,9 +7,9 @@ export function Header() {
     <header className="border-b border-line">
       <nav
         aria-label="Main"
-        className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6"
+        className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-2 sm:px-6"
       >
-        <Link href="/" aria-label="Paceball home" className="rounded-md py-1">
+        <Link href="/" aria-label="Paceball home" className="inline-flex min-h-target items-center rounded-sm">
           <Wordmark />
         </Link>
         <NavLinks />

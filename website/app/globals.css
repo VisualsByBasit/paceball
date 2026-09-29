@@ -1,17 +1,55 @@
 @import "tailwindcss";
 
 /*
- * Colours mirror src/ui/tokens.ts in the app, so the site and the app match.
- * The accent is used only for meaning: the ball, measured data, primary actions.
+ * Colours, type, radii and sizes mirror src/ui/tokens.ts in the app, so the
+ * site and the app match. The accent is used only for meaning: the ball,
+ * measured data, primary actions. Spacing keeps to the app's steps: 4, 8, 16,
+ * 24, 32 and 48 px (Tailwind 1, 2, 4, 6, 8, 12), and multiples of 48.
  */
 @theme {
   --color-bg: #0A0B0D;
   --color-surface: #14161A;
   --color-line: #1F232A;
+  --color-control: #626A76;
   --color-accent: #D4FF3F;
   --color-warn: #FFC247;
+  --color-danger: #FF6B6B;
   --color-text: #FFFFFF;
   --color-muted: #8A9099;
+
+  /* type: size / line height, weight, tracking, as in the app */
+  --text-reading: 40px;
+  --text-reading--line-height: 48px;
+  --text-reading--font-weight: 900;
+  --text-reading--letter-spacing: -1.5px;
+  --text-h1: 30px;
+  --text-h1--line-height: 36px;
+  --text-h1--font-weight: 800;
+  --text-h1--letter-spacing: -0.8px;
+  --text-h2: 20px;
+  --text-h2--line-height: 28px;
+  --text-h2--font-weight: 700;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-button: 16px;
+  --text-button--line-height: 24px;
+  --text-button--font-weight: 700;
+  --text-caption: 13px;
+  --text-caption--line-height: 18px;
+  --text-caption--font-weight: 500;
+  --text-label: 11px;
+  --text-label--line-height: 16px;
+  --text-label--font-weight: 900;
+  --text-label--letter-spacing: 1.6px;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  /* the smallest touch target, and a primary button's height */
+  --spacing-target: 48px;
+  --spacing-button: 56px;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;

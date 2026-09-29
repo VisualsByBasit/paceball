@@ -11,7 +11,7 @@ export function Wordmark({ size = "sm" }: Props) {
   const large = size === "lg";
   const px = large ? 44 : 28;
   return (
-    <span className="inline-flex items-center gap-2.5">
+    <span className="inline-flex items-center gap-2">
       {HAS_LOGO ? (
         <Image
           src={LOGO_SRC}
@@ -19,7 +19,7 @@ export function Wordmark({ size = "sm" }: Props) {
           width={px}
           height={px}
           priority={large}
-          className="shrink-0 rounded-md object-contain"
+          className="shrink-0 rounded-sm object-contain"
           style={{ width: px, height: px }}
         />
       ) : (
@@ -29,7 +29,7 @@ export function Wordmark({ size = "sm" }: Props) {
         </svg>
       )}
       <span
-        className={`font-mono font-semibold uppercase tracking-[0.2em] ${large ? "text-2xl sm:text-3xl" : "text-sm"}`}
+        className={`font-mono font-bold uppercase tracking-[0.2em] ${large ? "text-h1" : "text-caption"}`}
       >
         Paceball
       </span>

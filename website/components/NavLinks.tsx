@@ -15,7 +15,7 @@ export function NavLinks() {
             <Link
               href={href}
               aria-current={current ? "page" : undefined}
-              className={`rounded-md px-2.5 py-2 text-sm transition-colors hover:text-text ${
+              className={`inline-flex min-h-target items-center rounded-sm px-2 text-body transition-colors hover:text-text ${
                 current ? "text-text" : "text-muted"
               }`}
             >

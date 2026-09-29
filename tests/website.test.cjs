@@ -93,6 +93,36 @@ test('the website accent is the app accent', () => {
   assert.equal(css.toUpperCase(), accent.toUpperCase());
 });
 
+test('the website uses the app tokens: every colour, the type scale, radii and 48 px targets', () => {
+  const tokens = read('src', 'ui', 'tokens.ts');
+  const css = read('website', 'app', 'globals.css');
+  const cssVar = (name) => css.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1].trim();
+  const colours = tokens.slice(tokens.indexOf('export const colors'), tokens.indexOf('} as const'));
+  for (const [, name, value] of colours.matchAll(/(\w+): '(#[0-9A-Fa-f]{6})'/g)) {
+    assert.equal(cssVar(`color-${name}`)?.toUpperCase(), value.toUpperCase(), `colour ${name}`);
+  }
+  for (const name of ['reading', 'h1', 'h2', 'body', 'button', 'caption', 'label']) {
+    const [, size, lineHeight] = tokens.match(new RegExp(`\\b${name}:\\s*\\{ fontSize: (\\d+), lineHeight: (\\d+)`));
+    assert.equal(cssVar(`text-${name}`), `${size}px`, `text ${name}`);
+    assert.equal(cssVar(`text-${name}--line-height`), `${lineHeight}px`, `line height ${name}`);
+  }
+  for (const [, name, value] of tokens.slice(tokens.indexOf('export const radius')).matchAll(/(sm|md|lg|xl): (\d+)/g)) {
+    if (cssVar(`radius-${name}`) === undefined) break;
+    assert.equal(cssVar(`radius-${name}`), `${value}px`, `radius ${name}`);
+  }
+  assert.equal(cssVar('spacing-target'), `${tokens.match(/target: (\d+)/)[1]}px`);
+  assert.equal(cssVar('spacing-button'), `${tokens.match(/button: (\d+),/)[1]}px`);
+  // Every link and button a thumb has to hit is at least the target tall.
+  const nav = read('website', 'components', 'NavLinks.tsx');
+  const footer = read('website', 'components', 'Footer.tsx');
+  assert.match(nav, /min-h-target/);
+  assert.equal((footer.match(/min-h-target/g) ?? []).length, 3);
+  const buttons = read('website', 'components', 'buttons.ts');
+  assert.equal((buttons.match(/min-h-button/g) ?? []).length, 2);
+  assert.match(read('website', 'components', 'BetaSteps.tsx'), /const primary = PRIMARY_BUTTON;\s+const secondary = SECONDARY_BUTTON;/);
+  assert.match(read('website', 'app', 'page.tsx'), /href="#beta" className=\{PRIMARY_BUTTON\}/);
+});
+
 test('website/ is kept out of the app build, typecheck, tests and EAS upload', () => {
   // Metro: a second React in website/node_modules must never be crawled.
   const { resolver } = require('../metro.config.js');
