@@ -81,9 +81,11 @@ test('the native splash is the app\'s own near-black, so the launch intro follow
   assert.equal(plugin[1].backgroundColor, bg);
   // Dark theme too, so a phone in dark mode gets the same near-black.
   assert.equal(plugin[1].dark.backgroundColor, bg);
-  // No splash image: Android 12+ shows the launcher icon on it.
-  assert.equal(plugin[1].image, undefined);
-  assert.equal(plugin[1].dark.image, undefined);
+  // The logo, in both themes: without an image the plugin's theme points at a
+  // splashscreen_logo drawable it never generates, and the release build fails.
+  assert.equal(plugin[1].image, './assets/icon.png');
+  assert.equal(plugin[1].imageWidth, 160);
+  assert.equal(plugin[1].dark.image, './assets/icon.png');
 });
 
 /** Width, height and colour type straight from a PNG's IHDR. */
