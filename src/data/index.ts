@@ -383,9 +383,13 @@ export async function renderExport(options: {
   if (measurementState(session).kind !== 'measured') {
     throw new Error('This delivery has no measured speed to export.');
   }
+  // The card names the bowler. A profile that cannot be read leaves the name off
+  // rather than failing the export.
+  let playerName: string | null = null;
+  try { playerName = readPlayer(session.playerId)?.name ?? null; } catch { playerName = null; }
   // Keep native rendering out of startup and data-only consumers.
   const { renderSessionImage } = await import('../export/renderSessionImage');
-  return renderSessionImage(session, options.watermark);
+  return renderSessionImage(session, options.watermark, { playerName });
 }
 
 export async function listPlayers(): Promise<Player[]> {

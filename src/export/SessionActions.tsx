@@ -3,6 +3,7 @@ import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { deleteSession, renderExport } from '../data';
 import { colors, opacity, radius, space, type } from '../ui/tokens';
 import { saveExportToGallery, shareExport } from './deliveryActions';
+import { EXPORT_HEIGHT, EXPORT_WIDTH } from './layout';
 
 /**
  * Free exports always carry branding. The caller passes watermark={false} only
@@ -74,6 +75,6 @@ const styles = StyleSheet.create({
   button: { backgroundColor: colors.surface, borderRadius: radius.md, padding: space.md, alignItems: 'center' },
   label: { ...type.body, color: colors.text },
   notice: { ...type.caption, color: colors.muted, marginTop: space.sm },
-  preview: { width: '100%', aspectRatio: 1080 / 1200 },
+  preview: { width: '100%', aspectRatio: EXPORT_WIDTH / EXPORT_HEIGHT },
   disabled: { opacity: opacity.disabled },
 });

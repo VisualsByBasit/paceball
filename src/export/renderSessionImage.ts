@@ -8,7 +8,9 @@ import { drawCard } from './drawCard';
 import { createExportFont } from './font';
 import { EXPORT_HEIGHT, EXPORT_WIDTH, frameFileName } from './layout';
 
-export async function renderSessionImage(session: Session, watermark: boolean) {
+export async function renderSessionImage(
+  session: Session, watermark: boolean, details: { playerName?: string | null } = {},
+) {
   if (!isSession(session)) throw new Error('Cannot export an invalid saved delivery.');
   if (measurementState(session).kind !== 'measured') {
     throw new Error('This delivery has no measured speed to export.');
@@ -28,15 +30,16 @@ export async function renderSessionImage(session: Session, watermark: boolean) {
   if (!photo) throw new Error('The saved release frame could not be decoded.');
   const surface = Skia.Surface.MakeOffscreen(EXPORT_WIDTH, EXPORT_HEIGHT);
   if (!surface) { photo.dispose(); throw new Error('Could not allocate the export image.'); }
-  const fonts = new Map<number, SkFont>();
-  const font = (size: number) => {
-    let value = fonts.get(size);
-    if (!value) { value = createExportFont(size); fonts.set(size, value); }
+  const fonts = new Map<string, SkFont>();
+  const font = (size: number, bold = false) => {
+    const key = `${size}${bold ? 'b' : ''}`;
+    let value = fonts.get(key);
+    if (!value) { value = createExportFont(size, bold); fonts.set(key, value); }
     return value;
   };
   let output: File | undefined;
   try {
-    drawCard(Skia, surface.getCanvas(), photo, session, watermark, font, colors);
+    drawCard(Skia, surface.getCanvas(), photo, session, watermark, font, colors, details);
     surface.flush();
     const snapshot = surface.makeImageSnapshot();
     let png: Uint8Array;

@@ -47,6 +47,7 @@ Module._load = function(request, parent, main) {
   };
   if (request === '../ui/tokens') return { colors: {
     bg: '#0A0B0D', surface: '#14161A', text: '#FFFFFF', muted: '#8A9099', accent: '#D4FF3F',
+    warn: '#FFC247',
   } };
   if (request === 'expo-media-library/legacy') return {
     requestPermissionsAsync: async (...args) => { requests.push(args); return permission; },
@@ -97,7 +98,7 @@ test('production renderer writes a real PNG and gallery saving requests write-on
   assert.ok(output.imagePath.startsWith('file:///app/cache/paceball-exports/'));
   const bytes = Buffer.from(files.get(output.imagePath));
   assert.equal(bytes.readUInt32BE(16), 1080);
-  assert.equal(bytes.readUInt32BE(20), 1200);
+  assert.equal(bytes.readUInt32BE(20), 1350);
   await actions.saveExportToGallery(output.imagePath);
   assert.deepEqual(requests, [[true, []]]);
   assert.deepEqual(saved, [output.imagePath]);

@@ -2,10 +2,10 @@ import { matchFont, type SkFont } from '@shopify/react-native-skia';
 
 // Covers the card's fixed captions, calibration labels, numbers and symbols.
 // Do not silently save a blank card when Android cannot resolve a typeface.
-const REQUIRED_GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .:/-±·';
+const REQUIRED_GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:/%-±·';
 
-export function createExportFont(size: number): SkFont {
-  const font = matchFont({ fontFamily: 'sans-serif', fontSize: size });
+export function createExportFont(size: number, bold = false): SkFont {
+  const font = matchFont({ fontFamily: 'sans-serif', fontSize: size, fontWeight: bold ? 'bold' : 'normal' });
   try {
     const glyphs = font.getGlyphIDs(REQUIRED_GLYPHS);
     // getGlyphWidths is available on both native Skia and CanvasKit; this
