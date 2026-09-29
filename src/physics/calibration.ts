@@ -77,6 +77,21 @@ export const CALIBRATION_ORDER: CalibrationMethod[] = [
   'height',
 ];
 
+/**
+ * What the pickers offer: every method but height, which is hidden until it
+ * has been tested on the phone. Its spec, its uncertainty and the profile
+ * field all stay, so a delivery saved against a height still opens and reads
+ * exactly as it did.
+ */
+export const OFFERED_CALIBRATIONS: CalibrationMethod[] = CALIBRATION_ORDER.filter(
+  (method) => method !== 'height'
+);
+
+/** A method the pickers offer: the one given, or stumps for one they do not. */
+export function offeredCalibration(method: CalibrationMethod): CalibrationMethod {
+  return OFFERED_CALIBRATIONS.includes(method) ? method : 'stumps';
+}
+
 export const CALIBRATION_SPECS: Record<CalibrationMethod, CalibrationSpec> = {
   stumps: {
     method: 'stumps',

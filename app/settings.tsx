@@ -14,7 +14,7 @@ import { useMicrophonePermission } from 'react-native-vision-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { microphoneSettingLine } from '../src/capture/microphone';
 import { getActivePlayer } from '../src/data';
-import { CALIBRATION_ORDER, CALIBRATION_SPECS } from '../src/physics/calibration';
+import { CALIBRATION_SPECS, OFFERED_CALIBRATIONS, offeredCalibration } from '../src/physics/calibration';
 import {
   allowanceLine,
   MANAGE_SUBSCRIPTION_URL,
@@ -253,12 +253,8 @@ function PlayerPage() {
           <Text style={[styles.aboutValue, styles.tabular]}>EU {player.shoeSizeEu}</Text>
         </View>
       ) : null}
-      {player.heightCm !== undefined ? (
-        <View style={styles.aboutRow}>
-          <Text style={styles.optionTitle}>Height</Text>
-          <Text style={[styles.aboutValue, styles.tabular]}>{player.heightCm} cm</Text>
-        </View>
-      ) : null}
+      {/* Height is kept on the profile but not shown while the height
+          reference is hidden (OFFERED_CALIBRATIONS). */}
     </Section>
   );
 }
@@ -299,9 +295,9 @@ function MeasurementPage() {
           What Mark opens on. You can still pick another for any delivery.
         </Text>
         <View accessibilityRole="radiogroup">
-          {CALIBRATION_ORDER.map((method) => {
+          {OFFERED_CALIBRATIONS.map((method) => {
             const spec = CALIBRATION_SPECS[method];
-            const on = settings.calibrationMethod === method;
+            const on = offeredCalibration(settings.calibrationMethod) === method;
             return (
               <Pressable
                 key={method}

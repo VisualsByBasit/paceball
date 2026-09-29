@@ -48,6 +48,7 @@ import {
   useEntitlements,
   usePurchases,
 } from '../src/purchases';
+import { offeredCalibration } from '../src/physics/calibration';
 import { getSettings, updateSettings, useSettings } from '../src/settings';
 import { ActionButton } from '../src/ui/ActionButton';
 import { AllowanceLine } from '../src/ui/AllowanceLine';
@@ -164,7 +165,10 @@ export default function CaptureScreen() {
       if (swapTimeout.current !== null) clearTimeout(swapTimeout.current);
     };
   }, []);
-  const { exposureBias, lastRecording, calibrationMethod } = useSettings();
+  const { exposureBias, lastRecording, calibrationMethod: savedMethod } = useSettings();
+  // The guide for the reference Mark will open on: a default saved before
+  // height was hidden opens on stumps.
+  const calibrationMethod = offeredCalibration(savedMethod);
   // Starts from the Settings default on every visit and is never written back:
   // it is this session's light, not a preference.
   const [bias, setBias] = useState<number>(exposureBias);

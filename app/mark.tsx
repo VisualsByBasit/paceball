@@ -17,6 +17,7 @@ import { getActivePlayer, updatePlayer } from '../src/data';
 import {
   CALIBRATION_SPECS,
   formatMetres,
+  offeredCalibration,
   resolveCalibrationMetres,
   shoeLengthCmFrom,
   type CalibrationSpec,
@@ -163,7 +164,10 @@ export default function MarkScreen() {
   // The scale reference. Every reading is scaled by it, so it is chosen up
   // front rather than assumed to be a full pitch.
   // Opens on the default from Settings; stumps unless the user chose otherwise.
-  const [method, setMethod] = useState<CalibrationMethod>(() => getSettings().calibrationMethod);
+  // A default saved before height was hidden opens on stumps instead.
+  const [method, setMethod] = useState<CalibrationMethod>(() =>
+    offeredCalibration(getSettings().calibrationMethod)
+  );
   const [markers, setMarkers] = useState<MarkersDraft>({
     source: 'measured',
     metres: '',

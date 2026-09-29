@@ -14,7 +14,10 @@ The scale reference is the RULER, not the distance travelled.
    Four references, picked before marking: stumps (20.12 m, the
    default), markers (a distance the user measures), ball (0.072 m),
    bowler height (from the player profile). Never assume 20.12:
-   calRealMetres comes from the chosen method.
+   calRealMetres comes from the chosen method. Height is hidden from
+   every picker until it is tested (OFFERED_CALIBRATIONS); its spec,
+   uncertainty and the profile field stay, so deliveries saved against
+   a height still open and read as they did.
 2. Mark release and bounce → pixel distance the ball travelled
 3. pixel distance / pixelsPerMetre → real metres (~11 m, NOT 20.12)
 4. frames between marks / fps → seconds

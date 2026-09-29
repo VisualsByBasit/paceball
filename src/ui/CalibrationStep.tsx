@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import {
   A4_LONG_EDGE_MM,
-  CALIBRATION_ORDER,
+  OFFERED_CALIBRATIONS,
   CALIBRATION_SPECS,
   MARKER_SOURCE_ORDER,
   MARKER_SOURCE_SPECS,
@@ -150,7 +150,8 @@ export function CalibrationStep({
           </Text>
 
           <View style={styles.options}>
-            {CALIBRATION_ORDER.map((key) => {
+            {/* Height is not offered for now; see OFFERED_CALIBRATIONS. */}
+            {OFFERED_CALIBRATIONS.map((key) => {
               const option = CALIBRATION_SPECS[key];
               // Height is only offered when there is a height to offer.
               const disabled = option.source === 'profile' && heightCm === null;
