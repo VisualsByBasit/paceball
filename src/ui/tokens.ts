@@ -77,8 +77,6 @@ export const size = {
   loupe: 96,
   /** The PACEBALL wordmark in the launch intro. */
   introWordmark: 44,
-  /** The emblem shown once a purchase is confirmed. */
-  emblem: 96,
   /** The widest the Result speedometer is drawn, and its dial's stroke. */
   gauge: 280,
   gaugeStroke: 10,
@@ -166,11 +164,23 @@ export const motion = {
   /** The wicket locking once a reading lands: the bail falls, then it all turns lime. */
   lock: { bail: 180, colour: 120 },
   /**
-   * The purchase emblem, as the time each part finishes: the stumps fade in,
-   * the ball rolls up beside them, the bail settles, then the copy arrives.
-   * 1100 ms from the first stump to the last line of copy, with no springs.
+   * The purchase celebration, as the moment each beat starts: the ball is
+   * bowled, hits the stumps, the PRO badge starts to rise, lands, the light
+   * sweeps across it, the copy arrives, then the unlocked list ticks in one
+   * item every `stagger`. About 2.5 s in all, with no springs.
    */
-  celebrate: { stumps: 180, ball: 650, bail: 850, copy: 1100 },
+  celebrate: {
+    ball: 150,
+    impact: 600,
+    badge: 900,
+    land: 1350,
+    sweep: 1900,
+    copy: 1400,
+    list: 1800,
+    stagger: 110,
+    tick: 180,
+    total: 2500,
+  },
   /** A notice arriving. Opacity only, never a shake. */
   notice: 120,
   /** The record button turning from a circle to a rounded square and back, with the recorder. */

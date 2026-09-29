@@ -57,7 +57,8 @@ test('the brief\'s tokens exist, so no screen has to invent one', () => {
   assert.match(tokens, /sheet: \{ in: 220, out: 180 \}/);
   assert.match(tokens, /press: \{ in: 80, out: 120 \}/);
   assert.match(tokens, /lock: \{ bail: 180, colour: 120 \}/);
-  assert.match(tokens, /celebrate: \{ stumps: 180, ball: 650, bail: 850, copy: 1100 \},/);
+  // The purchase celebration, rebuilt at about 2.5 s at AB's request (was the brief's 1100 ms emblem).
+  assert.match(tokens, /celebrate: \{[\s\S]*?total: 2500,/);
   assert.match(tokens, /standardCurve: \[0\.2, 0, 0, 1\]/);
 });
 

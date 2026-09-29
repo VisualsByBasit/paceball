@@ -62,6 +62,9 @@ test('every kit shader compiles, and every uniform it declares is one the kit pa
     CYLINDER: 'src/ui/cricket3d/Kit.tsx',
     PITCH: 'src/ui/cricket3d/Kit.tsx',
     STADIUM: 'src/ui/cricket3d/Kit.tsx',
+    BEZEL: 'src/ui/SpeedGauge.tsx',
+    DIAL: 'src/ui/SpeedGauge.tsx',
+    PLATE: 'src/ui/CelebrationStage.tsx',
   };
   for (const [name, source] of Object.entries(S.SHADERS)) {
     const effect = CK.RuntimeEffect.Make(source);
