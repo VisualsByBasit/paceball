@@ -27,11 +27,11 @@ test('every link and settings jump handles the promise it returns', () => {
 });
 
 test('the paywall is never opened underneath the share sheet', () => {
-  const analysis = read('app/analysis.tsx');
-  const locked = analysis.slice(analysis.indexOf('if (!canExportWithoutWatermark(entitlements)) {'));
+  const sheet = read('src/ui/DeliveryShareSheet.tsx');
+  const locked = sheet.slice(sheet.indexOf('if (!clean) {'));
   // The sheet closes first, then the paywall opens where it can be seen.
   assert.match(locked, /onLeave\(\);\s*router\.push\(\{ pathname: '\/paywall', params: \{ context: 'export' \} \}\);/);
-  assert.match(analysis, /<CleanExport sessionId=\{session\.id\} onLeave=\{\(\) => setSharing\(false\)\} \/>/);
+  assert.match(sheet, /<ImageShare sessionId=\{sessionId\} clean=\{clean\} onLeave=\{onClose\} \/>/);
 });
 
 test('the debug screen redirects home outside development', () => {

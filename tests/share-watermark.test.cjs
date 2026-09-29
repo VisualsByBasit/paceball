@@ -15,15 +15,17 @@ test('the share card is branded unless the caller says the entitlement allows ot
   assert.doesNotMatch(actions, /watermark: false/);
 });
 
-test('Result shares a clean card for Pro and a branded one for everyone else', () => {
-  const result = read('app/result.tsx');
-  // The gate decides, read from the entitlement when the card is made.
-  assert.match(result, /<SessionActions\s+sessionId=\{savedId\}\s+watermark=\{!canExportWithoutWatermark\(entitlements\)\}\s*\/>/);
-  assert.match(result, /const entitlements = useEntitlements\(\);/);
-  // Still only for a measured delivery.
-  assert.match(result, /\{savedId && measured \? \(/);
-  // Analysis keeps its branded card beside the separate clean export.
-  const analysis = read('app/analysis.tsx');
-  const actions = analysis.slice(analysis.indexOf('<SessionActions'), analysis.indexOf('/>', analysis.indexOf('<SessionActions')));
-  assert.doesNotMatch(actions, /watermark/);
+test('the share sheet makes a branded card, and a clean one only for Pro', () => {
+  const sheet = read('src/ui/DeliveryShareSheet.tsx');
+  // The gate decides, read from the entitlement.
+  assert.match(sheet, /const entitlements = useEntitlements\(\);\s*const clean = canExportWithoutWatermark\(entitlements\);/);
+  // "Create image" is the branded card, for everyone.
+  assert.match(sheet, /onPress=\{\(\) => create\(false\)\}/);
+  assert.match(sheet, /renderExport\(\{ sessionId, watermark: !withoutWatermark \}\)/);
+  // "Remove watermark" sells Pro to a free user, and makes the clean card only for Pro.
+  const remove = sheet.slice(sheet.indexOf('const removeWatermark = () => {'), sheet.indexOf('return (', sheet.indexOf('const removeWatermark = () => {')));
+  assert.match(remove, /if \(!clean\) \{[\s\S]*?router\.push\(\{ pathname: '\/paywall', params: \{ context: 'export' \} \}\);\s*return;\s*\}\s*create\(true\);/);
+  // Still only for a measured delivery, on both screens.
+  assert.match(read('app/result.tsx'), /\{savedId && measured \? \(\s*<DeliveryShareSheet/);
+  assert.match(read('app/analysis.tsx'), /\{measured \? \(\s*<DeliveryShareSheet/);
 });

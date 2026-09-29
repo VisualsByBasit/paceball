@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,13 +15,9 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listFrames } from '../src/capture/useFrames';
-import { getSession, renderExport } from '../src/data';
-import { saveExportToGallery, shareExport } from '../src/export/deliveryActions';
-import { SessionActions } from '../src/export/SessionActions';
-import { VideoActions } from '../src/export/VideoActions';
+import { getSession } from '../src/data';
 import { CALIBRATION_SPECS, formatMetres, travelWarning } from '../src/physics/calibration';
 import { measurementState } from '../src/physics/measurementState';
-import { canExportWithoutWatermark, useEntitlements } from '../src/purchases';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { useHoldRepeat } from '../src/ui/useHoldRepeat';
@@ -30,7 +25,7 @@ import { useSettings } from '../src/settings';
 import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 import { AppBar } from '../src/ui/AppBar';
 import { BottomSheet } from '../src/ui/BottomSheet';
-import { ShareChoice } from '../src/ui/ShareChoice';
+import { DeliveryShareSheet } from '../src/ui/DeliveryShareSheet';
 import { Notice } from '../src/ui/Notice';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
 import { CheckTag } from '../src/ui/CheckTag';
@@ -363,8 +358,6 @@ function Replay({
   // so the video stage keeps its full height whether or not they are open.
   const [sharing, setSharing] = useState(false);
   const [working, setWorking] = useState(false);
-  // Read when a clip is made, as the image card's gate is: Pro's clip is clean.
-  const entitlements = useEntitlements();
   // What the reading block shows: the speed with its range, or nothing at all.
   const view = readingView(state, unit);
 
@@ -629,159 +622,18 @@ function Replay({
         )}
       </BottomSheet>
 
+      {/* The same sheet as Result, with deleting the delivery below it. */}
       {measured ? (
-        <Modal
+        <DeliveryShareSheet
           visible={sharing}
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-          onRequestClose={() => setSharing(false)}
-        >
-          <View style={[styles.sheetFrame, { paddingTop: insets.top + space.xxl }]}>
-            <Pressable
-              style={[StyleSheet.absoluteFill, styles.scrim]}
-              onPress={() => setSharing(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Close sharing"
-            />
-            <View style={[styles.sheet, { paddingBottom: insets.bottom + space.md }]}>
-              <View style={styles.sheetHeader}>
-                <Text style={styles.statsLabel}>SHARE THIS DELIVERY</Text>
-                <Pressable
-                  onPress={() => setSharing(false)}
-                  hitSlop={space.md}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.headerAction}>Close</Text>
-                </Pressable>
-              </View>
-              <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
-                <ShareChoice
-                  image={
-                    <>
-                      <CleanExport sessionId={session.id} onLeave={() => setSharing(false)} />
-                      <SessionActions
-                        sessionId={session.id}
-                        onDeleted={() => {
-                          // The record is gone, so there is nothing left to replay.
-                          setSharing(false);
-                          onBack();
-                        }}
-                      />
-                    </>
-                  }
-                  video={(useImage) => (
-                    <VideoActions
-                      sessionId={session.id}
-                      watermark={!canExportWithoutWatermark(entitlements)}
-                      onUseImage={useImage}
-                    />
-                  )}
-                />
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-      ) : null}
-    </View>
-  );
-}
-
-/**
- * The watermark-free export. Free exports carry the watermark, which is the
- * growth loop, so for a free user this option sells Pro instead of doing it.
- *
- * SessionActions is Mustafa's and always asks for the watermarked card, so the
- * clean render is made here through the same renderExport his component uses,
- * with the flag it already accepts.
- */
-function CleanExport({ sessionId, onLeave }: { sessionId: string; onLeave: () => void }) {
-  const router = useRouter();
-  const entitlements = useEntitlements();
-  const [busy, setBusy] = useState(false);
-  const [imagePath, setImagePath] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  const run = async (action: () => Promise<void>) => {
-    if (busy) return;
-    setBusy(true);
-    setNotice(null);
-    try {
-      await action();
-    } catch (e) {
-      setNotice(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (!canExportWithoutWatermark(entitlements)) {
-    return (
-      <Pressable
-        style={styles.cleanLocked}
-        onPress={() => {
-          // The sheet is a Modal, drawn above every screen. Left open, it
-          // would hide the paywall this opens until it was closed.
-          onLeave();
-          router.push({ pathname: '/paywall', params: { context: 'export' } });
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Export without the watermark, with Paceball Pro"
-      >
-        <Text style={styles.cleanLockedTitle}>Export without the watermark</Text>
-        <Text style={styles.cleanLockedDetail}>
-          Free cards carry the Paceball mark. Pro cards carry your reading only.
-        </Text>
-      </Pressable>
-    );
-  }
-
-  return (
-    <View>
-      <Pressable
-        style={[styles.cleanButton, busy && styles.off]}
-        disabled={busy}
-        onPress={() =>
-          void run(async () => {
-            const result = await renderExport({ sessionId, watermark: false });
-            setImagePath(result.imagePath);
-          })
-        }
-        accessibilityRole="button"
-      >
-        <Text style={styles.cleanButtonText}>
-          {busy ? 'Working…' : imagePath ? 'Create clean image again' : 'Create image without the watermark'}
-        </Text>
-      </Pressable>
-      {imagePath ? (
-        <>
-          <Pressable
-            style={[styles.cleanButton, busy && styles.off]}
-            disabled={busy}
-            onPress={() =>
-              void run(async () => {
-                await saveExportToGallery(imagePath);
-                setNotice('Clean image saved to gallery.');
-              })
-            }
-            accessibilityRole="button"
-          >
-            <Text style={styles.cleanButtonText}>Save clean image to gallery</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.cleanButton, busy && styles.off]}
-            disabled={busy}
-            onPress={() => void run(() => shareExport(imagePath))}
-            accessibilityRole="button"
-          >
-            <Text style={styles.cleanButtonText}>Share clean image</Text>
-          </Pressable>
-        </>
-      ) : null}
-      {notice ? (
-        <Text style={styles.cleanNotice} accessibilityLiveRegion="polite">
-          {notice}
-        </Text>
+          onClose={() => setSharing(false)}
+          sessionId={session.id}
+          onDeleted={() => {
+            // The record is gone, so there is nothing left to replay.
+            setSharing(false);
+            onBack();
+          }}
+        />
       ) : null}
     </View>
   );
@@ -802,10 +654,8 @@ const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.lg },
 
   bar: { paddingHorizontal: space.md },
-  headerAction: { ...type.caption, color: colors.muted },
 
   stats: { paddingHorizontal: space.lg, paddingBottom: space.sm, alignItems: 'center' },
-  statsLabel: { ...type.label, color: colors.muted },
   noSpeed: { ...type.h2, color: colors.text, paddingVertical: space.sm },
   note: { alignSelf: 'stretch', marginTop: space.sm },
   workingLink: { minHeight: size.target, justifyContent: 'center' },
@@ -822,50 +672,6 @@ const styles = StyleSheet.create({
   shareButtonText: { ...type.caption, color: colors.text },
   shareButtonTextOn: { color: colors.bg, fontWeight: '800' },
 
-  sheetFrame: { flex: 1, justifyContent: 'flex-end' },
-  scrim: {
-    backgroundColor: colors.bg,
-    opacity: opacity.scrim,
-  },
-  // Shrinks to fit under the top inset, so a tall export preview scrolls inside
-  // the sheet instead of pushing it off the screen.
-  sheet: {
-    flexShrink: 1,
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    borderTopWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingHorizontal: space.lg,
-    paddingTop: space.md,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cleanLocked: {
-    borderRadius: radius.md,
-    borderWidth: stroke.hairline,
-    borderColor: colors.accent,
-    padding: space.md,
-    marginBottom: space.sm,
-  },
-  cleanLockedTitle: { ...type.body, color: colors.accent, fontWeight: '800' },
-  cleanLockedDetail: { ...type.caption, color: colors.muted, marginTop: space.xs },
-  cleanButton: {
-    backgroundColor: colors.surface,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    padding: space.md,
-    alignItems: 'center',
-    marginBottom: space.sm,
-  },
-  cleanButtonText: { ...type.body, color: colors.text },
-  cleanNotice: { ...type.caption, color: colors.muted, marginBottom: space.sm },
-  sheetScroll: { flexGrow: 0 },
-  sheetContent: { paddingBottom: space.md },
   row: {
     flexDirection: 'row',
     alignItems: 'baseline',

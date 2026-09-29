@@ -226,9 +226,11 @@ onboarding. It renders the store's offering and buys and restores
 through RevenueCat. A purchase the store confirms with the `pro`
 entitlement replaces it with the celebration, once; a restore never
 does, and the route shows nothing when opened any other way. Result and
-Analysis share either an image card or a video clip, chosen in the
-share sheet; Pro's carry no watermark, everyone else's carry the
-"PACEBALL · FREE" strip between the speed and its range. The clip runs
+Analysis open one share sheet (src/ui/DeliveryShareSheet.tsx): an image
+card or a video clip. "Create image" makes the card with the "PACEBALL ·
+FREE" strip between the speed and its range; "Remove watermark" opens the
+paywall for a free user and makes the clean card for Pro. Pro's clips
+carry no watermark, everyone else's carry the strip. The clip runs
 from 0.5 s before release to 0.75 s after bounce, timed from the video
 track's own frame times, at most 1080 on the long edge and never scaled
 up. Its HUD shows the whole reading on an opaque plate from the first

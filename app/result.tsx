@@ -12,8 +12,6 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createPlayer, getActivePlayer, saveSession } from '../src/data';
-import { SessionActions } from '../src/export/SessionActions';
-import { VideoActions } from '../src/export/VideoActions';
 import { restoredGeometry } from '../src/data/geometry';
 import {
   CALIBRATION_SPECS,
@@ -31,12 +29,10 @@ import {
 import { referenceFraming, spanBetween } from '../src/capture/framing';
 import { releaseFrameUri } from '../src/capture/useFrames';
 import { measurementState } from '../src/physics/measurementState';
-import { canExportWithoutWatermark, useEntitlements } from '../src/purchases';
 import { useSettings } from '../src/settings';
 import { ActionButton } from '../src/ui/ActionButton';
 import { AppBar } from '../src/ui/AppBar';
-import { BottomSheet } from '../src/ui/BottomSheet';
-import { ShareChoice } from '../src/ui/ShareChoice';
+import { DeliveryShareSheet } from '../src/ui/DeliveryShareSheet';
 import { FrameMarker } from '../src/ui/FrameMarker';
 import { Notice } from '../src/ui/Notice';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
@@ -142,8 +138,6 @@ export default function ResultScreen() {
 
   // Display only. The reading is computed and saved in km/h whatever this says.
   const { unit } = useSettings();
-  // Read when the card is made, never stored with the delivery.
-  const entitlements = useEntitlements();
 
   const videoPath = first(params.videoPath);
   const framesDir = first(params.framesDir);
@@ -589,27 +583,12 @@ export default function ResultScreen() {
 
       {largeText ? null : footer}
 
-      {/* Nothing to put on a share card or clip without a measured speed.
-          Pro's are clean, as in Analysis; everyone else's carry the mark. */}
-      <BottomSheet visible={sharing} title="Share reading" onClose={() => setSharing(false)}>
-        {savedId && measured ? (
-          <ShareChoice
-            image={
-              <SessionActions
-                sessionId={savedId}
-                watermark={!canExportWithoutWatermark(entitlements)}
-              />
-            }
-            video={(useImage) => (
-              <VideoActions
-                sessionId={savedId}
-                watermark={!canExportWithoutWatermark(entitlements)}
-                onUseImage={useImage}
-              />
-            )}
-          />
-        ) : null}
-      </BottomSheet>
+      {/* Nothing to put on a share card or clip without a measured speed. The
+          same sheet as Analysis: image card or video clip, and the watermark
+          removed with Pro. */}
+      {savedId && measured ? (
+        <DeliveryShareSheet visible={sharing} onClose={() => setSharing(false)} sessionId={savedId} />
+      ) : null}
     </View>
   );
 }

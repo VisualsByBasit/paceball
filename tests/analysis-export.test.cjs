@@ -18,28 +18,28 @@ function region(start, end) {
 }
 
 test('a past delivery can be shared from Analysis, but only a measured one', () => {
-  assert.equal((source.match(/<SessionActions\b/g) ?? []).length, 1);
+  assert.equal((source.match(/<DeliveryShareSheet\b/g) ?? []).length, 1);
 
-  // Both the Share button and the sheet holding SessionActions sit behind the
-  // measured guard, and measured comes from measurementState, never the record.
+  // Both the Share button and the sheet sit behind the measured guard, and
+  // measured comes from measurementState, never the record.
   assert.match(source, /const state = useMemo\(\(\) => measurementState\(session\), \[session\]\);/);
   assert.match(source, /const measured = state\.kind === 'measured';/);
   assert.match(source, /\{measured \? \(\s*<Pressable\s+style=\{\[styles\.shareButton/);
-  const sheet = region('{measured ? (\n        <Modal', '</Modal>');
-  assert.match(sheet, /<SessionActions\b/);
+  const sheet = region('{measured ? (\n        <DeliveryShareSheet', '/>');
+  assert.match(sheet, /sessionId=\{session\.id\}/);
 
   assert.doesNotMatch(source, /session\.speedKmh|session\.errorKmh/);
 });
 
 test('deleting from Analysis leaves the screen for the dead record', () => {
-  const actions = region('<SessionActions', '/>');
-  assert.match(actions, /sessionId=\{session\.id\}/);
-  assert.match(actions, /onDeleted=\{\(\) => \{[\s\S]*onBack\(\);[\s\S]*\}\}/);
+  const sheet = region('<DeliveryShareSheet', '/>');
+  assert.match(sheet, /onDeleted=\{\(\) => \{[\s\S]*onBack\(\);[\s\S]*\}\}/);
 });
 
 test('the share controls keep the stage out of the layout and use no em dashes', () => {
-  // A Modal overlays the screen, so opening it takes no height from the stage.
-  const sheet = region('{measured ? (\n        <Modal', '</Modal>');
+  // The sheet is a Modal over the screen, so opening it takes no height from the stage.
+  const sheet = region('{measured ? (\n        <DeliveryShareSheet', '/>');
   const button = region('{measured ? (\n            <Pressable', '</Pressable>');
   for (const copy of [sheet, button]) assert.doesNotMatch(copy, /—/);
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'BottomSheet.tsx'), 'utf8'), /<Modal/);
 });

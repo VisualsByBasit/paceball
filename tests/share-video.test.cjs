@@ -18,16 +18,12 @@ test('the share sheet offers an image card and a video clip, opening on the imag
 });
 
 test('Result and Analysis both offer the clip, only for a measured delivery, gated like the card', () => {
-  const result = read('app/result.tsx');
-  const sheet = result.slice(result.indexOf('<BottomSheet visible={sharing}'), result.indexOf('</BottomSheet>', result.indexOf('<BottomSheet visible={sharing}')));
-  assert.match(sheet, /\{savedId && measured \? \(\s*<ShareChoice/);
-  assert.match(sheet, /<VideoActions\s+sessionId=\{savedId\}\s+watermark=\{!canExportWithoutWatermark\(entitlements\)\}\s+onUseImage=\{useImage\}/);
-
-  const analysis = read('app/analysis.tsx');
-  const modal = analysis.slice(analysis.indexOf('{measured ? (\n        <Modal'), analysis.indexOf('</Modal>'));
-  assert.match(modal, /<ShareChoice/);
-  assert.match(modal, /<VideoActions\s+sessionId=\{session\.id\}\s+watermark=\{!canExportWithoutWatermark\(entitlements\)\}\s+onUseImage=\{useImage\}/);
-  assert.match(analysis, /const entitlements = useEntitlements\(\);/);
+  const sheet = read('src/ui/DeliveryShareSheet.tsx');
+  assert.match(sheet, /<ShareChoice/);
+  assert.match(sheet, /<VideoActions sessionId=\{sessionId\} watermark=\{!clean\} onUseImage=\{useImage\} \/>/);
+  assert.match(sheet, /const clean = canExportWithoutWatermark\(entitlements\);/);
+  assert.match(read('app/result.tsx'), /\{savedId && measured \? \(\s*<DeliveryShareSheet visible=\{sharing\} onClose=\{\(\) => setSharing\(false\)\} sessionId=\{savedId\} \/>/);
+  assert.match(read('app/analysis.tsx'), /\{measured \? \(\s*<DeliveryShareSheet\s+visible=\{sharing\}\s+onClose=\{\(\) => setSharing\(false\)\}\s+sessionId=\{session\.id\}/);
 });
 
 test('a free clip is branded unless the caller says the entitlement allows otherwise', () => {

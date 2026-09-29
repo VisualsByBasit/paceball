@@ -328,7 +328,7 @@ test('the store layer reports cancellation and never claims an unchecked success
 test('every trigger routes to the paywall with its own context', () => {
   const triggers = [
     ['app/capture.tsx', 'limit'],
-    ['app/analysis.tsx', 'export'],
+    ['src/ui/DeliveryShareSheet.tsx', 'export'],
     ['app/history.tsx', 'compare'],
     ['app/settings.tsx', 'pro'],
   ];
@@ -343,7 +343,9 @@ test('every trigger routes to the paywall with its own context', () => {
 
   // Each trigger asks its own gate first.
   assert.match(read('app/capture.tsx'), /const allowed = canAnalyse\(entitlements\);/);
-  assert.match(read('app/analysis.tsx'), /if \(!canExportWithoutWatermark\(entitlements\)\) \{/);
+  const share = read('src/ui/DeliveryShareSheet.tsx');
+  assert.match(share, /const clean = canExportWithoutWatermark\(entitlements\);/);
+  assert.match(share, /if \(!clean\) \{/);
   assert.match(read('app/history.tsx'), /if \(!canCompare\(entitlements\)\) \{/);
   // The Settings row is there whatever the entitlement, so Pro can be found.
   assert.match(read('app/settings.tsx'), /<Section title="PACEBALL PRO">/);
@@ -411,13 +413,7 @@ test('the new copy uses no em dashes', () => {
   assert.ok(proSection.length > 0);
   assert.doesNotMatch(proSection, /—/);
 
-  const analysis = read('app/analysis.tsx');
-  const cleanExport = analysis.slice(
-    analysis.indexOf('function CleanExport'),
-    analysis.indexOf('function Stat('),
-  );
-  assert.ok(cleanExport.length > 0);
-  assert.doesNotMatch(cleanExport, /—/);
+  assert.doesNotMatch(read('src/ui/DeliveryShareSheet.tsx'), /—/);
 
   const capture = read('app/capture.tsx');
   assert.match(capture, /'Tap to see Pro\.'/);
