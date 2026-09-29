@@ -70,3 +70,15 @@ test('the microphone permission is declared exactly because capture records soun
   );
   assert.deepEqual(requesters, [path.join('app', 'capture.tsx')]);
 });
+
+test('the native splash is the app\'s own near-black, so the launch intro follows it without a flash', () => {
+  // Top-level `splash` only configures the web splash in this SDK; Android's
+  // comes from the expo-splash-screen plugin.
+  assert.equal(appJson().splash, undefined);
+  const plugin = appJson().plugins.find((p) => Array.isArray(p) && p[0] === 'expo-splash-screen');
+  assert.ok(plugin, 'expo-splash-screen is configured');
+  const bg = read('src/ui/tokens.ts').match(/bg: '(#[0-9A-Fa-f]{6})'/)[1];
+  assert.equal(plugin[1].backgroundColor, bg);
+  // No new assets: the default icon stays.
+  assert.equal(plugin[1].image, undefined);
+});

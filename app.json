@@ -38,7 +38,13 @@
         }
       ],
       "expo-video",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0A0B0D"
+        }
+      ]
     ]
   }
 }
