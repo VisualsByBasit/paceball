@@ -6,6 +6,7 @@ import { saveExportToGallery, shareExport } from '../export/deliveryActions';
 import { EXPORT_HEIGHT, EXPORT_WIDTH } from '../export/layout';
 import { VideoActions } from '../export/VideoActions';
 import { canExportWithoutWatermark, useEntitlements } from '../purchases';
+import { useSettings } from '../settings';
 import { ActionButton } from './ActionButton';
 import { BottomSheet } from './BottomSheet';
 import { createDeliveryDelete, DELETE_CONFIRM } from './deleteDelivery';
@@ -57,11 +58,14 @@ export function DeliveryShareSheet({ visible, onClose, sessionId, onDeleted }: D
 type Made = { path: string; clean: boolean };
 
 /**
- * The image card: created branded, or clean for Pro, then shared or saved.
- * One action at a time; each says what it is doing while it runs.
+ * The image card: the Pro card for Pro, from either button, and the free card
+ * for everyone else, then shared or saved. One action at a time; each says
+ * what it is doing while it runs.
  */
 function ImageShare({ sessionId, clean, onLeave }: { sessionId: string; clean: boolean; onLeave: () => void }) {
   const router = useRouter();
+  // The card writes the speed and its range in the unit the player reads in.
+  const { unit } = useSettings();
   const lock = useRef(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [made, setMade] = useState<Made | null>(null);
@@ -85,8 +89,9 @@ function ImageShare({ sessionId, clean, onLeave }: { sessionId: string; clean: b
 
   const create = (withoutWatermark: boolean) =>
     void run(withoutWatermark ? 'Creating clean image...' : 'Creating image...', async () => {
-      const result = await renderExport({ sessionId, watermark: !withoutWatermark });
-      setMade({ path: result.imagePath, clean: withoutWatermark });
+      // Pro is never handed the free card: the entitlement decides, not the button.
+      const result = await renderExport({ sessionId, watermark: !(withoutWatermark || clean), unit });
+      setMade({ path: result.imagePath, clean: withoutWatermark || clean });
     });
 
   const removeWatermark = () => {
@@ -117,8 +122,8 @@ function ImageShare({ sessionId, clean, onLeave }: { sessionId: string; clean: b
       />
       <Text style={styles.caption}>
         {clean
-          ? 'Pro: the clean card carries your reading only.'
-          : 'Free cards carry the Paceball mark. Pro cards carry your reading only.'}
+          ? 'Pro: your card carries no watermark.'
+          : 'Free cards carry the Paceball band and an upgrade bar. Pro cards carry neither.'}
       </Text>
 
       {made ? (

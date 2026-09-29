@@ -248,10 +248,16 @@ through RevenueCat. A purchase the store confirms with the `pro`
 entitlement replaces it with the celebration, once; a restore never
 does, and the route shows nothing when opened any other way. Result and
 Analysis open one share sheet (src/ui/DeliveryShareSheet.tsx): an image
-card or a video clip. "Create image" makes the card with the "PACEBALL ·
-FREE" strip between the speed and its range; "Remove watermark" opens the
-paywall for a free user and makes the clean card for Pro. Pro's clips
-carry no watermark, everyone else's carry the strip. A created image
+card or a video clip. The image card (src/export/drawCard.ts, laid out
+after docs/design/share-card/*-reference.png) is drawn natively at 1080 x
+1350: a lime-edged card with the icon, wordmark and a PRO or FREE pill,
+the release frame cropped to fill without cropping a mark, the reading
+with its range, and the date. Pro gets the Pro card from both "Create
+image" and "Remove watermark"; a free user gets a translucent PACEBALL
+FREE band across the frame, kept clear of the Release and Bounce labels,
+and an upgrade bar, and "Remove watermark" opens the paywall. An
+implausible reading carries "Check this reading" on either. Pro's clips
+carry no watermark, everyone else's carry the "PACEBALL · FREE" strip. A created image
 is previewed from its own PNG, and a finished clip plays back muted from
 its own file, before either is shared or saved. The clip runs
 from 0.5 s before release to 0.75 s after bounce, timed from the video
