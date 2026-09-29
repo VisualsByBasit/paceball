@@ -53,6 +53,8 @@ export const size = {
   gaugeStroke: 10,
   /** A delivery row's minimum height. */
   row: 80,
+  /** A settings row's minimum height: one line and its value, Android's standard. */
+  listRow: 56,
   /** A delivery row's release-frame thumbnail. */
   thumb: 48,
   /** The tab bar along the foot of Home, History and Settings, above the inset. */

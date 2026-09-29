@@ -127,3 +127,27 @@ test('the new screens take every colour and size from tokens', () => {
 test('the licence shown in the app is the licence in the repo', () => {
   assert.equal(LICENCE_TEXT, read('LICENSE').replace(/\r\n/g, '\n').trimEnd());
 });
+
+test('Settings is a short list of groups, each opening its own screen', () => {
+  const settings = read('app/settings.tsx');
+  const list = settings.slice(settings.indexOf('function SettingsList'), settings.indexOf('function ListRow'));
+  const titles = [...list.matchAll(/<ListRow\s+title="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(titles, ['Player', 'Measurement', 'Recording', 'Pro', 'Privacy and crash reports', 'About']);
+  // Each group is this route pushed again with its page; privacy is its own screen.
+  assert.match(list, /router\.push\(\{ pathname: '\/settings', params: \{ page: to \} \}\)/);
+  assert.match(list, /router\.push\('\/diagnostics'\)/);
+  // The tab bar is on the list only, never on a group's own screen.
+  const page = settings.slice(settings.indexOf('function SettingsPage'), settings.indexOf('function PlayerPage'));
+  assert.doesNotMatch(page, /<TabBar/);
+  // Every setting the old screen had is still here, in its group.
+  const section = (fn, next) => settings.slice(settings.indexOf(`function ${fn}`), settings.indexOf(`function ${next}`));
+  assert.match(section('MeasurementPage', 'RecordingPage'), /updateSettings\(\{ unit \}\)/);
+  assert.match(section('MeasurementPage', 'RecordingPage'), /updateSettings\(\{ calibrationMethod: method \}\)/);
+  assert.match(section('RecordingPage', 'ProPage'), /updateSettings\(\{ exposureBias: bias \}\)/);
+  assert.match(section('RecordingPage', 'ProPage'), /Linking\.openSettings\(\)/);
+  assert.match(section('ProPage', 'AboutPage'), /MANAGE_SUBSCRIPTION_URL/);
+  assert.match(section('ProPage', 'AboutPage'), /Restore purchases/);
+  assert.match(section('AboutPage', 'Section'), /LICENCE_TEXT/);
+  // The player group reads the profile and changes nothing.
+  assert.doesNotMatch(section('PlayerPage', 'MeasurementPage'), /updateSettings|savePlayer|createPlayer|setActivePlayer/);
+});

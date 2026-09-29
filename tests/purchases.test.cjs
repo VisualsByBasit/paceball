@@ -251,9 +251,12 @@ test('the allowance line counts down, then names the day it comes back', () => {
   // Pro sees none of this: both screens ask isPro before building the line.
   assert.match(read('app/capture.tsx'), /const allowanceNote = isPro \? null : allowanceLine\(allowance, weekdayOf\);/);
   const settings = read('app/settings.tsx');
-  const freeBranch = settings.slice(settings.indexOf('See what Paceball Pro adds'), settings.indexOf('<Section title="READINGS">'));
+  const proPage = settings.slice(settings.indexOf('function ProPage'), settings.indexOf('function AboutPage'));
+  assert.ok(proPage.length > 0);
+  const freeBranch = proPage.slice(proPage.indexOf('See what Paceball Pro adds'), proPage.indexOf('<Section title="PURCHASES">'));
   assert.match(freeBranch, /allowanceLine\(allowance,/);
-  const proBranch = settings.slice(settings.indexOf('Paceball Pro is active'), settings.indexOf('See what Paceball Pro adds'));
+  const proBranch = proPage.slice(proPage.indexOf('<Text style={styles.rowTitle}>Paceball Pro is active'), proPage.indexOf('See what Paceball Pro adds'));
+  assert.ok(proBranch.length > 0);
   assert.doesNotMatch(proBranch, /allowanceLine/, 'Pro is told nothing about limits');
 });
 
@@ -403,7 +406,7 @@ test('the new copy uses no em dashes', () => {
   const settings = read('app/settings.tsx');
   const proSection = settings.slice(
     settings.indexOf('<Section title="PACEBALL PRO">'),
-    settings.indexOf('<Section title="READINGS">'),
+    settings.indexOf('function AboutPage'),
   );
   assert.ok(proSection.length > 0);
   assert.doesNotMatch(proSection, /—/);

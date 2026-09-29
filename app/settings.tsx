@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -9,10 +9,11 @@ import {
   View,
 } from 'react-native';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
+import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMicrophonePermission } from 'react-native-vision-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { microphoneSettingLine } from '../src/capture/microphone';
+import { getActivePlayer } from '../src/data';
 import { CALIBRATION_ORDER, CALIBRATION_SPECS } from '../src/physics/calibration';
 import {
   allowanceLine,
@@ -26,13 +27,31 @@ import {
   updateSettings,
   useSettings,
 } from '../src/settings';
+import type { Player } from '../src/types';
+import { AppBar } from '../src/ui/AppBar';
 import { LICENCE_NAME, LICENCE_TEXT } from '../src/ui/licence';
-import { colors, opacity, radius, space, stroke, type } from '../src/ui/tokens';
+import { first } from '../src/ui/routeParams';
+import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 import { unitLabel, unitSpoken } from '../src/ui/units';
 import { TabBar } from '../src/ui/TabBar';
 import { formatBias } from '../src/ui/format';
 
 type RestoreState = { status: 'idle' } | { status: 'restoring' } | RestoreOutcome;
+
+/** The sub-screens the top-level list opens. Privacy is its own route, /diagnostics. */
+type Page = 'player' | 'measurement' | 'recording' | 'pro' | 'about';
+
+const PAGE_TITLE: Record<Page, string> = {
+  player: 'Player',
+  measurement: 'Measurement',
+  recording: 'Recording',
+  pro: 'Pro',
+  about: 'About',
+};
+
+function isPage(value: string): value is Page {
+  return value in PAGE_TITLE;
+}
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -69,45 +88,309 @@ function restoreMessage(state: RestoreState): { text: string; tone: 'text' | 'mu
   }
 }
 
+/**
+ * Settings, the way Android lays them out: a short list of groups, each
+ * opening its own screen. A group is this same route pushed again with a
+ * `page`, so Back and the system back gesture return to the list. Privacy and
+ * crash reports is its own screen already, and its row opens it directly.
+ */
 export default function SettingsScreen() {
+  const raw = first(useLocalSearchParams().page);
+  const page = isPage(raw) ? raw : null;
+  return page === null ? <SettingsList /> : <SettingsPage page={page} />;
+}
+
+function SettingsList() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const settings = useSettings();
-  const { isPro, pro, allowance, restore: restorePurchases } = usePurchases();
+  const { isPro } = usePurchases();
+  const version = Constants.expoConfig?.version ?? null;
+
+  // Read again on focus, so the row names whoever is bowling now.
+  const [player, setPlayer] = useState<Player | null | undefined>(undefined);
+  useEffect(() => {
+    if (!isFocused) return;
+    let alive = true;
+    getActivePlayer()
+      .then((p) => alive && setPlayer(p))
+      .catch(() => alive && setPlayer(null));
+    return () => {
+      alive = false;
+    };
+  }, [isFocused]);
+
+  const open = (to: Page) => router.push({ pathname: '/settings', params: { page: to } });
+
+  return (
+    <View style={styles.page}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.xl },
+        ]}
+      >
+        <AppBar title="Settings" onBack={() => router.back()} />
+        <View style={styles.list}>
+          <ListRow
+            title="Player"
+            value={player === undefined ? 'Loading…' : (player?.name ?? 'No player yet')}
+            onPress={() => open('player')}
+          />
+          <ListRow
+            title="Measurement"
+            value={`${unitLabel(settings.unit)} · ${CALIBRATION_SPECS[settings.calibrationMethod].title}`}
+            onPress={() => open('measurement')}
+          />
+          <ListRow
+            title="Recording"
+            value={`Default exposure ${formatBias(settings.exposureBias)} · Microphone`}
+            onPress={() => open('recording')}
+          />
+          {/* Always here, Pro or not: this is how Pro is found, and how a
+              subscription is checked, managed and restored. */}
+          <ListRow
+            title="Pro"
+            value={isPro ? 'Active' : 'See Pro options and restore purchases'}
+            onPress={() => open('pro')}
+          />
+          <ListRow
+            title="Privacy and crash reports"
+            value="What leaves the phone, and the switch for it."
+            onPress={() => router.push('/diagnostics')}
+          />
+          <ListRow
+            title="About"
+            value={`Version ${version ?? 'Unknown'} · ${LICENCE_NAME}`}
+            onPress={() => open('about')}
+          />
+        </View>
+      </ScrollView>
+      {/* Home, History and Settings share one tab bar. */}
+      <TabBar current="settings" />
+    </View>
+  );
+}
+
+/** One group on the top-level list: its name, what it is set to now, and a chevron. */
+function ListRow({ title, value, onPress }: { title: string; value: string; onPress: () => void }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.listRow, pressed && styles.listRowPressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${value}`}
+    >
+      <View style={styles.optionBody}>
+        <Text style={styles.optionTitle}>{title}</Text>
+        <Text style={styles.optionDetail}>{value}</Text>
+      </View>
+      <Text style={styles.chevron}>›</Text>
+    </Pressable>
+  );
+}
+
+function SettingsPage({ page }: { page: Page }) {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={styles.page}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.xl },
+        ]}
+      >
+        <AppBar title={PAGE_TITLE[page]} onBack={() => router.back()} />
+        {page === 'player' ? <PlayerPage /> : null}
+        {page === 'measurement' ? <MeasurementPage /> : null}
+        {page === 'recording' ? <RecordingPage /> : null}
+        {page === 'pro' ? <ProPage /> : null}
+        {page === 'about' ? <AboutPage /> : null}
+      </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * Who is bowling, as saved at setup. Read only: no shipped screen edits or
+ * switches a profile yet, so this says what is on it and nothing more.
+ */
+function PlayerPage() {
+  const [player, setPlayer] = useState<Player | null | 'error' | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    getActivePlayer()
+      .then((p) => alive && setPlayer(p))
+      .catch(() => alive && setPlayer('error'));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (player === undefined) return <Text style={styles.rowDetail}>Loading player…</Text>;
+  if (player === 'error') return <Text style={styles.rowDetail}>Could not read the player on this phone.</Text>;
+  if (player === null) {
+    return <Text style={styles.rowDetail}>No player yet. Setup creates one before the first recording.</Text>;
+  }
+  return (
+    <Section title="PROFILE">
+      <View style={styles.aboutRow}>
+        <Text style={styles.optionTitle}>Name</Text>
+        <Text style={styles.aboutValue}>{player.name}</Text>
+      </View>
+      {player.shoeLengthCm !== undefined ? (
+        <View style={styles.aboutRow}>
+          <Text style={styles.optionTitle}>Shoe length</Text>
+          <Text style={[styles.aboutValue, styles.tabular]}>{player.shoeLengthCm} cm</Text>
+        </View>
+      ) : player.shoeSizeEu !== undefined ? (
+        <View style={styles.aboutRow}>
+          <Text style={styles.optionTitle}>Shoe size</Text>
+          <Text style={[styles.aboutValue, styles.tabular]}>EU {player.shoeSizeEu}</Text>
+        </View>
+      ) : null}
+      {player.heightCm !== undefined ? (
+        <View style={styles.aboutRow}>
+          <Text style={styles.optionTitle}>Height</Text>
+          <Text style={[styles.aboutValue, styles.tabular]}>{player.heightCm} cm</Text>
+        </View>
+      ) : null}
+    </Section>
+  );
+}
+
+function MeasurementPage() {
+  const settings = useSettings();
+  return (
+    <>
+      <Section title="UNITS">
+        <Text style={styles.rowTitle}>Speed units</Text>
+        <Text style={styles.rowDetail}>
+          Readings are always measured and saved in km/h. This only changes how they read out.
+        </Text>
+        <View style={styles.segments} accessibilityRole="radiogroup">
+          {SPEED_UNITS.map((unit) => {
+            const on = settings.unit === unit;
+            return (
+              <Pressable
+                key={unit}
+                style={[styles.segment, on && styles.segmentOn]}
+                onPress={() => updateSettings({ unit })}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={unitSpoken(unit)}
+              >
+                <Text style={[styles.segmentText, on && styles.segmentTextOn]}>
+                  {unitLabel(unit)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Section>
+
+      <Section title="SCALE REFERENCE">
+        <Text style={styles.rowTitle}>Default scale reference</Text>
+        <Text style={styles.rowDetail}>
+          What Mark opens on. You can still pick another for any delivery.
+        </Text>
+        <View accessibilityRole="radiogroup">
+          {CALIBRATION_ORDER.map((method) => {
+            const spec = CALIBRATION_SPECS[method];
+            const on = settings.calibrationMethod === method;
+            return (
+              <Pressable
+                key={method}
+                style={[styles.option, on && styles.optionOn]}
+                onPress={() => updateSettings({ calibrationMethod: method })}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={`${spec.title}. ${spec.detail}`}
+              >
+                <View style={[styles.radio, on && styles.radioOn]} />
+                <View style={styles.optionBody}>
+                  <Text style={styles.optionTitle}>{spec.title}</Text>
+                  <Text style={styles.optionDetail}>{spec.detail}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Section>
+    </>
+  );
+}
+
+function RecordingPage() {
+  const settings = useSettings();
   // Read only. Asking happens on Capture; changing it afterwards is the system's.
   const microphone = useMicrophonePermission();
+  return (
+    <>
+      <Section title="EXPOSURE">
+        <Text style={styles.rowTitle}>Default exposure bias</Text>
+        <Text style={styles.rowDetail}>
+          Darker makes the camera choose a faster shutter, so the ball smears less. Go brighter
+          only if the clip is too dark to mark. Cameras that cannot reach a value get the nearest
+          they support.
+        </Text>
+        <View style={styles.segments} accessibilityRole="radiogroup">
+          {EXPOSURE_BIAS_OPTIONS.map((bias) => {
+            const on = settings.exposureBias === bias;
+            return (
+              <Pressable
+                key={bias}
+                style={[styles.segment, on && styles.segmentOn]}
+                onPress={() => updateSettings({ exposureBias: bias })}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={`Exposure bias ${bias}`}
+              >
+                <Text style={[styles.segmentText, styles.tabular, on && styles.segmentTextOn]}>
+                  {formatBias(bias)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Section>
 
+      <Section title="SOUND">
+        <Text style={styles.rowTitle}>Microphone</Text>
+        <Text style={styles.rowDetail}>
+          {microphoneSettingLine(microphone.status, settings.microphoneAsked)}
+        </Text>
+        <Pressable
+          style={styles.button}
+          onPress={() => void Linking.openSettings().catch(() => undefined)}
+          accessibilityRole="link"
+        >
+          <Text style={styles.buttonText}>Open system settings</Text>
+        </Pressable>
+      </Section>
+    </>
+  );
+}
+
+function ProPage() {
+  const router = useRouter();
+  const { isPro, pro, allowance, restore: restorePurchases } = usePurchases();
   const [restore, setRestore] = useState<RestoreState>({ status: 'idle' });
-  const [licenceOpen, setLicenceOpen] = useState(false);
 
   const onRestore = useCallback(async () => {
     setRestore({ status: 'restoring' });
     setRestore(await restorePurchases());
   }, [restorePurchases]);
 
-  const version = Constants.expoConfig?.version ?? null;
   const restoring = restore.status === 'restoring';
   const restoreNote = restoreMessage(restore);
 
   return (
-    <View style={styles.page}>
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.xl },
-      ]}
-    >
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={space.md} accessibilityRole="button">
-          <Text style={styles.headerAction}>Back</Text>
-        </Pressable>
-        <Text style={styles.headerTitle}>SETTINGS</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      {/* Always here, Pro or not: this is how Pro is found, and how a
-          subscription is checked and managed. */}
+    <>
       <Section title="PACEBALL PRO">
         {isPro ? (
           <>
@@ -135,7 +418,7 @@ export default function SettingsScreen() {
             accessibilityLabel="See what Paceball Pro adds"
           >
             <View style={styles.optionBody}>
-              <Text style={styles.optionTitle}>Paceball Pro</Text>
+              <Text style={styles.optionTitle}>See Pro options</Text>
               <Text style={styles.optionDetail}>
                 Unlimited analyses, exports without the watermark, and compare.
               </Text>
@@ -149,99 +432,6 @@ export default function SettingsScreen() {
             <Text style={styles.chevron}>›</Text>
           </Pressable>
         )}
-      </Section>
-
-      <Section title="READINGS">
-        <Text style={styles.rowTitle}>Speed units</Text>
-        <Text style={styles.rowDetail}>
-          Readings are always measured and saved in km/h. This only changes how they read out.
-        </Text>
-        <View style={styles.segments} accessibilityRole="radiogroup">
-          {SPEED_UNITS.map((unit) => {
-            const on = settings.unit === unit;
-            return (
-              <Pressable
-                key={unit}
-                style={[styles.segment, on && styles.segmentOn]}
-                onPress={() => updateSettings({ unit })}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                accessibilityLabel={unitSpoken(unit)}
-              >
-                <Text style={[styles.segmentText, on && styles.segmentTextOn]}>
-                  {unitLabel(unit)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Text style={[styles.rowTitle, styles.rowGap]}>Default scale reference</Text>
-        <Text style={styles.rowDetail}>
-          What Mark opens on. You can still pick another for any delivery.
-        </Text>
-        <View accessibilityRole="radiogroup">
-          {CALIBRATION_ORDER.map((method) => {
-            const spec = CALIBRATION_SPECS[method];
-            const on = settings.calibrationMethod === method;
-            return (
-              <Pressable
-                key={method}
-                style={[styles.option, on && styles.optionOn]}
-                onPress={() => updateSettings({ calibrationMethod: method })}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                accessibilityLabel={`${spec.title}. ${spec.detail}`}
-              >
-                <View style={[styles.radio, on && styles.radioOn]} />
-                <View style={styles.optionBody}>
-                  <Text style={styles.optionTitle}>{spec.title}</Text>
-                  <Text style={styles.optionDetail}>{spec.detail}</Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Section>
-
-      <Section title="CAPTURE">
-        <Text style={styles.rowTitle}>Default exposure bias</Text>
-        <Text style={styles.rowDetail}>
-          Darker makes the camera choose a faster shutter, so the ball smears less. Go brighter
-          only if the clip is too dark to mark. Cameras that cannot reach a value get the nearest
-          they support.
-        </Text>
-        <View style={styles.segments} accessibilityRole="radiogroup">
-          {EXPOSURE_BIAS_OPTIONS.map((bias) => {
-            const on = settings.exposureBias === bias;
-            return (
-              <Pressable
-                key={bias}
-                style={[styles.segment, on && styles.segmentOn]}
-                onPress={() => updateSettings({ exposureBias: bias })}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: on }}
-                accessibilityLabel={`Exposure bias ${bias}`}
-              >
-                <Text style={[styles.segmentText, styles.tabular, on && styles.segmentTextOn]}>
-                  {formatBias(bias)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Text style={[styles.rowTitle, styles.rowGap]}>Microphone</Text>
-        <Text style={styles.rowDetail}>
-          {microphoneSettingLine(microphone.status, settings.microphoneAsked)}
-        </Text>
-        <Pressable
-          style={styles.button}
-          onPress={() => void Linking.openSettings().catch(() => undefined)}
-          accessibilityRole="link"
-        >
-          <Text style={styles.buttonText}>Open system settings</Text>
-        </Pressable>
       </Section>
 
       <Section title="PURCHASES">
@@ -271,47 +461,36 @@ export default function SettingsScreen() {
           </Text>
         ) : null}
       </Section>
+    </>
+  );
+}
 
-      <Section title="PRIVACY">
-        <Pressable
-          style={styles.link}
-          onPress={() => router.push('/diagnostics')}
-          accessibilityRole="button"
-        >
-          <View style={styles.optionBody}>
-            <Text style={styles.optionTitle}>Privacy and crash reports</Text>
-            <Text style={styles.optionDetail}>What leaves the phone, and the switch for it.</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
-      </Section>
-
-      <Section title="ABOUT">
-        <View style={styles.aboutRow}>
-          <Text style={styles.optionTitle}>Version</Text>
-          <Text style={[styles.aboutValue, styles.tabular]}>{version ?? 'Unknown'}</Text>
-        </View>
-        <Pressable
-          style={styles.aboutRow}
-          onPress={() => setLicenceOpen((open) => !open)}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: licenceOpen }}
-        >
-          <Text style={styles.optionTitle}>Licence</Text>
-          <Text style={styles.aboutValue}>
-            {LICENCE_NAME} {licenceOpen ? '˄' : '˅'}
-          </Text>
-        </Pressable>
-        {licenceOpen ? (
-          <Text style={styles.licence} selectable>
-            {LICENCE_TEXT}
-          </Text>
-        ) : null}
-      </Section>
-    </ScrollView>
-      {/* Home, History and Settings share one tab bar. */}
-      <TabBar current="settings" />
-    </View>
+function AboutPage() {
+  const [licenceOpen, setLicenceOpen] = useState(false);
+  const version = Constants.expoConfig?.version ?? null;
+  return (
+    <Section title="PACEBALL">
+      <View style={styles.aboutRow}>
+        <Text style={styles.optionTitle}>Version</Text>
+        <Text style={[styles.aboutValue, styles.tabular]}>{version ?? 'Unknown'}</Text>
+      </View>
+      <Pressable
+        style={styles.aboutRow}
+        onPress={() => setLicenceOpen((open) => !open)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: licenceOpen }}
+      >
+        <Text style={styles.optionTitle}>Licence</Text>
+        <Text style={styles.aboutValue}>
+          {LICENCE_NAME} {licenceOpen ? '˄' : '˅'}
+        </Text>
+      </Pressable>
+      {licenceOpen ? (
+        <Text style={styles.licence} selectable>
+          {LICENCE_TEXT}
+        </Text>
+      ) : null}
+    </Section>
   );
 }
 
@@ -329,16 +508,16 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingHorizontal: space.lg },
 
-  header: {
+  list: { marginTop: space.md, borderTopWidth: stroke.hairline, borderColor: colors.line },
+  listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.md,
+    minHeight: size.listRow,
+    paddingVertical: space.md,
+    borderBottomWidth: stroke.hairline,
+    borderColor: colors.line,
   },
-  headerAction: { ...type.caption, color: colors.muted },
-  headerTitle: { ...type.label, color: colors.muted },
-  // Balances Back, so the title sits in the middle.
-  headerSpacer: { width: space.xl },
+  listRowPressed: { backgroundColor: colors.surface },
 
   section: {
     borderTopWidth: stroke.hairline,
@@ -348,7 +527,6 @@ const styles = StyleSheet.create({
   sectionTitle: { ...type.label, color: colors.muted, marginBottom: space.md },
 
   rowTitle: { ...type.body, color: colors.text, fontWeight: '700' },
-  rowGap: { marginTop: space.lg },
   rowDetail: { ...type.caption, color: colors.muted, marginTop: space.xs, marginBottom: space.md },
   tabular: { ...type.tabular },
 
@@ -356,10 +534,11 @@ const styles = StyleSheet.create({
   segment: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: space.sm,
+    justifyContent: 'center',
+    minHeight: size.target,
     borderRadius: radius.pill,
     borderWidth: stroke.hairline,
-    borderColor: colors.line,
+    borderColor: colors.control,
     marginRight: space.xs,
   },
   segmentOn: { backgroundColor: colors.text, borderColor: colors.text },
@@ -390,24 +569,26 @@ const styles = StyleSheet.create({
   optionDetail: { ...type.caption, color: colors.muted, marginTop: space.xs },
 
   button: {
+    minHeight: size.target,
+    justifyContent: 'center',
     borderRadius: radius.pill,
     borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingVertical: space.md,
+    borderColor: colors.control,
+    paddingVertical: space.sm,
     alignItems: 'center',
   },
   buttonText: { ...type.body, color: colors.text },
   off: { opacity: opacity.disabled },
   restoreNote: { ...type.body, marginTop: space.md },
 
-  link: { flexDirection: 'row', alignItems: 'center' },
+  link: { flexDirection: 'row', alignItems: 'center', minHeight: size.listRow },
   chevron: { ...type.h2, color: colors.muted, marginLeft: space.md },
 
   aboutRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: space.sm,
+    minHeight: size.listRow,
   },
   allowance: { ...type.caption, color: colors.text, marginTop: space.xs },
   aboutValue: { ...type.body, color: colors.muted },
