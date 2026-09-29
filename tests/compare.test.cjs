@@ -140,3 +140,23 @@ test('compare waits for the store at launch before deciding a user is not Pro', 
   assert.ok(wait > -1 && gate > wait, 'the loading check comes before the gate');
   assert.doesNotMatch(screen.slice(wait, gate), /Redirect/, 'and sends nobody anywhere while it waits');
 });
+
+test('the verdict comes first, and only a clear gap names a faster delivery', () => {
+  const compare = read('app/compare.tsx');
+  assert.match(compare, /`Delivery \$\{verdict\.faster === 'a' \? 'A' : 'B'\} has the higher estimated speed`/);
+  assert.match(compare, /'Too close to call'/);
+  assert.match(compare, /'These ranges do not overlap\.'/);
+  assert.match(compare, /'The estimated ranges overlap or touch\.'/);
+  assert.doesNotMatch(compare, /clearly faster/i);
+  // Touching is too close: the rule is the existing speedVerdict.
+  assert.equal(speedVerdict({ speed: 120, error: 2 }, { speed: 124, error: 2 }).kind, 'too-close');
+  assert.equal(speedVerdict({ speed: 120, error: 2 }, { speed: 124.1, error: 2 }).kind, 'faster');
+  const ready = compare.slice(compare.indexOf('function Ready('), compare.indexOf('function Verdict('));
+  assert.ok(ready.indexOf('<Verdict') < ready.indexOf('<SideCard'), 'verdict before the numbers');
+  assert.match(ready, /tag="Delivery A"/);
+  assert.match(ready, /tag="Delivery B"/);
+  assert.match(ready, /<RangeBars a=\{a\} b=\{b\} unit=\{unit\} \/>/);
+  // Both columns show a reading with its range, and stack at large text.
+  assert.match(compare, /<ReadingBlock reading=\{view\} size="reading" \/>/);
+  assert.match(compare, /largeText \? styles\.sidesStacked : styles\.sides/);
+});

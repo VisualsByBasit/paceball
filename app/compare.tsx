@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -17,8 +16,12 @@ import { canCompare, useEntitlements, usePurchases } from '../src/purchases';
 import { useSettings, type SpeedUnit } from '../src/settings';
 import { orderForCompare } from '../src/ui/compareSelection';
 import { speedVerdict, type SpeedVerdict } from '../src/ui/speedVerdict';
-import { colors, radius, space, stroke, type } from '../src/ui/tokens';
-import { errorIn, formatSpeed, unitLabel } from '../src/ui/units';
+import { AppBar } from '../src/ui/AppBar';
+import { ReadingBlock } from '../src/ui/ReadingBlock';
+import { readingView } from '../src/ui/reading';
+import { useLargeText } from '../src/ui/useLargeText';
+import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
+import { errorIn, formatSpeed, speedIn, unitLabel } from '../src/ui/units';
 import { errorMessage, formatWhen } from '../src/ui/format';
 import { first } from '../src/ui/routeParams';
 import type { Diff, Session } from '../src/types';
@@ -140,7 +143,7 @@ export default function CompareScreen() {
   if (loading) {
     return (
       <View style={[styles.screen, styles.center]}>
-        <ActivityIndicator color={colors.muted} />
+        <Text style={styles.loading}>Checking your plan…</Text>
       </View>
     );
   }
@@ -184,12 +187,8 @@ function Comparison() {
   }, [idA, idB]);
 
   const header = (
-    <View style={styles.header}>
-      <Pressable onPress={() => router.back()} hitSlop={space.md} accessibilityRole="button">
-        <Text style={styles.headerAction}>Back</Text>
-      </Pressable>
-      <Text style={styles.headerTitle}>COMPARE</Text>
-      <View style={styles.headerSpacer} />
+    <View style={styles.appBar}>
+      <AppBar title="Compare" onBack={() => router.back()} />
     </View>
   );
 
@@ -197,7 +196,7 @@ function Comparison() {
     return (
       <View style={[styles.screen, styles.padded, { paddingTop: insets.top + space.md }]}>
         {header}
-        <ActivityIndicator color={colors.muted} style={styles.loading} />
+        <Text style={styles.loading}>Comparing deliveries…</Text>
       </View>
     );
   }
@@ -246,6 +245,7 @@ function Ready({
   header: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const largeText = useLargeText();
 
   // Decided on the figures exactly as they are shown - the speed to one decimal
   // and the range rounded up in the chosen unit - so the verdict can never
@@ -267,21 +267,21 @@ function Ready({
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={[
-        styles.padded,
-        { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.lg },
-      ]}
+      contentContainerStyle={[styles.padded, { paddingBottom: insets.bottom + space.lg }]}
     >
       {header}
 
-      <Verdict verdict={verdict} a={a} b={b} unit={unit} />
+      {/* The verdict comes before the numbers, for the eye and for a screen reader. */}
+      <Verdict verdict={verdict} unit={unit} />
 
-      <View style={styles.sides}>
-        <SideCard tag="A · OLDER" side={a} unit={unit} travel={travel?.a ?? null} angle={angle?.a ?? null} />
-        <SideCard tag="B · NEWER" side={b} unit={unit} travel={travel?.b ?? null} angle={angle?.b ?? null} />
+      <View style={largeText ? styles.sidesStacked : styles.sides}>
+        <SideCard tag="Delivery A" side={a} unit={unit} travel={travel?.a ?? null} angle={angle?.a ?? null} />
+        <SideCard tag="Delivery B" side={b} unit={unit} travel={travel?.b ?? null} angle={angle?.b ?? null} />
       </View>
 
-      <Text style={styles.listLabel}>CHANGE, OLDER TO NEWER</Text>
+      <RangeBars a={a} b={b} unit={unit} />
+
+      <Text style={styles.listLabel}>CHANGE, A TO B</Text>
       {travel ? (
         <ChangeRow
           label="Travel"
@@ -299,46 +299,37 @@ function Ready({
         />
       ) : null}
       <Text style={styles.footnote}>
-        Travel and angle describe each delivery. Neither is better for being bigger.
+        A is the older delivery. Travel and angle describe each delivery; neither is better for
+        being bigger.
       </Text>
     </ScrollView>
   );
 }
 
-function Verdict({
-  verdict,
-  a,
-  b,
-  unit,
-}: {
-  verdict: SpeedVerdict;
-  a: Side;
-  b: Side;
-  unit: SpeedUnit;
-}) {
+/**
+ * Which delivery was faster, only when the measurement can say so: a clear gap
+ * between the two ranges. Otherwise it is too close to call. Never "clearly
+ * faster": a gap in the ranges is the claim, and all of it.
+ */
+function Verdict({ verdict, unit }: { verdict: SpeedVerdict; unit: SpeedUnit }) {
   const label = unitLabel(unit);
-  const ranges = `± ${errorIn(a.errorKmh, unit)} and ± ${errorIn(b.errorKmh, unit)} ${label}`;
   const delta = `${signed(verdict.delta, 1)} ${label}`;
-
   const title =
     verdict.kind === 'too-close'
       ? 'Too close to call'
-      : verdict.faster === 'b'
-        ? 'The newer delivery was faster'
-        : 'The older delivery was faster';
+      : `Delivery ${verdict.faster === 'a' ? 'A' : 'B'} has the higher estimated speed`;
   const body =
     verdict.kind === 'too-close'
-      ? `The difference is inside the two error ranges (${ranges}), so neither delivery was measurably faster.`
-      : `By ${Math.abs(verdict.delta).toFixed(1)} ${label}, clear of both error ranges (${ranges}).`;
+      ? 'The estimated ranges overlap or touch.'
+      : 'These ranges do not overlap.';
 
   return (
-    <View style={styles.verdict} accessible accessibilityLabel={`${title}. Change in speed ${delta}. ${body}`}>
-      <Text style={styles.verdictLabel}>AVG SPEED TO BOUNCE, CHANGE</Text>
-      <Text style={styles.verdictDelta} numberOfLines={1} adjustsFontSizeToFit>
-        {delta}
+    <View style={styles.verdict} accessible accessibilityLabel={`${title}. ${body} Change from A to B, ${delta}.`}>
+      <Text style={styles.verdictTitle} accessibilityRole="header">
+        {title}
       </Text>
-      <Text style={styles.verdictTitle}>{title}</Text>
       <Text style={styles.verdictBody}>{body}</Text>
+      <Text style={styles.verdictDelta}>A to B: {delta}</Text>
     </View>
   );
 }
@@ -361,6 +352,8 @@ function SideCard({
   const [failed, setFailed] = useState(false);
   // The frame's own shape, read off the record rather than assumed.
   const aspectRatio = session.width / session.height;
+  // The same reading the rest of the app shows, range and all.
+  const view = readingView({ kind: 'measured', speedKmh: side.speedKmh, errorKmh: side.errorKmh }, unit);
 
   return (
     <View style={styles.side}>
@@ -378,18 +371,64 @@ function SideCard({
           />
         ) : null}
       </View>
-      <Text style={styles.sideSpeed} numberOfLines={1} adjustsFontSizeToFit>
-        {formatSpeed(side.speedKmh, unit)}
-      </Text>
-      <Text style={styles.sideError}>
-        ± {errorIn(side.errorKmh, unit)} {unitLabel(unit)}
-      </Text>
+      {view.kind === 'measured' ? (
+        <View style={styles.sideReading}>
+          <ReadingBlock reading={view} size="reading" />
+        </View>
+      ) : null}
       <Text style={styles.sideMeta}>{formatWhen(session.createdAt)}</Text>
       <Text style={styles.sideMeta} numberOfLines={1}>
         {side.player}
       </Text>
       {travel !== null ? <Text style={styles.sideMeta}>{travel.toFixed(2)} m travelled</Text> : null}
       {angle !== null ? <Text style={styles.sideMeta}>{angle.toFixed(1)}° release angle</Text> : null}
+    </View>
+  );
+}
+
+/**
+ * Both ranges as bars on one shared scale, so an overlap, or a gap, can be seen
+ * rather than worked out. The scale runs from the lower of the two lower bounds
+ * to the higher of the two upper bounds, never below zero.
+ */
+function RangeBars({ a, b, unit }: { a: Side; b: Side; unit: SpeedUnit }) {
+  const [width, setWidth] = useState(0);
+  const bounds = [a, b].map((s) => {
+    const speed = speedIn(s.speedKmh, unit);
+    const error = errorIn(s.errorKmh, unit);
+    return { lower: Math.max(0, speed - error), speed, upper: speed + error };
+  });
+  const lo = Math.min(bounds[0].lower, bounds[1].lower);
+  const hi = Math.max(bounds[0].upper, bounds[1].upper);
+  const span = Math.max(hi - lo, Number.EPSILON);
+  const x = (v: number) => ((v - lo) / span) * width;
+
+  return (
+    <View
+      style={styles.bars}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      accessible
+      accessibilityLabel={`Ranges on one scale. A from ${bounds[0].lower.toFixed(1)} to ${bounds[0].upper.toFixed(1)}, B from ${bounds[1].lower.toFixed(1)} to ${bounds[1].upper.toFixed(1)} ${unitLabel(unit)}.`}
+    >
+      {bounds.map((r, i) => (
+        <View key={i} style={styles.barRow}>
+          <Text style={styles.barTag}>{i === 0 ? 'A' : 'B'}</Text>
+          <View style={styles.barTrack}>
+            {width > 0 ? (
+              <>
+                <View style={[styles.bar, { left: x(r.lower), width: Math.max(x(r.upper) - x(r.lower), stroke.medium) }]} />
+                <View style={[styles.barSpeed, { left: x(r.speed) - stroke.medium / 2 }]} />
+              </>
+            ) : null}
+          </View>
+        </View>
+      ))}
+      <View style={styles.barScale}>
+        <Text style={styles.barEnd}>{lo.toFixed(1)}</Text>
+        <Text style={styles.barEnd}>
+          {hi.toFixed(1)} {unitLabel(unit)}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -419,19 +458,17 @@ function ChangeRow({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   padded: { paddingHorizontal: space.lg },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: space.md,
+  appBar: { marginHorizontal: -space.sm, marginBottom: space.sm },
+  bar: {
+    position: 'absolute',
+    top: space.xs,
+    bottom: space.xs,
+    borderRadius: radius.pill,
+    backgroundColor: colors.text,
+    opacity: opacity.secondary,
   },
-  headerAction: { ...type.caption, color: colors.muted },
-  headerTitle: { ...type.label, color: colors.muted },
-  // Balances Back, so the title sits in the middle.
-  headerSpacer: { width: space.xl },
 
-  loading: { marginTop: space.xl },
+  loading: { ...type.body, color: colors.muted, marginTop: space.xl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   centerTitle: { ...type.h2, color: colors.text, marginBottom: space.sm, textAlign: 'center' },
   centerBody: { ...type.body, color: colors.muted, textAlign: 'center' },
@@ -442,13 +479,14 @@ const styles = StyleSheet.create({
     borderWidth: stroke.hairline,
     borderColor: colors.line,
     padding: space.md,
+    marginTop: space.md,
   },
-  verdictLabel: { ...type.label, color: colors.muted },
-  verdictDelta: { ...type.h1, ...type.mono, color: colors.text, marginTop: space.sm },
-  verdictTitle: { ...type.h2, color: colors.text, marginTop: space.sm },
+  verdictTitle: { ...type.h2, color: colors.text },
   verdictBody: { ...type.body, color: colors.muted, marginTop: space.xs },
+  verdictDelta: { ...type.caption, ...type.mono, color: colors.muted, marginTop: space.sm },
 
   sides: { flexDirection: 'row', columnGap: space.md, marginTop: space.lg },
+  sidesStacked: { rowGap: space.lg, marginTop: space.lg },
   side: { flex: 1 },
   sideTag: { ...type.label, color: colors.muted, marginBottom: space.sm },
   thumb: {
@@ -458,9 +496,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   thumbImage: { alignSelf: 'stretch' },
-  sideSpeed: { ...type.h1, ...type.mono, color: colors.text, marginTop: space.md },
-  sideError: { ...type.caption, ...type.mono, color: colors.muted },
+  sideReading: { marginTop: space.md },
   sideMeta: { ...type.caption, color: colors.muted, marginTop: space.xs },
+
+  bars: { marginTop: space.xl },
+  barRow: { flexDirection: 'row', alignItems: 'center', minHeight: size.target / 2 + space.sm },
+  barTag: { ...type.label, color: colors.muted, width: space.lg },
+  barTrack: { flex: 1, height: space.lg, borderBottomWidth: stroke.hairline, borderColor: colors.control },
+  barSpeed: {
+    position: 'absolute',
+    top: space.xs - stroke.medium,
+    bottom: space.xs - stroke.medium,
+    width: stroke.medium,
+    backgroundColor: colors.text,
+  },
+  barScale: { flexDirection: 'row', justifyContent: 'space-between', marginLeft: space.lg },
+  barEnd: { ...type.caption, ...type.tabular, color: colors.muted },
 
   listLabel: { ...type.label, color: colors.muted, marginTop: space.xl, marginBottom: space.sm },
   change: {
@@ -477,10 +528,11 @@ const styles = StyleSheet.create({
 
   primaryButton: {
     alignSelf: 'stretch',
+    minHeight: size.button,
     backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
+    borderRadius: radius.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
+  primaryButtonText: { ...type.button, color: colors.bg },
 });
