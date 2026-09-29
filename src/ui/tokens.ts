@@ -89,6 +89,9 @@ export const size = {
   /** Stats: the lit round badge an icon sits in, and the icon inside it. */
   iconBadge: 40,
   icon: 22,
+  /** The same badge and icon, compact, on the purchase celebration's unlocked cards. */
+  iconBadgeSmall: 32,
+  iconSmall: 18,
   /** Stats: the plot height of Speed over time, and of Deliveries per day. */
   chart: 180,
   bars: 120,
@@ -202,9 +205,13 @@ export const motion = {
     land: 1350,
     sweep: 1900,
     copy: 1400,
-    list: 1800,
-    stagger: 110,
+    list: 1550,
+    stagger: 80,
     tick: 180,
+    /** Each card's check drawing itself, from halfway through its slide in. */
+    check: 200,
+    /** The glow sweeping once across the list, from the last check to the end. */
+    glow: 2160,
     total: 2500,
   },
   /** A notice arriving. Opacity only, never a shake. */

@@ -100,7 +100,10 @@ export type StatIconName =
   | 'bars'
   | 'gauge'
   | 'donut'
-  | 'lock';
+  | 'lock'
+  | 'export'
+  | 'quality'
+  | 'compare';
 
 /** Line icons on a 24 unit grid, drawn with round caps. */
 const ICONS: Record<StatIconName, string> = {
@@ -122,6 +125,12 @@ const ICONS: Record<StatIconName, string> = {
   donut: 'M12 4a8 8 0 1 0 8 8 M12 4v8h8',
   // A padlock.
   lock: 'M7 11h10v8.5h-10z M9 11v-2.5a3 3 0 0 1 6 0v2.5',
+  // Out of the box: sharing.
+  export: 'M12 14.5v-10.5 M8 8l4 -4l4 4 M5 12v7.5h14v-7.5',
+  // A camera.
+  quality: 'M4 8h4l1.8 -2.5h4.4l1.8 2.5h4v11h-16z M12 16.5a3.2 3.2 0 1 0 0.01 0',
+  // Two deliveries side by side.
+  compare: 'M8 5v14 M16 5v14 M4.5 8.5l3.5 -3.5l3.5 3.5 M12.5 15.5l3.5 3.5l3.5 -3.5',
 };
 
 /** A single icon, in the colour given. Decorative: the words beside it carry the meaning. */
@@ -144,11 +153,11 @@ export function StatIcon({ name, color, dim = size.icon }: { name: StatIconName;
  * the upper left, with a lime glow when the tile it heads is live. A locked
  * tile's badge is unlit.
  */
-export function IconBadge({ name, live = true }: { name: StatIconName; live?: boolean }) {
-  const d = size.iconBadge;
+export function IconBadge({ name, live = true, small = false }: { name: StatIconName; live?: boolean; small?: boolean }) {
+  const d = small ? size.iconBadgeSmall : size.iconBadge;
   const r = d / 2;
   return (
-    <View style={styles.badge} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+    <View style={[styles.badge, small && styles.badgeSmall]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
       <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
         {live ? (
           <Circle cx={r} cy={r} r={r * 0.8} color={colors.accent} opacity={opacity.faint}>
@@ -160,7 +169,7 @@ export function IconBadge({ name, live = true }: { name: StatIconName; live?: bo
         </Circle>
         <Circle cx={r} cy={r} r={r - stroke.hairline} style="stroke" strokeWidth={stroke.hairline} color={live ? colors.control : colors.line} />
       </Canvas>
-      <StatIcon name={name} color={live ? LIME_LIT : colors.muted} />
+      <StatIcon name={name} color={live ? LIME_LIT : colors.muted} dim={small ? size.iconSmall : size.icon} />
     </View>
   );
 }
@@ -174,4 +183,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  badgeSmall: { width: size.iconBadgeSmall, height: size.iconBadgeSmall },
 });

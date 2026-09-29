@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { Canvas, Circle, Path, RadialGradient, Skia, vec } from '@shopify/react-native-skia';
+import { BlurMask, Canvas, LinearGradient, Path, Rect, Skia, vec } from '@shopify/react-native-skia';
 import Animated, {
   Easing,
   useAnimatedReaction,
   useAnimatedStyle,
+  useDerivedValue,
   useReducedMotion,
   useSharedValue,
   withTiming,
@@ -23,8 +24,18 @@ import {
   clearCelebration,
   type CelebrationFrom,
 } from '../src/ui/celebration';
-import { CELEBRATE, copyAt, itemAt, pushAt, UNLOCKED } from '../src/ui/celebrationScene';
-import { colors, opacity, scene, size, space, type } from '../src/ui/tokens';
+import { CELEBRATE, checkAt, copyAt, glowAt, itemAt, pushAt, UNLOCKED } from '../src/ui/celebrationScene';
+import { GlossCard, IconBadge, type StatIconName } from '../src/ui/GlossCard';
+import { colors, opacity, radius, size, space, type } from '../src/ui/tokens';
+
+/** The lit icon on each unlocked card, in UNLOCKED's order. */
+const UNLOCKED_ICON: Record<(typeof UNLOCKED)[number], StatIconName> = {
+  'Unlimited analyses': 'measured',
+  'Watermark-free exports': 'export',
+  'Higher recording quality': 'quality',
+  'Compare deliveries': 'compare',
+  'Your stats': 'trend',
+};
 
 /**
  * Shown once, straight after the store confirms a purchase with the pro
@@ -118,7 +129,13 @@ function Celebration({ from }: { from: CelebrationFrom }) {
       <View style={[styles.stage, { paddingTop: insets.top }]}>
         <CelebrationScene t={t} width={width} height={height} />
       </View>
-      <View style={[styles.bottom, { paddingBottom: insets.bottom + space.lg }]}>
+      {/* Scrolls only if large text needs more room than half the screen, so
+          the button is always reachable. */}
+      <ScrollView
+        style={styles.bottomScroll}
+        contentContainerStyle={[styles.bottom, { paddingBottom: insets.bottom + space.lg }]}
+        showsVerticalScrollIndicator={false}
+      >
         <Animated.View style={copy}>
           <Text style={styles.title} accessibilityRole="header">
             You're on Pro
@@ -129,51 +146,86 @@ function Celebration({ from }: { from: CelebrationFrom }) {
           {UNLOCKED.map((item, i) => (
             <Unlocked key={item} t={t} index={i} label={item} />
           ))}
+          <GlowSweep t={t} />
         </View>
         <ActionButton label={exit.label} onPress={go} />
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
-/** One thing Pro unlocks, ticking in with a small lit checkmark. */
-function Unlocked({ t, index, label }: { t: SharedValue<number>; index: number; label: string }) {
+/**
+ * One thing Pro unlocks, as a lit card: it slides in and fades up, then its
+ * lime check draws itself, one card after another.
+ */
+function Unlocked({ t, index, label }: { t: SharedValue<number>; index: number; label: (typeof UNLOCKED)[number] }) {
   const style = useAnimatedStyle(() => ({
     opacity: itemAt(t.value, index),
-    transform: [{ translateX: (1 - itemAt(t.value, index)) * -space.md }],
+    transform: [{ translateX: (1 - itemAt(t.value, index)) * -space.lg }],
   }));
+  const drawn = useDerivedValue(() => checkAt(t.value, index));
   return (
-    <Animated.View style={[styles.item, style]}>
-      <Check />
-      <Text style={styles.itemText}>{label}</Text>
+    <Animated.View style={style}>
+      <GlossCard style={styles.card} accessibilityLabel={`${label}, unlocked.`}>
+        <IconBadge name={UNLOCKED_ICON[label]} small />
+        <Text style={styles.itemText}>{label}</Text>
+        <Canvas style={styles.check} pointerEvents="none">
+          <Path path={TICK} style="stroke" strokeWidth={stroke} strokeCap="round" strokeJoin="round" color={colors.accent} opacity={opacity.inactive} end={drawn}>
+            <BlurMask blur={stroke} style="normal" />
+          </Path>
+          <Path path={TICK} style="stroke" strokeWidth={stroke} strokeCap="round" strokeJoin="round" color={colors.accent} end={drawn} />
+        </Canvas>
+      </GlossCard>
     </Animated.View>
   );
 }
 
-const CHECK = size.target / 2;
-const tick = (() => {
+const CHECK = size.iconBadgeSmall;
+const stroke = CHECK * 0.1;
+/** A tick, drawn from its short stroke to its long one. */
+const TICK = (() => {
   const p = Skia.Path.Make();
-  p.moveTo(CHECK * 0.28, CHECK * 0.52);
-  p.lineTo(CHECK * 0.44, CHECK * 0.68);
-  p.lineTo(CHECK * 0.74, CHECK * 0.34);
+  p.moveTo(CHECK * 0.24, CHECK * 0.52);
+  p.lineTo(CHECK * 0.42, CHECK * 0.7);
+  p.lineTo(CHECK * 0.78, CHECK * 0.3);
   return p;
 })();
 
-/** A lit lime bead with a dark tick cut into it. */
-function Check() {
-  const c = CHECK / 2;
+/**
+ * Once every card is in and ticked, a soft band of light crosses the list
+ * once, left to right, and is gone. Never loops; reduced motion never sees it.
+ */
+function GlowSweep({ t }: { t: SharedValue<number> }) {
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const band = Math.max(box.w * 0.45, size.target);
+  const style = useAnimatedStyle(() => {
+    const g = glowAt(t.value);
+    return {
+      opacity: g.opacity * opacity.band,
+      transform: [{ translateX: -band + (box.w + band) * g.at }],
+    };
+  });
   return (
-    <Canvas style={styles.check}>
-      <Circle cx={c} cy={c} r={c * 0.92}>
-        <RadialGradient
-          c={vec(c * 0.7, c * 0.6)}
-          r={c * 1.3}
-          colors={[scene.specular, colors.accent, colors.bg]}
-          positions={[0, 0.3, 1]}
-        />
-      </Circle>
-      <Path path={tick} style="stroke" strokeWidth={CHECK * 0.12} strokeCap="round" strokeJoin="round" color={colors.bg} />
-    </Canvas>
+    <View
+      style={[StyleSheet.absoluteFill, styles.glowClip]}
+      pointerEvents="none"
+      onLayout={(e) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+    >
+      {box.w > 0 ? (
+        <Animated.View style={[StyleSheet.absoluteFill, { width: band }, style]}>
+          <Canvas style={StyleSheet.absoluteFill}>
+            <Rect x={0} y={0} width={band} height={box.h}>
+              <LinearGradient
+                start={vec(0, 0)}
+                end={vec(band, 0)}
+                colors={['transparent', colors.accent, colors.text, colors.accent, 'transparent']}
+                positions={[0, 0.35, 0.5, 0.65, 1]}
+              />
+            </Rect>
+          </Canvas>
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
 
@@ -181,11 +233,20 @@ const styles = StyleSheet.create({
   // Full screen, no chrome: the floodlit scene, the copy, what unlocked and the way on.
   screen: { flex: 1, backgroundColor: colors.bg, overflow: 'hidden' },
   stage: { alignItems: 'center' },
-  bottom: { flex: 1, justifyContent: 'flex-end', paddingHorizontal: space.lg },
+  bottomScroll: { flex: 1 },
+  bottom: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: space.lg },
   title: { ...type.h1, color: colors.text, textAlign: 'center' },
   body: { ...type.body, color: colors.muted, textAlign: 'center', marginTop: space.sm },
-  list: { marginTop: space.lg, marginBottom: space.lg, gap: space.sm, alignSelf: 'center' },
-  item: { flexDirection: 'row', alignItems: 'center', gap: space.sm, opacity: opacity.full },
-  itemText: { ...type.body, color: colors.text },
+  list: { marginTop: space.md, marginBottom: space.lg, gap: space.xs },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingVertical: space.xs,
+    paddingHorizontal: space.sm,
+  },
+  itemText: { ...type.body, color: colors.text, fontWeight: '700', flex: 1, flexShrink: 1 },
   check: { width: CHECK, height: CHECK },
+  // The sweep stays within the list's own rounded edge.
+  glowClip: { overflow: 'hidden', borderRadius: radius.lg },
 });

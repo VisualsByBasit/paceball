@@ -72,7 +72,10 @@ test('the button goes back to what started the purchase', () => {
   // leaving through it skips whatever is left of the scene.
   const button = route.indexOf('<ActionButton label={exit.label} onPress={go} />');
   assert.ok(button > 0);
-  const before = route.slice(route.lastIndexOf('<View style={[styles.bottom', button), button);
+  const from = route.lastIndexOf('<ScrollView', button);
+  assert.ok(from > 0, 'the bottom of the screen is found');
+  const before = route.slice(from, button);
+  assert.match(before, /contentContainerStyle=\{\[styles\.bottom,/);
   assert.equal((before.match(/<Animated\.View/g) ?? []).length, (before.match(/<\/Animated\.View>/g) ?? []).length, 'not inside an animated view');
 });
 
@@ -175,4 +178,41 @@ test('the celebration takes every colour and size from tokens', () => {
     }
     assert.doesNotMatch(source, /—/, file);
   }
+});
+
+test('the unlocked list: lit cards slide in, each check draws itself, then one glow sweeps', () => {
+  const c = scene.CELEBRATE;
+  const n = scene.UNLOCKED.length;
+  for (let i = 0; i < n; i++) {
+    const start = c.list + i * c.stagger;
+    // The check starts only once its card is on its way in, and is drawn by the end.
+    assert.equal(scene.checkAt(start + c.tick / 2 - 1, i), 0);
+    assert.ok(scene.checkAt(start + c.tick / 2 + c.check / 2, i) > 0);
+    assert.equal(scene.checkAt(c.total, i), 1);
+    // Never past fully drawn.
+    for (let t = start; t <= c.total; t += 7) assert.ok(scene.checkAt(t, i) <= 1);
+  }
+  // The glow waits for the last check, crosses once, and leaves nothing behind.
+  assert.ok(c.list + (n - 1) * c.stagger + c.tick / 2 + c.check <= c.glow);
+  assert.ok(c.glow < c.total);
+  assert.equal(scene.glowAt(c.glow - 1).opacity, 0);
+  assert.ok(scene.glowAt((c.glow + c.total) / 2).opacity > 0.99);
+  assert.ok(scene.glowAt(c.total).opacity < 1e-9);
+  assert.ok(scene.glowAt(c.total + 5000).opacity < 1e-9, 'never loops');
+  assert.equal(scene.glowAt(c.total).at, 1);
+
+  const route = read('app/celebration.tsx');
+  // The same items, each on a lit card with its own icon.
+  for (const item of scene.UNLOCKED) assert.match(route, new RegExp(`'${item}': '[a-z]+',`), item);
+  assert.match(route, /<GlossCard style=\{styles\.card\} accessibilityLabel=\{`\$\{label\}, unlocked\.`\}>/);
+  assert.match(route, /<IconBadge name=\{UNLOCKED_ICON\[label\]\} small \/>/);
+  // Slides and fades on the scene's one clock.
+  assert.match(route, /opacity: itemAt\(t\.value, index\),\s*transform: \[\{ translateX: \(1 - itemAt\(t\.value, index\)\) \* -space\.lg \}\]/);
+  // A lime check whose path is drawn to `end`, driven by checkAt.
+  assert.match(route, /const drawn = useDerivedValue\(\(\) => checkAt\(t\.value, index\)\);/);
+  assert.match(route, /color=\{colors\.accent\} end=\{drawn\} \/>/);
+  // The sweep, from glowAt, once.
+  assert.match(route, /const g = glowAt\(t\.value\);/);
+  assert.match(route, /<GlowSweep t=\{t\} \/>/);
+  assert.match(read('src/ui/tokens.ts'), /check: 200,[\s\S]*?glow: 2160,\s*total: 2500,/);
 });

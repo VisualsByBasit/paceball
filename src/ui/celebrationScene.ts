@@ -194,3 +194,21 @@ export function itemAt(t: number, index: number): number {
   'worklet';
   return easeOut((t - CELEBRATE.list - index * CELEBRATE.stagger) / CELEBRATE.tick);
 }
+
+/** How much of an item's check has drawn itself: from halfway through its slide in. */
+export function checkAt(t: number, index: number): number {
+  'worklet';
+  const from = CELEBRATE.list + index * CELEBRATE.stagger + CELEBRATE.tick / 2;
+  return easeOut((t - from) / CELEBRATE.check);
+}
+
+/**
+ * The glow sweeping across the list once every item is in: where it is, 0 at
+ * the left edge to 1 past the right, and how bright, rising and falling back
+ * to nothing so it never lingers. Reduced motion, at the end, shows none.
+ */
+export function glowAt(t: number): { at: number; opacity: number } {
+  'worklet';
+  const u = clamp01((t - CELEBRATE.glow) / (CELEBRATE.total - CELEBRATE.glow));
+  return { at: u, opacity: Math.sin(Math.PI * u) };
+}
