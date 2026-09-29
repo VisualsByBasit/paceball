@@ -33,7 +33,7 @@ test('the personal best is a measured reading with its range, or it says there i
   assert.match(home, /const best = useMemo\(\(\) => personalBest\(listed\), \[listed\]\);/);
   // The hero: the Result speedometer, small, and the reading with its range.
   assert.match(home, /<ReadingBlock reading=\{bestView\} size="heroCompact" \/>/);
-  assert.match(home, /<SpeedGauge reading=\{bestView\} unit=\{unit\} width=\{size\.gaugeSmall\} \/>/);
+  assert.match(home, /<SpeedGauge reading=\{bestView\} unit=\{unit\} width=\{size\.gaugeSmall\} sweep=\{heroReveal\} \/>/);
   // Only inside the measured branch: no gauge without a measured best.
   const measured = home.slice(home.indexOf("best && bestView?.kind === 'measured' ? ("), home.indexOf('Nothing measured yet'));
   assert.match(measured, /<SpeedGauge/);

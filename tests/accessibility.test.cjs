@@ -87,7 +87,7 @@ test('the reading on Result is one stop for a screen reader, range included', ()
   // reaches it only on the measured branch, and a delivery without a speed has
   // nothing in it to read out.
   assert.match(block, /reading: MeasuredReading;/);
-  assert.match(result, /\{view\.kind === 'measured' \? \(\s*<View style=\{styles\.reading\}>/);
+  assert.match(result, /\{view\.kind === 'measured' \? \(\s*<View style=\{styles\.reading\} onLayout=\{reveal\.onLayout\}>/);
   for (const kind of ['not-seen', 'unusable']) {
     assert.deepEqual(readingView({ kind }, 'kmh'), { kind: 'none', cause: kind });
   }

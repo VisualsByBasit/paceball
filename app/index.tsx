@@ -15,6 +15,7 @@ import { LitEdge } from '../src/ui/LitEdge';
 import { CricketStill, FloodlitPanel } from '../src/ui/cricket3d';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
 import { SpeedGauge } from '../src/ui/SpeedGauge';
+import { useReveal } from '../src/ui/motion/useReveal';
 import { TabBar } from '../src/ui/TabBar';
 import { measuredThisWeek, personalBest } from '../src/ui/deliveries';
 import { errorMessage, formatWhen } from '../src/ui/format';
@@ -83,6 +84,9 @@ export default function Index() {
   );
   const best = useMemo(() => personalBest(listed), [listed]);
   const bestView = best ? readingView(best.state, unit) : null;
+  // The hero's needle sweeps once it is laid out. Home is not pushed, so there
+  // is no transition to wait for.
+  const heroReveal = useReveal({ ready: bestView?.kind === 'measured', afterTransition: false });
 
   const open = (id: string) => router.push({ pathname: '/analysis', params: { id } });
 
@@ -143,8 +147,8 @@ export default function Index() {
           >
             <FloodlitPanel style={styles.hero}>
               <Text style={styles.heroLabel}>PERSONAL BEST</Text>
-              <View style={styles.heroGauge}>
-                <SpeedGauge reading={bestView} unit={unit} width={size.gaugeSmall} />
+              <View style={styles.heroGauge} onLayout={heroReveal.onLayout}>
+                <SpeedGauge reading={bestView} unit={unit} width={size.gaugeSmall} sweep={heroReveal} />
               </View>
               <ReadingBlock reading={bestView} size="heroCompact" />
               <Text style={styles.caption}>Highest estimate · {formatWhen(best.createdAt)}</Text>

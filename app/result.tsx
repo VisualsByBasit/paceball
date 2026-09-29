@@ -43,6 +43,7 @@ import { ReadingBlock } from '../src/ui/ReadingBlock';
 import { SpeedGauge } from '../src/ui/SpeedGauge';
 import { WicketLock } from '../src/ui/WicketLock';
 import { PathDots, pointsAlong } from '../src/ui/motion/PathDots';
+import { useReveal } from '../src/ui/motion/useReveal';
 import { READING_LABEL, readingView, type NoReading } from '../src/ui/reading';
 import { readingCautions } from '../src/ui/gauge';
 import { colors, radius, size, space, stroke, type } from '../src/ui/tokens';
@@ -126,8 +127,6 @@ export default function ResultScreen() {
   // from where the saved delivery keeps them once it has been saved.
   const [savedFramesDir, setSavedFramesDir] = useState<string | null>(null);
   const savingRef = useRef(false);
-  // The count has landed: the wicket locks.
-  const [landed, setLanded] = useState(false);
   const [sharing, setSharing] = useState(false);
   // The pinned footer's height, so the page can scroll everything clear of it.
   const [footerHeight, setFooterHeight] = useState<number>(size.button * 2 + space.xl);
@@ -232,6 +231,12 @@ export default function ResultScreen() {
   }, [imageWidth, imageHeight, videoWidth, videoHeight]);
 
   const result = 'result' in reading ? reading.result : null;
+
+  // The dial and the number sweep from this one driver, together. It waits
+  // for the reading, for the reading's view to be laid out and for the push
+  // from Mark to finish, so none of the sweep is spent while the screen is
+  // still arriving. When it lands, the wicket locks.
+  const reveal = useReveal({ ready: result !== null && result.speedKmh !== null });
 
   const canSave =
     result !== null &&
@@ -470,22 +475,21 @@ export default function ResultScreen() {
         ]}
       >
         {view.kind === 'measured' ? (
-          <View style={styles.reading}>
+          <View style={styles.reading} onLayout={reveal.onLayout}>
             {/* The reading's own sentence says this, so it is not read twice. */}
             <Text style={styles.label} accessibilityElementsHidden importantForAccessibility="no">
               {READING_LABEL}
             </Text>
             {/* The dial sweeps with the count; the number and its range stay
                 beneath it, and the wicket lands with both. */}
-            <SpeedGauge reading={view} unit={unit} width={width - space.lg * 2} />
+            <SpeedGauge reading={view} unit={unit} width={width - space.lg * 2} sweep={reveal} />
             <ReadingBlock
               reading={view}
               size={width < size.compactBelow ? 'heroCompact' : 'hero'}
-              reveal
-              onLanded={() => setLanded(true)}
+              reveal={reveal}
             />
             <View style={styles.wicket}>
-              <WicketLock locked={landed} />
+              <WicketLock locked={reveal.done} />
             </View>
           </View>
         ) : (

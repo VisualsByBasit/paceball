@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,18 +8,13 @@ import {
   type TextStyle,
 } from 'react-native';
 import Animated, {
-  Easing,
   interpolateColor,
   useAnimatedProps,
   useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withTiming,
 } from 'react-native-reanimated';
-// Reanimated's own peer, pinned by the worklets override in package.json.
-import { scheduleOnRN } from 'react-native-worklets';
-import { countUpText, heldText, revealStart } from '../reading';
-import { motion } from '../tokens';
+import { countUpText, heldText } from '../reading';
+import { sweptValue } from '../reveal';
+import type { Reveal } from './useReveal';
 
 /**
  * A Text's content is React children, so changing it means a re-render on the
@@ -33,8 +27,6 @@ const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 /** `text` is a real native prop on TextInput that React Native's types leave out. */
 type LiveText = TextInputProps & { text: string };
-
-const SETTLE = Easing.bezier(...motion.settleCurve);
 
 type CountUpReadingProps = {
   /** The measured number to land on. */
@@ -50,16 +42,17 @@ type CountUpReadingProps = {
    * time to fall, so the two turn together.
    */
   landedColor: string;
-  /** Show the final number at once, with nothing counting. For reduced motion. */
-  still: boolean;
-  /** Once, when the count lands, or straight away when still. */
-  onLanded?: () => void;
+  /**
+   * The reveal that drives it, shared with the dial above, so the number and
+   * the needle count off the same value on the same frame.
+   */
+  reveal: Pick<Reveal, 'progress' | 'landed' | 'done'>;
   allowFontScaling?: boolean;
 };
 
 /**
- * Counts from zero up to a reading and settles on it. Remount with a new `key`
- * to replay.
+ * Counts from zero up to a reading and settles on it, driven by the reveal's
+ * progress on the UI thread.
  *
  * The count decelerates onto the value and never passes it: an overshoot would
  * put a faster speed on screen than was measured, if only for a few frames.
@@ -73,51 +66,13 @@ export function CountUpReading({
   style,
   countingColor,
   landedColor,
-  still,
-  onLanded,
+  reveal,
   allowFontScaling,
 }: CountUpReadingProps) {
-  const start = revealStart(value, still);
-  // Shared values live on the UI thread. Writing one from JS schedules the
-  // write there; nothing on the JS side re-renders when they change.
-  const shown = useSharedValue(start.shown);
-  const landed = useSharedValue(start.landed);
-
-  // Whether the count has landed, on the JS side: from then on React's own
-  // copy of the text is the final reading. See heldText.
-  const [done, setDone] = useState(still);
-
-  const onLandedRef = useRef(onLanded);
-  useEffect(() => {
-    onLandedRef.current = onLanded;
-  }, [onLanded]);
-  const land = useCallback(() => {
-    setDone(true);
-    onLandedRef.current?.();
-  }, []);
-
-  useEffect(() => {
-    const from = revealStart(value, still);
-    shown.value = from.shown;
-    landed.value = from.landed;
-    if (still) {
-      land();
-      return;
-    }
-    // Assigning an animation to a shared value runs it on the UI thread. The
-    // callback is a worklet too, so the colour is chained there, frame-exact.
-    shown.value = withTiming(value, { duration: motion.countUp, easing: SETTLE }, (finished) => {
-      if (!finished) return;
-      landed.value = withDelay(
-        motion.lock.bail,
-        withTiming(1, { duration: motion.lock.colour, easing: Easing.linear })
-      );
-      scheduleOnRN(land);
-    });
-  }, [value, still, shown, landed, land]);
+  const { progress, landed, done } = reveal;
 
   const liveText = useAnimatedProps<LiveText>(() => ({
-    text: countUpText(shown.value, value, decimals),
+    text: countUpText(sweptValue(progress.value, value), value, decimals),
   }));
 
   const colour = useAnimatedStyle(() => ({
@@ -140,9 +95,9 @@ export function CountUpReading({
       <AnimatedTextInput
         style={[style, styles.live, colour]}
         allowFontScaling={allowFontScaling}
-        // Controlled, so every React commit carries the right text: the start
-        // while counting, the final reading once landed, and never a reset.
-        value={heldText(done, value, decimals, start.shown)}
+        // Controlled, so every React commit carries the right text: zero while
+        // counting, the final reading once landed, and never a reset.
+        value={heldText(done, value, decimals, 0)}
         animatedProps={liveText}
         editable={false}
         caretHidden

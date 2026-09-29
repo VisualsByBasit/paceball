@@ -137,8 +137,16 @@ export const opacity = {
  * hand moves: the playhead, a bar growing under it.
  */
 export const motion = {
-  /** A reading counting up from zero to what was measured. */
-  countUp: 700,
+  /**
+   * A reading arriving: the dial's needle and the number sweep together from
+   * zero to what was measured, on settleCurve.
+   */
+  countUp: 1000,
+  /**
+   * The longest a reveal waits for its screen's push transition to report
+   * that it has ended, before it starts anyway.
+   */
+  revealWait: 600,
   /** Secondary text arriving once a number has landed. */
   fade: 240,
   /** Between one path dot appearing and the next. */

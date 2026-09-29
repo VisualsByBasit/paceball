@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import {
   BlurMask,
@@ -17,15 +17,7 @@ import {
   vec,
   type SkFont,
 } from '@shopify/react-native-skia';
-import {
-  Easing,
-  interpolateColor,
-  useDerivedValue,
-  useReducedMotion,
-  useSharedValue,
-  withDelay,
-  withTiming,
-} from 'react-native-reanimated';
+import { interpolateColor, useDerivedValue } from 'react-native-reanimated';
 import {
   bandDeg,
   GAUGE_START_DEG,
@@ -37,12 +29,12 @@ import {
   OFF_SCALE_LABEL,
   offScale,
 } from './gauge';
+import type { Reveal } from './motion/useReveal';
 import type { MeasuredReading } from './reading';
+import { sweptValue } from './reveal';
 import type { SpeedUnit } from '../settings/settings';
 import { effect, MATERIAL } from './cricket3d';
-import { colors, motion, opacity, scene, size } from './tokens';
-
-const SETTLE = Easing.bezier(...motion.settleCurve);
+import { colors, opacity, scene, size } from './tokens';
 
 /** A point on the dial's circle, `deg` clockwise from three o'clock. */
 function onCircle(cx: number, cy: number, r: number, deg: number) {
@@ -75,15 +67,21 @@ type SpeedGaugeProps = {
   unit: SpeedUnit;
   /** How wide to draw it; never wider than size.gauge. */
   width: number;
+  /**
+   * The one driver the sweep is drawn from, shared with the number beneath,
+   * so the needle and the count move on the same frame.
+   */
+  sweep: Pick<Reveal, 'progress' | 'landed'>;
 };
 
 /**
  * A speedometer for the reading, drawn as an instrument: a brushed metal
  * bezel round a recessed dial, embossed ticks and figures on a fixed scale,
  * the measured range as a glowing band set into the face, and a needle with a
- * lit hub that sweeps from 0 to the reading on the same 700 ms settle curve as
- * the number, never passing it. It all turns lime once the reading lands.
- * Reduced motion shows it landed.
+ * lit hub that sweeps from 0 to the reading, never passing it. The sweep is
+ * the reveal's own progress, the very value the number counts from, so the two
+ * move in step. It all turns lime once the reading lands. Reduced motion shows
+ * it landed.
  *
  * The scale is fixed and never stretched. A reading past the end rests on the
  * end stop, and the dial says "Off the scale".
@@ -91,8 +89,7 @@ type SpeedGaugeProps = {
  * Decorative for a screen reader: the reading beneath it says the same thing
  * in words.
  */
-export function SpeedGauge({ reading, unit, width }: SpeedGaugeProps) {
-  const reduced = useReducedMotion();
+export function SpeedGauge({ reading, unit, width, sweep }: SpeedGaugeProps) {
   const w = Math.min(width, size.gauge);
   const R = w / 2;
   const cx = R;
@@ -101,27 +98,7 @@ export function SpeedGauge({ reading, unit, width }: SpeedGaugeProps) {
   const max = gaugeMax(unit);
   const value = reading.value;
   const beyond = offScale(value, reading.error, unit);
-
-  const shown = useSharedValue(reduced ? value : 0);
-  const landed = useSharedValue(reduced ? 1 : 0);
-
-  useEffect(() => {
-    if (reduced) {
-      shown.value = value;
-      landed.value = 1;
-      return;
-    }
-    shown.value = 0;
-    landed.value = 0;
-    shown.value = withTiming(value, { duration: motion.countUp, easing: SETTLE }, (finished) => {
-      if (!finished) return;
-      // After the bail has fallen, over the same time the wicket turns.
-      landed.value = withDelay(
-        motion.lock.bail,
-        withTiming(1, { duration: motion.lock.colour, easing: Easing.linear })
-      );
-    });
-  }, [value, reduced, shown, landed]);
+  const { progress, landed } = sweep;
 
   const band = useMemo(() => {
     const oval = Skia.XYWHRect(cx - R * BAND_R, cy - R * BAND_R, R * BAND_R * 2, R * BAND_R * 2);
@@ -158,12 +135,12 @@ export function SpeedGauge({ reading, unit, width }: SpeedGaugeProps) {
   }, [cx, cy, R]);
 
   const turn = useDerivedValue(() => [
-    { rotate: (needleDeg(shown.value, value, max) * Math.PI) / 180 },
+    { rotate: (needleDeg(sweptValue(progress.value, value), value, max) * Math.PI) / 180 },
   ]);
   const shadowTurn = useDerivedValue(() => [
     { translateX: R * 0.035 },
     { translateY: R * 0.05 },
-    { rotate: (needleDeg(shown.value, value, max) * Math.PI) / 180 },
+    { rotate: (needleDeg(sweptValue(progress.value, value), value, max) * Math.PI) / 180 },
   ]);
   const lit = useDerivedValue(() => interpolateColor(landed.value, [0, 1], [WHITE_LIT, LIME_LIT]));
   const shade = useDerivedValue(() => interpolateColor(landed.value, [0, 1], [WHITE_SHADE, LIME_SHADE]));

@@ -3,11 +3,11 @@ import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   interpolateColor,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 import { CountUpReading } from './motion/CountUpReading';
+import type { Reveal } from './motion/useReveal';
 import type { MeasuredReading } from './reading';
 import { colors, motion, space, type } from './tokens';
 
@@ -21,10 +21,11 @@ type ReadingBlockProps = {
   reading: MeasuredReading;
   size: ReadingSize;
   /**
-   * Count up from zero and land, for the moment a reading arrives. Without it,
-   * or with motion reduced, the reading shows final and complete at once.
+   * Count up from zero and land, for the moment a reading arrives, driven by
+   * the screen's reveal (useReveal), which the dial above sweeps from too.
+   * Without it, or with motion reduced, the reading shows final at once.
    */
-  reveal?: boolean;
+  reveal?: Reveal;
   /** Once the reading has landed, or straight away when it is not revealed. */
   onLanded?: () => void;
 };
@@ -37,9 +38,8 @@ type ReadingBlockProps = {
  * number is never shown alone. When the count lands the range comes up to full
  * strength and the number turns lime: the reading is complete.
  */
-export function ReadingBlock({ reading, size, reveal = false, onLanded }: ReadingBlockProps) {
-  const reduced = useReducedMotion();
-  const still = !reveal || reduced;
+export function ReadingBlock({ reading, size, reveal, onLanded }: ReadingBlockProps) {
+  const still = !reveal || reveal.still;
   // 0 muted, 1 full strength. Only the range reads it.
   const emphasis = useSharedValue(still ? 1 : 0);
   const announced = useRef(false);
@@ -59,6 +59,15 @@ export function ReadingBlock({ reading, size, reveal = false, onLanded }: Readin
     }
     onLandedRef.current?.();
   }, [emphasis, still, reveal, reading.spoken]);
+
+  // The reveal's landing, on the JS side: from then the range is at full
+  // strength and the reading is announced.
+  const revealDone = reveal?.done ?? false;
+  useEffect(() => {
+    if (reveal && revealDone) land();
+    // Once, when it lands. `land` only changes with the reading itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealDone]);
 
   const range = useAnimatedStyle(() => ({
     color: interpolateColor(emphasis.value, [0, 1], [colors.muted, colors.text]),
@@ -81,8 +90,7 @@ export function ReadingBlock({ reading, size, reveal = false, onLanded }: Readin
             style={number}
             countingColor={colors.text}
             landedColor={colors.accent}
-            still={still}
-            onLanded={land}
+            reveal={reveal}
             allowFontScaling={false}
           />
         ) : (

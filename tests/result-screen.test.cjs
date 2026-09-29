@@ -66,8 +66,8 @@ test('a delivery without a speed renders no number, no count and no wicket', () 
 
 test('the reading counts up, lands, and then the wicket locks', () => {
   const result = read(FILE);
-  assert.match(result, /<ReadingBlock\s+reading=\{view\}\s+size=\{width < size\.compactBelow \? 'heroCompact' : 'hero'\}\s+reveal\s+onLanded=\{\(\) => setLanded\(true\)\}/);
-  assert.match(result, /<WicketLock locked=\{landed\} \/>/);
+  assert.match(result, /<ReadingBlock\s+reading=\{view\}\s+size=\{width < size\.compactBelow \? 'heroCompact' : 'hero'\}\s+reveal=\{reveal\}\s+\/>/);
+  assert.match(result, /<WicketLock locked=\{reveal\.done\} \/>/);
   assert.equal(propsOf(FILE, 'WicketLock').length, 1);
 });
 

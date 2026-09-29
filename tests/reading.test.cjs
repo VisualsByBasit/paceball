@@ -118,13 +118,14 @@ test('reduced motion starts a reveal where it ends', () => {
   assert.deepEqual(revealStart(124.8, false), { shown: 0, landed: 0 });
 
   // Everything that moves reads the system setting and goes straight to final.
-  for (const file of ['src/ui/ReadingBlock.tsx', 'src/ui/WicketLock.tsx', 'src/ui/motion/PathDots.tsx']) {
+  for (const file of ['src/ui/motion/useReveal.ts', 'src/ui/WicketLock.tsx', 'src/ui/motion/PathDots.tsx']) {
     assert.match(read(file), /useReducedMotion\(\)/, file);
   }
-  assert.match(read('src/ui/ReadingBlock.tsx'), /const still = !reveal \|\| reduced;/);
+  // The reading is still when it is not revealed, or when its reveal is.
+  assert.match(read('src/ui/ReadingBlock.tsx'), /const still = !reveal \|\| reveal\.still;/);
+  assert.match(read('src/ui/motion/useReveal.ts'), /const start = revealStart\(1, still\);/);
   const count = read('src/ui/motion/CountUpReading.tsx');
-  assert.match(count, /const start = revealStart\(value, still\);/);
-  assert.match(count, /text: countUpText\(shown\.value, value, decimals\)/);
+  assert.match(count, /text: countUpText\(sweptValue\(progress\.value, value\), value, decimals\)/);
   assert.match(read('src/ui/motion/PathDots.tsx'), /if \(reduced\) \{\s*drawn\.value = count;\s*return;/);
 });
 
@@ -152,9 +153,9 @@ test('a reading is one stop for a screen reader, and the count is not a stop of 
 test('the number counts in white and turns lime once, with the wicket', () => {
   const block = read('src/ui/ReadingBlock.tsx');
   assert.match(block, /countingColor=\{colors\.text\}\s*landedColor=\{colors\.accent\}/);
-  const count = read('src/ui/motion/CountUpReading.tsx');
   // After the bail has fallen, over the same time the wicket takes to turn.
-  assert.match(count, /withDelay\(\s*motion\.lock\.bail,\s*withTiming\(1, \{ duration: motion\.lock\.colour/);
+  const reveal = read('src/ui/motion/useReveal.ts');
+  assert.match(reveal, /withDelay\(\s*motion\.lock\.bail,\s*withTiming\(1, \{ duration: motion\.lock\.colour/);
   const wicket = read('src/ui/WicketLock.tsx');
   assert.match(wicket, /withTiming\(1, \{ duration: motion\.lock\.bail, easing: SETTLE \}/);
   assert.match(wicket, /withTiming\(1, \{ duration: motion\.lock\.colour, easing: Easing\.linear \}/);
@@ -187,13 +188,14 @@ test('once the count lands it holds the final reading through any later render',
   // Controlled by that text, never an uncontrolled defaultValue React would
   // re-send as "0.0" on the next commit (the bug: it dropped back to zero
   // about a second after landing, when the wicket lock re-rendered Result).
-  assert.match(count, /value=\{heldText\(done, value, decimals, start\.shown\)\}/);
+  assert.match(count, /value=\{heldText\(done, value, decimals, 0\)\}/);
   assert.doesNotMatch(count, /defaultValue=/);
-  assert.match(count, /const land = useCallback\(\(\) => \{\s*setDone\(true\);/);
-  // Nothing a parent re-render changes can restart the count: the effect
-  // depends on the value and stillness only, and the callback is read by ref.
-  assert.match(count, /\}, \[value, still, shown, landed, land\]\);/);
-  assert.match(count, /const land = useCallback\([\s\S]*?\}, \[\]\);/);
+  // Nothing a parent re-render changes can restart the count: the reveal
+  // plays once, and the screen holds one reveal for its whole life.
+  const reveal = read('src/ui/motion/useReveal.ts');
+  assert.match(reveal, /scheduleOnRN\(setDone, true\)/);
+  assert.match(reveal, /started: started\.current/);
+  assert.match(reveal, /started\.current = true;/);
   // The screen never remounts the reading with a changing key.
   assert.doesNotMatch(read('app/result.tsx'), /<ReadingBlock[^>]*\bkey=/);
 });

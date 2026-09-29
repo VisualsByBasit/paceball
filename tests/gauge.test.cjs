@@ -60,11 +60,12 @@ test('the needle sweeps to the reading and never past it', () => {
   for (let shown = -10; shown <= value * 1.5; shown += 3.7) {
     assert.ok(needleDeg(shown, value, max) <= at + 1e-9, `${shown} passes the reading`);
   }
-  // Same curve and duration as the number, so they land together.
+  // Driven by the same progress as the number, so they land together: the
+  // gauge has no clock of its own.
   const gauge = read('src/ui/SpeedGauge.tsx');
-  assert.match(gauge, /withTiming\(value, \{ duration: motion\.countUp, easing: SETTLE \}/);
-  assert.match(gauge, /needleDeg\(shown\.value, value, max\)/);
-  assert.doesNotMatch(gauge, /withSpring/);
+  assert.match(gauge, /needleDeg\(sweptValue\(progress\.value, value\), value, max\)/);
+  assert.doesNotMatch(gauge, /withTiming|withSpring|useEffect/);
+  assert.match(read('src/ui/motion/useReveal.ts'), /withTiming\(1, \{ duration: motion\.countUp, easing: SETTLE \}/);
 });
 
 test('the band is the measured range, lower to upper bound, never below zero', () => {
@@ -79,9 +80,11 @@ test('the band is the measured range, lower to upper bound, never below zero', (
 });
 
 test('reduced motion shows the gauge landed, and a delivery without a speed has none', () => {
+  // The reveal it is drawn from starts landed under reduced motion.
+  const reveal = read('src/ui/motion/useReveal.ts');
+  assert.match(reveal, /const still = useReducedMotion\(\);\s*const start = revealStart\(1, still\);/);
+  assert.match(reveal, /if \(still\) \{\s*progress\.value = 1;\s*landed\.value = 1;\s*setDone\(true\);\s*return;/);
   const gauge = read('src/ui/SpeedGauge.tsx');
-  assert.match(gauge, /const shown = useSharedValue\(reduced \? value : 0\);/);
-  assert.match(gauge, /if \(reduced\) \{\s*shown\.value = value;\s*landed\.value = 1;\s*return;/);
   assert.match(gauge, /reading: MeasuredReading;/);
   const result = read('app/result.tsx');
   const measured = result.slice(result.indexOf("{view.kind === 'measured' ? ("), result.indexOf('<NoSpeed'));

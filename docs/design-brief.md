@@ -151,7 +151,7 @@ Layout top to bottom:
 
 **The reveal (decision):** the range line is on screen, in `muted`, from the very
 first frame, so the number is never shown alone. `CountUpReading` counts from 0 to
-the value in 700 ms on `settleCurve` and never overshoots (existing behaviour, keep
+the value in 1000 ms on `settleCurve` and never overshoots (existing behaviour, keep
 it). When it lands: range turns `text` colour (240 ms), the wicket bail drops 4 dp
 into place (180 ms), stumps and bail turn lime (120 ms), one light haptic. Screen
 reader announces the full reading once, after it lands, never the counting values.
@@ -362,7 +362,7 @@ Reduced motion removes travel, counting and pulses; states appear immediately.
 | Button | press | outline/colour 80 in / 120 out, no scale |
 | Lens switch | tap | 120 ms fade out, wait for frames, 180 ms fade in |
 | Record button | start / stop | 160 ms circle to rounded square, follows real recorder state |
-| CountUpReading | saved reading mounts | 700 ms, settleCurve, never overshoots |
+| CountUpReading | saved reading mounts, laid out, transition ended | 1000 ms, settleCurve, never overshoots, needle and number on one driver |
 | Range emphasis | count lands | muted to text, 240 ms |
 | Wicket lock | count lands | bail 4 dp in 180 ms, lime in 120 ms, once |
 | PathDots | Result evidence mounts | 70 ms stagger, endpoint pulse 560 ms, once, never loops |
