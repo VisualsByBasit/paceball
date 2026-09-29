@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { diagnosticsStatus, sendDiagnosticTest, sendNativeDiagnosticTest, setDiagnosticsConsent } from '../src/diagnostics';
 import { purchasesConfigured } from '../src/purchases';
-import { PRIVACY_URL } from '../src/purchases/links';
+import { PRIVACY_UPDATED, PRIVACY_URL } from '../src/purchases/links';
 import { colors, radius, space, type } from '../src/ui/tokens';
 
 export default function DiagnosticsScreen() {
@@ -16,6 +16,7 @@ export default function DiagnosticsScreen() {
   return <ScrollView style={styles.screen} contentContainerStyle={{ padding: space.md, paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.lg }}>
     <Pressable onPress={() => router.back()} accessibilityRole="button" style={styles.button}><Text style={styles.body}>Back</Text></Pressable>
     <Text style={styles.title}>Privacy and crash reports</Text>
+    <Text style={styles.note}>Last updated {PRIVACY_UPDATED}</Text>
     <Text style={styles.body}>Your videos and measurements stay on this phone. Paceball never uploads your videos or measurements, and there is no account. Android's own backup can copy app data to your backup, and images you save to your gallery or share can remain after uninstalling. Saving an image to your gallery may ask for permission to add it; Paceball cannot read your gallery.</Text>
     <Pressable onPress={() => void Linking.openURL(PRIVACY_URL).catch(() => undefined)} accessibilityRole="link" style={[styles.button, styles.link]}><Text style={styles.body}>Read the full privacy policy</Text></Pressable>
     <Text style={styles.title}>Sound</Text>

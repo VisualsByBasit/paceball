@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/LegalPage";
-import { CONTACT_EMAIL, POLICY_UPDATED } from "@/lib/site";
+import { CONTACT_EMAIL, PRIVACY_UPDATED } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Privacy policy",
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   const mail = <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>;
   return (
-    <LegalPage title="Privacy policy" updated={POLICY_UPDATED}>
+    <LegalPage title="Privacy policy" updated={PRIVACY_UPDATED}>
       <section>
         <p>
           Paceball measures cricket deliveries on your phone. This policy says, in plain language,

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LegalPage } from "@/components/LegalPage";
-import { CONTACT_EMAIL, POLICY_UPDATED, SOCIAL } from "@/lib/site";
+import { CONTACT_EMAIL, SOCIAL, TERMS_UPDATED } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Terms of use",
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function TermsPage() {
   const mail = <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>;
   return (
-    <LegalPage title="Terms of use" updated={POLICY_UPDATED}>
+    <LegalPage title="Terms of use" updated={TERMS_UPDATED}>
       <section>
         <p>
           These terms cover your use of the Paceball app and its Pro subscription. By using the

@@ -85,3 +85,12 @@ test('both policies say how to ask for data to be deleted, in the same words', (
   assert.ok(site.includes(copy), 'the website privacy policy');
   assert.doesNotMatch(copy, /—/);
 });
+
+test('the in-app privacy screen and the website give the same Last updated date', () => {
+  const app = read('src/purchases/links.ts').match(/PRIVACY_UPDATED = '([^']+)'/)[1];
+  const site = read('website/lib/site.ts').match(/PRIVACY_UPDATED = "([^"]+)"/)[1];
+  assert.equal(app, site);
+  assert.match(app, /^\d{1,2} [A-Z][a-z]+ \d{4}$/);
+  assert.match(read('app/diagnostics.tsx'), /Last updated \{PRIVACY_UPDATED\}/);
+  assert.match(read('website/app/privacy/page.tsx'), /updated=\{PRIVACY_UPDATED\}/);
+});

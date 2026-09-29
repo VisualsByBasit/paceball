@@ -31,7 +31,7 @@ test('the website privacy policy names every party and permission the app uses',
   assert.match(privacy, /Android&apos;s own backup/);
   assert.match(privacy, /off by\s+default/);
   assert.match(privacy, /recording still works/);
-  assert.match(privacy, /Last updated|POLICY_UPDATED/);
+  assert.match(privacy, /Last updated|PRIVACY_UPDATED/);
 });
 
 test('the website makes the same narrow promise as the app, never a wider one', () => {
