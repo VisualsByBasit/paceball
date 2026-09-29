@@ -129,6 +129,8 @@ export default function ResultScreen() {
   // The count has landed: the wicket locks.
   const [landed, setLanded] = useState(false);
   const [sharing, setSharing] = useState(false);
+  // The pinned footer's height, so the page can scroll everything clear of it.
+  const [footerHeight, setFooterHeight] = useState<number>(size.button * 2 + space.xl);
 
   useFocusEffect(useCallback(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -406,6 +408,7 @@ export default function ResultScreen() {
 
   const footer = (
     <View
+      onLayout={largeText ? undefined : (e: LayoutChangeEvent) => setFooterHeight(e.nativeEvent.layout.height)}
       style={[
         styles.footer,
         largeText ? styles.footerInFlow : [styles.footerSticky, { paddingBottom: insets.bottom + space.md }],
@@ -460,7 +463,11 @@ export default function ResultScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.content, largeText && { paddingBottom: insets.bottom + space.lg }]}
+        contentContainerStyle={[
+          styles.content,
+          // Whatever is last scrolls fully clear of the pinned footer, and a gap more.
+          { paddingBottom: largeText ? insets.bottom + space.lg : footerHeight + space.lg },
+        ]}
       >
         {view.kind === 'measured' ? (
           <View style={styles.reading}>
@@ -725,6 +732,12 @@ function Evidence({
 
   return (
     <View style={styles.evidence}>
+      <View style={styles.evidenceHead}>
+        <View style={styles.evidencePlate}>
+          <Text style={styles.evidencePlateText}>RELEASE FRAME</Text>
+        </View>
+        <Text style={styles.evidenceFrame}>Frame {release.frame}</Text>
+      </View>
       <View
         style={styles.evidenceBox}
         onLayout={(e: LayoutChangeEvent) => setBoxWidth(e.nativeEvent.layout.width)}
@@ -824,9 +837,39 @@ const styles = StyleSheet.create({
 
   cautions: { gap: space.sm, marginBottom: space.lg },
 
-  evidence: { marginBottom: space.xl },
+  // A finished card: the frame set in a rounded, ruled panel under its own label plate.
+  evidence: {
+    marginBottom: space.xl,
+    padding: space.md,
+    borderRadius: radius.xl,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+  },
+  evidenceHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.md,
+  },
+  evidencePlate: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.hairline,
+    borderColor: colors.control,
+    backgroundColor: colors.bg,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+  },
+  evidencePlateText: { ...type.label, color: colors.text },
+  evidenceFrame: { ...type.caption, ...type.tabular, color: colors.muted },
   evidenceBox: { alignItems: 'center' },
-  frame: { overflow: 'hidden', borderRadius: radius.sm, backgroundColor: colors.surface },
+  frame: {
+    overflow: 'hidden',
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.control,
+    backgroundColor: colors.bg,
+  },
   frameMissing: { alignItems: 'center', justifyContent: 'center', padding: space.md },
   // Opaque, so it reads over any frame.
   plate: {
@@ -861,7 +904,10 @@ const styles = StyleSheet.create({
   footnote: { ...type.caption, color: colors.muted, marginTop: space.md },
 
   footer: { gap: space.sm },
+  // Pinned over the bottom of the page; the page pads itself by its measured height.
   footerSticky: {
+    ...StyleSheet.absoluteFill,
+    top: undefined,
     paddingHorizontal: space.lg,
     paddingTop: space.md,
     borderTopWidth: stroke.hairline,

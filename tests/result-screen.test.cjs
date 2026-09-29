@@ -130,3 +130,17 @@ test('Result takes every colour and size from tokens', () => {
     'hardcodes a size',
   );
 });
+
+test('the page scrolls fully clear of the pinned footer, and the evidence is a finished card', () => {
+  const result = read(FILE);
+  assert.match(result, /onLayout=\{largeText \? undefined : \(e: LayoutChangeEvent\) => setFooterHeight\(e\.nativeEvent\.layout\.height\)\}/);
+  assert.match(result, /\{ paddingBottom: largeText \? insets\.bottom \+ space\.lg : footerHeight \+ space\.lg \}/);
+  const at = result.indexOf('footerSticky: {');
+  const sticky = result.slice(at, result.indexOf('footerInFlow', at));
+  assert.match(sticky, /\.\.\.StyleSheet\.absoluteFill,\s*top: undefined,/);
+  // The card and its plate; the marks inside it are untouched.
+  assert.match(result, /<Text style=\{styles\.evidencePlateText\}>RELEASE FRAME<\/Text>/);
+  assert.match(result, /<Text style=\{styles\.plateText\}>Marked, not tracked<\/Text>/);
+  const card = result.slice(result.indexOf('  evidence: {'), result.indexOf('  evidenceHead'));
+  assert.match(card, /borderRadius: radius\.xl/);
+});
