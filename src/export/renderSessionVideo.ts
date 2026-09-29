@@ -106,13 +106,18 @@ export function createSessionVideoExport(
         colorAccent: colors.accent,
       };
       const native = await FrameExtractor.exportVideo(request);
-      const artifact = new File(native.outputPath);
-      if (!artifact.exists || artifact.size <= 0) {
+      // The clip is the file this side asked for. Native reports it by its
+      // canonical path, which on Android resolves the /data/user/0 symlink to
+      // /data/data: the same file, but no longer under Paths.cache as a
+      // string, so sharing and saving refused it as "not a Paceball video
+      // export". Everything downstream is handed the URI chosen here.
+      if (!output.exists || output.size <= 0) {
         throw new Error('Media3 returned an empty video export.');
       }
       return {
         ...native,
-        outputBytes: artifact.size,
+        outputPath: output.uri,
+        outputBytes: output.size,
         inputBytes: input.size,
         clipDurationMs: plan.clipEndMs - plan.clipStartMs,
       };
