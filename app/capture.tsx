@@ -681,12 +681,14 @@ function ExposureControl({
           <Text style={styles.exposureStepText}>−</Text>
         </RotateInPlace>
       </Pressable>
-      <Text
-        style={styles.exposureValue}
-        accessibilityLabel={`Exposure bias ${exposure}${locked ? ', locked while recording' : ''}`}
-      >
-        {formatBias(exposure)}
-      </Text>
+      <RotateInPlace deg={rotation}>
+        <Text
+          style={styles.exposureValue}
+          accessibilityLabel={`Exposure bias ${exposure}${locked ? ', locked while recording' : ''}`}
+        >
+          {formatBias(exposure)}
+        </Text>
+      </RotateInPlace>
       <Pressable
         style={[styles.exposureStep, !canBrighten && styles.off]}
         onPress={() => onChange(stepExposure(exposure, 1, device))}

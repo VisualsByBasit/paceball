@@ -168,6 +168,8 @@ test('held sideways, the overlay turns to meet the phone and the recording does 
   assert.match(bar, /PRO QUALITY/);
   assert.match(bar, /STANDARD/);
   assert.doesNotMatch(bar, /RotateInPlace|rotation/);
+  // The exposure value between minus and plus turns with the buttons beside it.
+  assert.match(capture, /<RotateInPlace deg=\{rotation\}>\s*<Text\s+style=\{styles\.exposureValue\}/);
   assert.match(read('src/ui/RotateInPlace.tsx'), /transform: \[\{ rotate: `\$\{turn\.value\}deg` \}\]/);
   // The recording is untouched: no orientation reaches the camera, the
   // recorder, or what Mark is handed.
