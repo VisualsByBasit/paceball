@@ -90,6 +90,10 @@ export const size = {
   listRow: 56,
   /** A delivery row's release-frame thumbnail. */
   thumb: 48,
+  /** The logo beside the wordmark at the top of Home. */
+  logo: 28,
+  /** The 3D still life at the top of an empty Home. */
+  still: 200,
   /** A recent delivery's card on Home, and the release frame across its top. */
   card: { width: 160, thumb: 120 },
   /** The tab bar along the foot of Home, History and Settings, above the inset. */

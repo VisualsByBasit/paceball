@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { releaseFrameUri } from '../src/capture/useFrames';
@@ -11,10 +11,12 @@ import { ActionButton } from '../src/ui/ActionButton';
 import { AllowanceLine } from '../src/ui/AllowanceLine';
 import { DeliveryCard } from '../src/ui/DeliveryCard';
 import { EmptyState } from '../src/ui/EmptyState';
+import { LitEdge } from '../src/ui/LitEdge';
+import { CricketStill, FloodlitPanel } from '../src/ui/cricket3d';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
 import { SpeedGauge } from '../src/ui/SpeedGauge';
 import { TabBar } from '../src/ui/TabBar';
-import { personalBest } from '../src/ui/deliveries';
+import { measuredThisWeek, personalBest } from '../src/ui/deliveries';
 import { errorMessage, formatWhen } from '../src/ui/format';
 import { readingView } from '../src/ui/reading';
 import { colors, radius, size, space, stroke, type } from '../src/ui/tokens';
@@ -23,6 +25,9 @@ import { useLargeText } from '../src/ui/useLargeText';
 
 /** How many of the latest deliveries Home lists before "See all". */
 const RECENT = 3;
+
+/** The app's logo, the same file as the launcher icon. */
+const LOGO = require('../assets/icon.png');
 
 type Loaded =
   | { status: 'loading' }
@@ -41,6 +46,8 @@ export default function Index() {
   const { unit } = useSettings();
   const { isPro, allowance, refreshAnalyses } = usePurchases();
   const largeText = useLargeText();
+  const { width: screenWidth } = useWindowDimensions();
+  const stillWidth = screenWidth - space.lg * 2;
 
   const [loaded, setLoaded] = useState<Loaded>({ status: 'loading' });
 
@@ -95,6 +102,9 @@ export default function Index() {
   } else if (loaded.bowler === null) {
     body = (
       <View style={styles.welcome}>
+        <View style={styles.stillCard}>
+          <CricketStill width={stillWidth} height={size.still} />
+        </View>
         <Text style={styles.h1}>A speed gun in your phone.</Text>
         <Text style={styles.sub}>
           Record a delivery, mark four points, and get the average speed to bounce with its
@@ -110,50 +120,66 @@ export default function Index() {
     );
   } else {
     const allowanceNote = isPro ? null : allowanceLine(allowance, weekdayOf);
+    const thisWeek = measuredThisWeek(listed, Date.now());
     body = (
       <>
-        <Text style={styles.h1}>Ready, {loaded.bowler}?</Text>
+        <Text style={styles.greeting}>Ready, {loaded.bowler}?</Text>
 
         {/* The hero: the personal best on the Result speedometer, with its
             range, or the honest empty state. Never a sample reading. */}
         {sessions.length === 0 ? (
-          <View style={styles.hero}>
-            <EmptyState
-              title="Your first reading starts here."
-              body="Film a delivery and mark what you can see."
-            />
+          <View style={styles.stillCard}>
+            <CricketStill width={stillWidth} height={size.still} />
+            <View style={styles.stillCopy}>
+              <Text style={styles.h2}>Your first reading starts here.</Text>
+              <Text style={styles.muted}>Film a delivery and mark what you can see.</Text>
+            </View>
           </View>
         ) : best && bestView?.kind === 'measured' ? (
           <Pressable
-            style={styles.hero}
             onPress={() => open(best.id)}
             accessibilityRole="button"
             accessibilityLabel={`Personal best. ${bestView.spoken} Highest estimate. Open it.`}
           >
-            <Text style={styles.heroLabel}>PERSONAL BEST</Text>
-            <View style={styles.heroGauge}>
-              <SpeedGauge reading={bestView} unit={unit} width={size.gaugeSmall} />
-            </View>
-            <ReadingBlock reading={bestView} size="heroCompact" />
-            <Text style={styles.caption}>Highest estimate · {formatWhen(best.createdAt)}</Text>
+            <FloodlitPanel style={styles.hero}>
+              <Text style={styles.heroLabel}>PERSONAL BEST</Text>
+              <View style={styles.heroGauge}>
+                <SpeedGauge reading={bestView} unit={unit} width={size.gaugeSmall} />
+              </View>
+              <ReadingBlock reading={bestView} size="heroCompact" />
+              <Text style={styles.caption}>Highest estimate · {formatWhen(best.createdAt)}</Text>
+            </FloodlitPanel>
           </Pressable>
         ) : (
-          <View style={styles.hero}>
+          <FloodlitPanel style={styles.hero}>
             <Text style={styles.heroLabel}>PERSONAL BEST</Text>
             <Text style={styles.muted}>
               Nothing measured yet. The fastest saved delivery shows here.
             </Text>
-          </View>
+          </FloodlitPanel>
         )}
 
-        <ActionButton
-          label="Record a delivery"
-          onPress={() => router.push('/capture')}
-          large
-          style={styles.primary}
-        />
+        {/* The largest control on the screen, with a lit edge. */}
+        <LitEdge style={styles.primary}>
+          <ActionButton
+            label="Record a delivery"
+            onPress={() => router.push('/capture')}
+            large
+          />
+        </LitEdge>
         <View style={styles.allowance}>
           <AllowanceLine line={allowanceNote} allowance={allowance} weekday={weekdayOf} />
+        </View>
+
+        {/* This week, from the saved deliveries and the allowance only. */}
+        <Text style={styles.sectionLabel}>THIS WEEK</Text>
+        <View style={styles.pills}>
+          <Pill value={String(thisWeek)} label={thisWeek === 1 ? 'Delivery measured' : 'Deliveries measured'} />
+          {isPro ? (
+            <Pill value="Pro" label="Unlimited analyses" />
+          ) : (
+            <Pill value={String(allowance.left)} label={allowance.left === 1 ? 'Analysis left' : 'Analyses left'} />
+          )}
         </View>
 
         {sessions.length === 0 ? null : (
@@ -209,7 +235,11 @@ export default function Index() {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <View style={styles.top}>
-        <Text style={styles.wordmark}>Paceball</Text>
+        <View style={styles.brand}>
+          {/* The logo, not a photo: decorative beside the name. */}
+          <Image source={LOGO} style={styles.logo} accessibilityIgnoresInvertColors accessible={false} />
+          <Text style={styles.wordmark}>Paceball</Text>
+        </View>
         {bowler ? (
           // The first letter of the bowler's name, in place of a photo. It
           // opens Stats, which shows the personal best to everyone.
@@ -248,6 +278,16 @@ export default function Index() {
   );
 }
 
+/** One figure from this week's real data, and what it counts. */
+function Pill({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={styles.pill} accessible accessibilityLabel={`${label}: ${value}`}>
+      <Text style={styles.pillValue}>{value}</Text>
+      <Text style={styles.pillLabel}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   top: {
@@ -258,6 +298,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     marginTop: space.sm,
   },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  logo: { width: size.logo, height: size.logo, borderRadius: radius.sm },
   wordmark: { ...type.h2, color: colors.text },
   avatar: {
     width: size.target,
@@ -272,6 +314,7 @@ const styles = StyleSheet.create({
 
   content: { paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.xl },
   h1: { ...type.h1, color: colors.text },
+  greeting: { ...type.h2, color: colors.muted },
   h2: { ...type.h2, color: colors.text },
   sub: { ...type.body, color: colors.muted, marginTop: space.sm },
   muted: { ...type.body, color: colors.muted, marginTop: space.sm },
@@ -282,16 +325,38 @@ const styles = StyleSheet.create({
   primary: { marginTop: space.lg },
   allowance: { marginTop: space.sm },
 
+  // Floodlit, with depth: the stadium behind, a ruled edge, the reading on top.
   hero: {
-    marginTop: space.lg,
+    marginTop: space.md,
     paddingVertical: space.lg,
     paddingHorizontal: space.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    alignItems: 'center',
+  },
+  stillCard: {
+    marginTop: space.md,
     borderRadius: radius.xl,
     borderWidth: stroke.hairline,
     borderColor: colors.line,
     backgroundColor: colors.surface,
-    alignItems: 'center',
+    overflow: 'hidden',
   },
+  stillCopy: { padding: space.md },
+  sectionLabel: { ...type.label, color: colors.muted, marginTop: space.xl },
+  pills: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
+  pill: {
+    flex: 1,
+    minHeight: size.target,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: radius.lg,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+  },
+  pillValue: { ...type.h2, ...type.tabular, color: colors.text },
+  pillLabel: { ...type.caption, color: colors.muted },
   heroLabel: { ...type.label, color: colors.muted, alignSelf: 'flex-start' },
   heroGauge: { marginTop: space.sm, marginBottom: space.xs },
 

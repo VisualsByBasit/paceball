@@ -82,3 +82,13 @@ export function latestMeasured<T extends ListedDelivery>(deliveries: readonly T[
 export function measuredCount(deliveries: readonly ListedDelivery[]): number {
   return deliveries.filter((d) => d.state.kind === 'measured').length;
 }
+
+/** A week, for Home's "This week": the seven days up to now, not a calendar week. */
+export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Measured deliveries saved in the seven days up to `now`. Guessed and unusable ones do not count. */
+export function measuredThisWeek(deliveries: readonly ListedDelivery[], now: number): number {
+  return deliveries.filter(
+    (d) => d.state.kind === 'measured' && d.createdAt <= now && now - d.createdAt < WEEK_MS
+  ).length;
+}
