@@ -12,7 +12,6 @@ export default function PlayersScreen() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [active, setActive] = useState<Player | null>(null);
   const [name, setName] = useState('');
-  const [height, setHeight] = useState('');
   const [profileName, setProfileName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +25,6 @@ export default function PlayersScreen() {
     const [all, selected] = await Promise.all([listPlayers(), getActivePlayer()]);
     if (token !== generation.current) return;
     setPlayers(all); setActive(selected);
-    setHeight(selected?.heightCm?.toString() ?? '');
     setProfileName(selected?.name ?? '');
   }, []);
 
@@ -72,11 +70,10 @@ export default function PlayersScreen() {
       {active ? <>
         <TextInput accessibilityLabel="Selected player name" value={profileName} onChangeText={setProfileName}
           maxLength={80} editable={!busy} style={styles.input} />
-        <Text style={styles.note}>Your height in cm (optional, used for height calibration)</Text>
-        <TextInput accessibilityLabel="Player height in centimetres" placeholder="Height in cm" placeholderTextColor={colors.muted}
-          value={height} onChangeText={setHeight} keyboardType="decimal-pad" editable={!busy} style={styles.input} />
+        {/* No height field while the height reference is hidden. A height
+            already on the profile is kept: saving here never writes it. */}
         {button('Save profile', () => void run(async () => {
-          await updatePlayer(active.id, { name: profileName, heightCm: height.trim() ? Number(height) : null }); await reload();
+          await updatePlayer(active.id, { name: profileName }); await reload();
         }))}
       </> : null}
       <Text style={styles.note}>History owns saved deliveries, trends and replay. This screen only manages profiles.</Text>

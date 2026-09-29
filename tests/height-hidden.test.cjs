@@ -66,3 +66,11 @@ test('a delivery saved against a height still opens and reads as it did', () => 
   assert.equal(view.kind, 'measured');
   assert.equal(view.speed, session.speedKmh.toFixed(1));
 });
+
+test('the players screen has no height field, and saving it keeps a height on file', () => {
+  const players = read('src/data/PlayersScreen.tsx');
+  assert.doesNotMatch(players, /<TextInput[^>]*[Hh]eight/);
+  assert.doesNotMatch(players, /setHeight|used for height calibration/);
+  // Saving writes the name only, so a stored height is never cleared.
+  assert.match(players, /updatePlayer\(active\.id, \{ name: profileName \}\)/);
+});
