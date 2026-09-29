@@ -19,6 +19,7 @@ const SHARED = [
   'src/ui/Notice.tsx',
   'src/ui/BottomSheet.tsx',
   'src/ui/AppBar.tsx',
+  'src/ui/DeliveryCard.tsx',
 ];
 
 /** No hex colour anywhere, and no bare number as a style value. */

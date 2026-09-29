@@ -46,6 +46,8 @@ type ActionButtonProps = {
    */
   complete?: boolean;
   accessibilityLabel?: string;
+  /** Taller, for the one action a screen is built around, like Home's record. */
+  large?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -61,6 +63,7 @@ export function ActionButton({
   disabledReason = null,
   complete = false,
   accessibilityLabel,
+  large = false,
   style,
 }: ActionButtonProps) {
   const look = LOOK[complete ? 'secondary' : variant];
@@ -93,12 +96,15 @@ export function ActionButton({
         <Animated.View
           style={[
             variant === 'text' ? styles.text : styles.button,
+            large && styles.large,
             { backgroundColor: look.fill },
             outline,
             disabledReason !== null && styles.off,
           ]}
         >
-          <Text style={[styles.label, { color: look.label }]}>{busy ?? label}</Text>
+          <Text style={[styles.label, large && styles.labelLarge, { color: look.label }]}>
+            {busy ?? label}
+          </Text>
         </Animated.View>
       </Pressable>
       {disabledReason !== null ? (
@@ -129,7 +135,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  large: { minHeight: size.record, borderRadius: radius.lg },
   label: { ...type.button, textAlign: 'center' },
+  labelLarge: { ...type.h2 },
   off: { opacity: opacity.disabled },
   reason: { ...type.caption, color: colors.muted, textAlign: 'center', marginTop: space.xs },
 });

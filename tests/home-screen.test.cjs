@@ -25,7 +25,13 @@ test('the personal best is a measured reading with its range, or it says there i
   const home = read(HOME);
   assert.match(home, /state: measurementState\(s\)/);
   assert.match(home, /const best = useMemo\(\(\) => personalBest\(listed\), \[listed\]\);/);
-  assert.match(home, /<ReadingBlock reading=\{bestView\} size="reading" \/>/);
+  // The hero: the Result speedometer, small, and the reading with its range.
+  assert.match(home, /<ReadingBlock reading=\{bestView\} size="heroCompact" \/>/);
+  assert.match(home, /<SpeedGauge reading=\{bestView\} unit=\{unit\} width=\{size\.gaugeSmall\} \/>/);
+  // Only inside the measured branch: no gauge without a measured best.
+  const measured = home.slice(home.indexOf("best && bestView?.kind === 'measured' ? ("), home.indexOf('Nothing measured yet'));
+  assert.match(measured, /<SpeedGauge/);
+  assert.equal((home.match(/<SpeedGauge /g) ?? []).length, 1);
   assert.match(home, /Highest estimate/);
   assert.match(home, /Nothing measured yet\. The fastest saved delivery shows here\./);
   assert.doesNotMatch(home, /formatSpeed|errorIn\(/);
@@ -61,4 +67,30 @@ test('Home takes every colour and size from tokens', () => {
   assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b/i);
   const styles = source.slice(source.indexOf('StyleSheet.create'));
   assert.doesNotMatch(styles.replace(/\bflex(Grow|Shrink)?:\s*[01]\b/g, ''), /:\s*-?\d+(\.\d+)?\s*[,}\n]/);
+});
+
+test('Home leads with the hero, then a large record button, then recent cards', () => {
+  const home = read(HOME);
+  const hero = home.indexOf('PERSONAL BEST');
+  const record = home.indexOf('label="Record a delivery"');
+  const allowance = home.indexOf('<AllowanceLine');
+  const recent = home.indexOf('Recent deliveries');
+  assert.ok(hero > 0 && hero < record && record < allowance && allowance < recent);
+  assert.match(home, /label="Record a delivery"\s+onPress=\{\(\) => router\.push\('\/capture'\)\}\s+large/);
+  // Recent deliveries are cards with their release frame.
+  assert.match(home, /<DeliveryCard\s+thumb=\{releaseFrameUri\(d\.session\)\}\s+reading=\{view\}/);
+  // The empty state takes the hero's place; no sample data anywhere.
+  assert.match(home, /sessions\.length === 0 \? \(\s*<View style=\{styles\.hero\}>\s*<EmptyState/);
+  assert.doesNotMatch(home, /MOCK_|SAMPLE_|mockOffering/);
+  // The avatar still opens Stats.
+  assert.match(home, /onPress=\{\(\) => router\.push\('\/stats'\)\}/);
+});
+
+test('a delivery card shows a speed only with its range, and no speed as words', () => {
+  const card = read('src/ui/DeliveryCard.tsx');
+  const measured = card.slice(card.indexOf("reading.kind === 'measured' ? ("), card.indexOf(') : ('));
+  assert.match(measured, /\{reading\.speed\}/);
+  assert.match(measured, /\{reading\.range\}/);
+  assert.match(card, /No speed · bounce not seen/);
+  assert.equal((card.match(/reading\.speed/g) ?? []).length, 1);
 });

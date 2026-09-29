@@ -51,12 +51,16 @@ export const size = {
   /** The widest the Result speedometer is drawn, and its dial's stroke. */
   gauge: 280,
   gaugeStroke: 10,
+  /** The personal best's speedometer on Home, a smaller copy of Result's. */
+  gaugeSmall: 200,
   /** A delivery row's minimum height. */
   row: 80,
   /** A settings row's minimum height: one line and its value, Android's standard. */
   listRow: 56,
   /** A delivery row's release-frame thumbnail. */
   thumb: 48,
+  /** A recent delivery's card on Home, and the release frame across its top. */
+  card: { width: 160, thumb: 120 },
   /** The tab bar along the foot of Home, History and Settings, above the inset. */
   tabBar: 64,
   /** Screens narrower than this show the Result reading at heroCompact, not hero. */

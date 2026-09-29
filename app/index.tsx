@@ -9,15 +9,17 @@ import { allowanceLine, usePurchases } from '../src/purchases';
 import { useSettings } from '../src/settings';
 import { ActionButton } from '../src/ui/ActionButton';
 import { AllowanceLine } from '../src/ui/AllowanceLine';
-import { DeliveryRow } from '../src/ui/DeliveryRow';
+import { DeliveryCard } from '../src/ui/DeliveryCard';
 import { EmptyState } from '../src/ui/EmptyState';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
+import { SpeedGauge } from '../src/ui/SpeedGauge';
 import { TabBar } from '../src/ui/TabBar';
 import { personalBest } from '../src/ui/deliveries';
 import { errorMessage, formatWhen } from '../src/ui/format';
 import { readingView } from '../src/ui/reading';
 import { colors, radius, size, space, stroke, type } from '../src/ui/tokens';
 import type { Session } from '../src/types';
+import { useLargeText } from '../src/ui/useLargeText';
 
 /** How many of the latest deliveries Home lists before "See all". */
 const RECENT = 3;
@@ -38,6 +40,7 @@ export default function Index() {
   const isFocused = useIsFocused();
   const { unit } = useSettings();
   const { isPro, allowance, refreshAnalyses } = usePurchases();
+  const largeText = useLargeText();
 
   const [loaded, setLoaded] = useState<Loaded>({ status: 'loading' });
 
@@ -110,44 +113,51 @@ export default function Index() {
     body = (
       <>
         <Text style={styles.h1}>Ready, {loaded.bowler}?</Text>
+
+        {/* The hero: the personal best on the Result speedometer, with its
+            range, or the honest empty state. Never a sample reading. */}
+        {sessions.length === 0 ? (
+          <View style={styles.hero}>
+            <EmptyState
+              title="Your first reading starts here."
+              body="Film a delivery and mark what you can see."
+            />
+          </View>
+        ) : best && bestView?.kind === 'measured' ? (
+          <Pressable
+            style={styles.hero}
+            onPress={() => open(best.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`Personal best. ${bestView.spoken} Highest estimate. Open it.`}
+          >
+            <Text style={styles.heroLabel}>PERSONAL BEST</Text>
+            <View style={styles.heroGauge}>
+              <SpeedGauge reading={bestView} unit={unit} width={size.gaugeSmall} />
+            </View>
+            <ReadingBlock reading={bestView} size="heroCompact" />
+            <Text style={styles.caption}>Highest estimate · {formatWhen(best.createdAt)}</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.hero}>
+            <Text style={styles.heroLabel}>PERSONAL BEST</Text>
+            <Text style={styles.muted}>
+              Nothing measured yet. The fastest saved delivery shows here.
+            </Text>
+          </View>
+        )}
+
         <ActionButton
           label="Record a delivery"
           onPress={() => router.push('/capture')}
+          large
           style={styles.primary}
         />
         <View style={styles.allowance}>
           <AllowanceLine line={allowanceNote} allowance={allowance} weekday={weekdayOf} />
         </View>
 
-        {sessions.length === 0 ? (
-          <EmptyState
-            title="Your first reading starts here."
-            body="Film a delivery and mark what you can see."
-          />
-        ) : (
+        {sessions.length === 0 ? null : (
           <>
-            {best && bestView?.kind === 'measured' ? (
-              <Pressable
-                style={styles.card}
-                onPress={() => open(best.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`Personal best. ${bestView.spoken} Highest estimate. Open it.`}
-              >
-                <Text style={styles.h2}>Personal best</Text>
-                <View style={styles.bestReading}>
-                  <ReadingBlock reading={bestView} size="reading" />
-                </View>
-                <Text style={styles.caption}>Highest estimate</Text>
-              </Pressable>
-            ) : (
-              <View style={styles.card}>
-                <Text style={styles.h2}>Personal best</Text>
-                <Text style={styles.muted}>
-                  Nothing measured yet. The fastest saved delivery shows here.
-                </Text>
-              </View>
-            )}
-
             <View style={styles.recentHead}>
               <Text style={styles.h2}>Recent deliveries</Text>
               <Pressable
@@ -159,26 +169,35 @@ export default function Index() {
                 <Text style={styles.seeAllText}>See all</Text>
               </Pressable>
             </View>
-            {listed.slice(0, RECENT).map((d) => {
-              const view = readingView(d.state, unit);
-              return (
-                <Pressable
-                  key={d.id}
-                  onPress={() => open(d.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${formatWhen(d.createdAt)}. ${
-                    view.kind === 'measured' ? view.spoken : 'No speed.'
-                  } Open it.`}
-                >
-                  <DeliveryRow
-                    thumb={releaseFrameUri(d.session)}
-                    reading={view}
-                    when={formatWhen(d.createdAt)}
-                    best={best?.id === d.id}
-                  />
-                </Pressable>
-              );
-            })}
+            <ScrollView
+              horizontal={!largeText}
+              showsHorizontalScrollIndicator={false}
+              // Out to the screen's edges, so a card can scroll off them.
+              style={styles.recentStrip}
+              contentContainerStyle={largeText ? styles.recentStack : styles.recentRow}
+            >
+              {listed.slice(0, RECENT).map((d) => {
+                const view = readingView(d.state, unit);
+                return (
+                  <Pressable
+                    key={d.id}
+                    onPress={() => open(d.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${formatWhen(d.createdAt)}. ${
+                      view.kind === 'measured' ? view.spoken : 'No speed.'
+                    } Open it.`}
+                  >
+                    <DeliveryCard
+                      thumb={releaseFrameUri(d.session)}
+                      reading={view}
+                      when={formatWhen(d.createdAt)}
+                      best={best?.id === d.id}
+                      wide={largeText}
+                    />
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </>
         )}
       </>
@@ -261,7 +280,20 @@ const styles = StyleSheet.create({
 
   welcome: { paddingTop: space.xl },
   primary: { marginTop: space.lg },
-  allowance: { marginTop: space.sm, marginBottom: space.lg },
+  allowance: { marginTop: space.sm },
+
+  hero: {
+    marginTop: space.lg,
+    paddingVertical: space.lg,
+    paddingHorizontal: space.md,
+    borderRadius: radius.xl,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  heroLabel: { ...type.label, color: colors.muted, alignSelf: 'flex-start' },
+  heroGauge: { marginTop: space.sm, marginBottom: space.xs },
 
   placeholder: {
     minHeight: size.row,
@@ -271,14 +303,9 @@ const styles = StyleSheet.create({
     marginTop: space.sm,
   },
 
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    padding: space.md,
-  },
-  bestReading: { marginTop: space.sm },
+  recentStrip: { marginHorizontal: -space.lg, marginTop: space.sm },
+  recentRow: { paddingHorizontal: space.lg, gap: space.sm },
+  recentStack: { paddingHorizontal: space.lg, gap: space.sm },
 
   recentHead: {
     flexDirection: 'row',
