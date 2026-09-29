@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { wrap } from '../src/diagnostics';
 import { PurchasesProvider } from '../src/purchases';
-import { LaunchIntro } from '../src/ui/LaunchIntro';
+import { LogoIntro } from '../src/ui/LogoIntro';
 import { colors } from '../src/ui/tokens';
 
 function RootLayout() {
@@ -18,8 +18,9 @@ function RootLayout() {
             animation: 'fade_from_bottom',
           }}
         />
-        {/* Over the first screen on a cold start only, while it mounts underneath. */}
-        <LaunchIntro />
+        {/* Over the first screen on a cold start only, while it mounts
+            underneath: the logo video, or the drawn intro if it cannot play. */}
+        <LogoIntro />
       </View>
     </PurchasesProvider>
   );

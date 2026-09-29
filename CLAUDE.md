@@ -222,7 +222,13 @@ the Home avatar; personal best free, the rest Pro) · settings (a list
 of groups; each opens as settings?page=player, measurement, recording,
 pro or about) · diagnostics (the privacy screen) · paywall
 · celebration · debug (development only; release builds redirect it
-home). A launch intro plays over the root stack on a cold start only.
+home). A launch intro plays over the root stack on a cold start only:
+the logo reveal video (assets/intro/logo-reveal.mp4, converted once from
+an untracked source that never ships), full length, contained on the
+app's background, with Pro's lime PRO badge under the logo as it ends.
+A tap skips it, reduced motion never shows it, "Intro sound" in Settings
+(on by default) mutes it, a video that cannot play falls back to the
+drawn intro, and it never holds the app for more than 8 s.
 
 Home, History and Settings carry the tab bar. Home's hero is the
 personal best, or the delivery the player picked by tapping it (stored

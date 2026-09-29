@@ -49,6 +49,8 @@ export type Settings = {
   featuredDelivery: Record<string, string>;
   /** The self-timer last chosen on Capture, in seconds. 0 is off. */
   selfTimer: SelfTimer;
+  /** Whether the logo intro on a cold start plays its sound. Muted when off. */
+  introSound: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -61,6 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
   microphoneAsked: false,
   featuredDelivery: {},
   selfTimer: 0,
+  introSound: true,
 };
 
 export const SPEED_UNITS: SpeedUnit[] = ['kmh', 'mph'];
@@ -115,6 +118,7 @@ export function parseSettings(raw: unknown): Settings {
     microphoneAsked: value.microphoneAsked === true,
     featuredDelivery: parseFeatured(value.featuredDelivery),
     selfTimer: isSelfTimer(value.selfTimer) ? value.selfTimer : DEFAULT_SETTINGS.selfTimer,
+    introSound: value.introSound !== false,
   };
 }
 

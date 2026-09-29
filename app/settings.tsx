@@ -5,6 +5,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -146,7 +147,7 @@ function SettingsList() {
           />
           <ListRow
             title="Recording"
-            value={`Default exposure ${formatBias(settings.exposureBias)} · Microphone`}
+            value={`Default exposure ${formatBias(settings.exposureBias)} · Microphone · Intro sound ${settings.introSound ? 'on' : 'off'}`}
             onPress={() => open('recording')}
           />
           {/* Always here, Pro or not: this is how Pro is found, and how a
@@ -368,6 +369,27 @@ function RecordingPage() {
           <Text style={styles.buttonText}>Open system settings</Text>
         </Pressable>
       </Section>
+
+      <Section title="LAUNCH">
+        <View style={styles.switchRow}>
+          <View style={styles.switchText}>
+            <Text style={styles.rowTitle}>Intro sound</Text>
+            <Text style={styles.rowDetail}>
+              The logo intro when Paceball starts plays with its sound. Off plays it silent. It
+              never stops music you are already playing.
+            </Text>
+          </View>
+          <Switch
+            value={settings.introSound}
+            onValueChange={(on) => {
+              updateSettings({ introSound: on });
+            }}
+            accessibilityLabel="Intro sound"
+            trackColor={{ false: colors.line, true: colors.accent }}
+            thumbColor={colors.text}
+          />
+        </View>
+      </Section>
     </>
   );
 }
@@ -523,6 +545,8 @@ const styles = StyleSheet.create({
   sectionTitle: { ...type.label, color: colors.muted, marginBottom: space.md },
 
   rowTitle: { ...type.body, color: colors.text, fontWeight: '700' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  switchText: { flex: 1, flexShrink: 1 },
   rowDetail: { ...type.caption, color: colors.muted, marginTop: space.xs, marginBottom: space.md },
   tabular: { ...type.tabular },
 

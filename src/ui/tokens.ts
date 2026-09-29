@@ -226,6 +226,12 @@ export const motion = {
    * the whole intro fades to the app. Never longer than total.
    */
   intro: { impact: 620, wordmark: 850, letter: 220, letterStagger: 25, fadeOut: 1250, total: 1500 },
+  /**
+   * The logo video intro on a cold start: Pro's badge holds this long once the
+   * video ends, the intro then fades into Home over `fade`, and whatever
+   * happens the app is never held behind it for longer than `cap`.
+   */
+  logoIntro: { badge: 600, fade: 300, cap: 8000 },
   /** A lens swap: the preview fades out, waits for the new lens, then fades back in. */
   lens: { out: 120, in: 180 },
   /** Playhead chasing the finger. Just under critical damping, so it lags a touch. */

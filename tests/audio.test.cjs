@@ -175,7 +175,9 @@ test('playback starts muted on every clip, with a visible switch', () => {
   assert.match(analysis, /<Replay\s+\/\/[^\n]*\n\s*key=\{loaded\.session\.id\}/);
   // The choice is not kept anywhere that outlives the clip.
   assert.doesNotMatch(analysis, /updateSettings|muted:\s*(true|false|muted)/);
-  assert.doesNotMatch(read('src/settings/settings.ts'), /muted|sound/i);
+  // The only sound preference kept is the launch intro's, never a replay's.
+  const { DEFAULT_SETTINGS: saved } = require('../src/settings/settings.ts');
+  assert.deepEqual(Object.keys(saved).filter((k) => /mute|sound|audio/i.test(k)), ['introSound']);
   // The switch is on the player controls, and says which way it is.
   assert.match(analysis, /accessibilityRole="switch"\s+accessibilityState=\{\{ checked: !muted \}\}/);
   assert.match(analysis, /\{muted \? 'Sound off' : 'Sound on'\}/);

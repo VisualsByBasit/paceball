@@ -31,3 +31,6 @@ credentials.json
 .agents/
 .claude/
 skills-lock.json
+
+# the logo intro's 13.9 MB source; only its converted assets/intro/logo-reveal.mp4 ships
+assets/intro/logo-reveal-source.mp4

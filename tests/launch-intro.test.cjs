@@ -68,8 +68,10 @@ test('cold start only, tap to skip, and reduced motion never plays it', () => {
   assert.match(source, /if \(done \|\| width === 0 \|\| height === 0\) return null;/);
   assert.match(source, /withTiming\(INTRO\.total, \{ duration: INTRO\.total/);
   // Over the root stack, so the app is already there underneath.
+  // It now runs as the logo video's fallback (logo-intro.test).
   const layout = read('app/_layout.tsx');
-  assert.ok(layout.indexOf('<LaunchIntro />') > layout.indexOf('<Stack'));
+  assert.ok(layout.indexOf('<LogoIntro />') > layout.indexOf('<Stack'));
+  assert.match(read('src/ui/LogoIntro.tsx'), /if \(phase === 'fallback'\) return <LaunchIntro \/>;/);
 });
 
 test('the intro is a picture, never a reading, and adds no 3D library', () => {
