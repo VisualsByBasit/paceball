@@ -33,10 +33,56 @@ test('native export fails closed around files, bad coordinates and partial outpu
   assert.match(native, /job\.transformer\.cancel\(\)/);
 });
 
-test('the device spike is reachable only through the existing development debug route', () => {
+test('the debug-only entry is gone now the share sheet exports video', () => {
   const debug = read('app/debug.tsx');
-  assert.match(debug, /__DEV__ \? <VideoExportSpike session=\{session\} \/> : null/);
-  // Recordings can carry sound now, so the export offers it, off by default.
-  assert.match(debug, /createSessionVideoExport\(session, \{ isPro, includeAudio: withAudio \}\)/);
-  assert.match(debug, /isPro \? 'Pro: clean overlay' : 'Free: Paceball watermark'/);
+  assert.doesNotMatch(debug, /VideoExportSpike|createSessionVideoExport|renderSessionVideo/);
+});
+
+const exporter = () => read('modules/frame-extractor/android/src/main/java/expo/modules/frameextractor/VideoExporter.kt');
+/** The HUD's drawing, from the overlay class to the coordinate mapping. */
+const hud = () => {
+  const native = exporter();
+  return native.slice(native.indexOf('private class PaceballOverlay'), native.indexOf('private fun map('));
+};
+
+test('native HUD: the whole reading from the first frame, marks only from their own frames', () => {
+  const draw = hud();
+  // The reading is drawn on every frame, whatever the time, on an opaque plate.
+  assert.match(draw, /drawReading\(canvas, plateTop, plateHeight, s\)/);
+  assert.doesNotMatch(draw.slice(draw.indexOf('private fun drawReading')), /released|bounced|presentationTimeUs/);
+  assert.match(draw, /private val bg = Color\.parseColor\(request\.colorBg\)/);
+  assert.doesNotMatch(draw, /Color\.argb|Color\.rgb/, 'no translucent plates, no hardcoded colours');
+  // Each mark waits for its frame.
+  assert.match(draw, /val released = timeMs >= request\.releaseAtMs - request\.frameToleranceMs/);
+  assert.match(draw, /val bounced = timeMs >= request\.bounceAtMs - request\.frameToleranceMs/);
+  assert.match(draw, /if \(released\) \{[\s\S]*?"Release"/);
+  assert.match(draw, /if \(bounced\) \{[\s\S]*?"Bounce"[\s\S]*?request\.pathText/);
+  // No count-up, no moving ball, no interpolated position.
+  assert.doesNotMatch(draw, /shownSpeed|fraction|speedKmh \*|roundToInt|lerp/);
+  assert.doesNotMatch(draw, /AVG SPEED|MARK-TO-MARK|KM\/H/);
+});
+
+test('native HUD: a free clip always carries the strip, between the speed and its range', () => {
+  const draw = hud();
+  const reading = draw.slice(draw.indexOf('private fun drawReading'), draw.indexOf('private fun ring'));
+  const speed = reading.indexOf('request.speedText');
+  const strip = reading.indexOf('request.stripText');
+  const range = reading.indexOf('request.rangeText');
+  assert.ok(speed > 0 && speed < strip && strip < range, 'speed, strip, range, in that order');
+  assert.match(reading, /if \(request\.watermark\) \{[\s\S]*?drawRect\(0f, y, canvas\.width\.toFloat\(\)/, 'edge to edge');
+  // Native refuses a free export it could not brand, rather than writing it clean.
+  assert.match(exporter(), /if \(request\.watermark && request\.stripText\.isBlank\(\)\) \{\s*throw/);
+});
+
+test('native export scales down only, keeps the aspect, and reads verified frame times', () => {
+  const native = exporter();
+  assert.match(native, /if \(request\.outputShortSide > 0\) videoEffects\.add\(Presentation\.createForShortSide\(request\.outputShortSide\)\)/);
+  // Scaled before the HUD is drawn, so the HUD is drawn at the shared size.
+  assert.ok(native.indexOf('Presentation.createForShortSide') < native.indexOf('videoEffects.add(OverlayEffect'));
+  assert.match(native, /outputShortSide >= min\(request\.sourceWidth, request\.sourceHeight\)/);
+  const module = read('modules/frame-extractor/android/src/main/java/expo/modules/frameextractor/FrameExtractorModule.kt');
+  const times = module.slice(module.indexOf('AsyncFunction("getFrameTimesMs")'), module.indexOf('AsyncFunction("exportVideo")'));
+  assert.match(times, /extractor\.sampleTime/);
+  assert.match(times, /times\.sort\(\)/);
+  assert.doesNotMatch(times, /MediaCodec|getFrameAtIndex/, 'reads the container, decodes nothing');
 });

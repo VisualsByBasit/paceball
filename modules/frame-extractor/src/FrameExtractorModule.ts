@@ -16,7 +16,10 @@ export type NativeVideoExportRequest = {
   outputPath: string;
   clipStartMs: number;
   clipEndMs: number;
+  /** Scale the output to this short side, keeping its aspect; 0 keeps the source size. */
+  outputShortSide: number;
   includeAudio: boolean;
+  /** When true the HUD must draw `stripText`; native refuses a free export without it. */
   watermark: boolean;
   /** Encoded MP4 dimensions, before display rotation. */
   sourceWidth: number;
@@ -33,10 +36,32 @@ export type NativeVideoExportRequest = {
   releaseY: number;
   bounceX: number;
   bounceY: number;
+  /** Reference marks throughout the clip, or not at all. */
+  showReferences: boolean;
+  referenceALabel: string;
+  referenceBLabel: string;
+  /** Draw the bounce hollow, as Mark and Result draw a bounce that was hard to see. */
+  bounceUncertain: boolean;
+  /** Milliseconds into the trimmed output: release mark from here. */
   releaseAtMs: number;
+  /** Bounce mark, connector and path label from here. */
   bounceAtMs: number;
+  /** Half a frame, so each mark lands on its own frame. */
+  frameToleranceMs: number;
   speedKmh: number;
   errorKmh: number;
+  /** The HUD's words, written in TypeScript so native never formats a reading. */
+  speedText: string;
+  rangeText: string;
+  methodText: string;
+  pathText: string;
+  /** "PACEBALL · FREE" on a free export, empty for Pro. */
+  stripText: string;
+  /** App tokens, as #RRGGBB. */
+  colorBg: string;
+  colorText: string;
+  colorMuted: string;
+  colorAccent: string;
 };
 
 export type NativeVideoExportResult = {
@@ -72,7 +97,12 @@ declare class FrameExtractorModule extends NativeModule<FrameExtractorEvents> {
     outDir: string,
     maxWidth: number
   ): Promise<string[]>;
-  /** Media3 Transformer spike: trims and burns the marked HUD into a private MP4. */
+  /**
+   * When each frame index plays, in milliseconds, read from the video track's
+   * sample times in presentation order. -1 for an index past the last frame.
+   */
+  getFrameTimesMs(path: string, frames: number[]): Promise<number[]>;
+  /** Media3 Transformer: trims, scales and burns the marked HUD into a private MP4. */
   exportVideo(request: NativeVideoExportRequest): Promise<NativeVideoExportResult>;
   cancelVideoExport(exportId: string): Promise<boolean>;
 }

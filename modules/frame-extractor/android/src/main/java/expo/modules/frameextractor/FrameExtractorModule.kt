@@ -152,6 +152,32 @@ class FrameExtractorModule : Module() {
       }
     }
 
+    // When each frame index plays, read from the video track's own sample times
+    // rather than worked out as index / fps. Only the container is read: nothing
+    // is decoded. Sorted, because samples are stored in decode order and the
+    // frame indices the marks carry count frames in presentation order.
+    AsyncFunction("getFrameTimesMs") { path: String, frames: List<Int> ->
+      val extractor = MediaExtractor()
+      try {
+        extractor.setDataSource(path.removePrefix("file://"))
+        val track = (0 until extractor.trackCount).firstOrNull {
+          extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+        } ?: throw IllegalArgumentException("The recording has no video track.")
+        extractor.selectTrack(track)
+        val times = ArrayList<Long>()
+        while (true) {
+          val timeUs = extractor.sampleTime
+          if (timeUs < 0) break
+          times.add(timeUs)
+          if (!extractor.advance()) break
+        }
+        times.sort()
+        frames.map { index -> if (index in times.indices) times[index] / 1000.0 else -1.0 }
+      } finally {
+        extractor.release()
+      }
+    }
+
     AsyncFunction("exportVideo") { request: VideoExportRequest, promise: Promise ->
       exporter().start(request, promise)
     }

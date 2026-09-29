@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.Typeface
 import android.media.MediaMetadataRetriever
@@ -15,7 +16,9 @@ import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.CanvasOverlay
+import androidx.media3.common.Effect
 import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.Presentation
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
@@ -28,8 +31,9 @@ import expo.modules.kotlin.records.Record
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 class VideoExportRequest : Record {
   @Field lateinit var exportId: String
@@ -37,6 +41,7 @@ class VideoExportRequest : Record {
   @Field lateinit var outputPath: String
   @Field var clipStartMs: Long = 0
   @Field var clipEndMs: Long = 0
+  @Field var outputShortSide: Int = 0
   @Field var includeAudio: Boolean = false
   @Field var watermark: Boolean = true
   @Field var sourceWidth: Int = 0
@@ -52,10 +57,24 @@ class VideoExportRequest : Record {
   @Field var releaseY: Double = 0.0
   @Field var bounceX: Double = 0.0
   @Field var bounceY: Double = 0.0
-  @Field var releaseAtMs: Long = 0
-  @Field var bounceAtMs: Long = 0
+  @Field var showReferences: Boolean = false
+  @Field var referenceALabel: String = ""
+  @Field var referenceBLabel: String = ""
+  @Field var bounceUncertain: Boolean = false
+  @Field var releaseAtMs: Double = 0.0
+  @Field var bounceAtMs: Double = 0.0
+  @Field var frameToleranceMs: Double = 0.0
   @Field var speedKmh: Double = 0.0
   @Field var errorKmh: Double = 0.0
+  @Field var speedText: String = ""
+  @Field var rangeText: String = ""
+  @Field var methodText: String = ""
+  @Field var pathText: String = ""
+  @Field var stripText: String = ""
+  @Field var colorBg: String = ""
+  @Field var colorText: String = ""
+  @Field var colorMuted: String = ""
+  @Field var colorAccent: String = ""
 }
 
 private data class ActiveExport(
@@ -108,9 +127,14 @@ class VideoExporter(
               .build()
           )
           .build()
+        // Scale first, so the HUD is drawn at the size it is shared at. Only ever
+        // down: a short side of 0 keeps the source's own size.
+        val videoEffects = mutableListOf<Effect>()
+        if (request.outputShortSide > 0) videoEffects.add(Presentation.createForShortSide(request.outputShortSide))
+        videoEffects.add(OverlayEffect(listOf(overlay)))
         val edited = EditedMediaItem.Builder(mediaItem)
           .setRemoveAudio(!request.includeAudio)
-          .setEffects(Effects(emptyList(), listOf(OverlayEffect(listOf(overlay)))))
+          .setEffects(Effects(emptyList(), videoEffects))
           .build()
 
         lateinit var transformer: Transformer
@@ -232,13 +256,31 @@ class VideoExporter(
       request.sourceRotationDegrees !in listOf(0, 90, 180, 270)) {
       throw IllegalArgumentException("Video export has invalid source dimensions or rotation.")
     }
-    if (request.releaseAtMs < 0 || request.bounceAtMs <= request.releaseAtMs ||
+    if (!request.releaseAtMs.isFinite() || !request.bounceAtMs.isFinite() ||
+      request.releaseAtMs < 0 || request.bounceAtMs <= request.releaseAtMs ||
       request.bounceAtMs > request.clipEndMs - request.clipStartMs) {
       throw IllegalArgumentException("Video export marks fall outside the trimmed clip.")
     }
+    if (!request.frameToleranceMs.isFinite() || request.frameToleranceMs < 0) {
+      throw IllegalArgumentException("Video export has an invalid frame tolerance.")
+    }
+    if (request.outputShortSide < 0 || request.outputShortSide % 2 != 0 ||
+      (request.outputShortSide > 0 && request.outputShortSide >= min(request.sourceWidth, request.sourceHeight))) {
+      throw IllegalArgumentException("Video export may only scale down, to an even size.")
+    }
     if (!request.speedKmh.isFinite() || request.speedKmh <= 0 ||
-      !request.errorKmh.isFinite() || request.errorKmh < 0) {
+      !request.errorKmh.isFinite() || request.errorKmh < 0 ||
+      request.speedText.isBlank() || request.rangeText.isBlank() || request.methodText.isBlank()) {
       throw IllegalArgumentException("Video export needs a measured speed and error range.")
+    }
+    // Fail closed: a free export is never written without its watermark.
+    if (request.watermark && request.stripText.isBlank()) {
+      throw IllegalArgumentException("A free video export must carry the Paceball watermark.")
+    }
+    for (color in listOf(request.colorBg, request.colorText, request.colorMuted, request.colorAccent)) {
+      if (!Regex("^#[0-9A-Fa-f]{6}$").matches(color)) {
+        throw IllegalArgumentException("Video export has an invalid colour.")
+      }
     }
   }
 
@@ -275,7 +317,14 @@ class VideoExporter(
   }
 }
 
-/** Draws only marks the user actually made; it never implies tracked positions. */
+/**
+ * The HUD. Every frame carries the whole reading on an opaque plate: the speed,
+ * a free export's watermark strip, then the range and what the reading is. The
+ * marks arrive with the frames they were placed on: references throughout,
+ * release from the release frame, the bounce, the straight connector and
+ * "Marked, not tracked" from the bounce frame. Nothing moves between marks,
+ * nothing is interpolated and nothing counts up.
+ */
 @OptIn(UnstableApi::class)
 private class PaceballOverlay(
   private val request: VideoExportRequest,
@@ -288,26 +337,22 @@ private class PaceballOverlay(
   @Volatile var coordinateMode: String = "not-drawn"
     private set
 
-  private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-    color = Color.rgb(212, 255, 63)
+  private val bg = Color.parseColor(request.colorBg)
+  private val fg = Color.parseColor(request.colorText)
+  private val muted = Color.parseColor(request.colorMuted)
+  private val accent = Color.parseColor(request.colorAccent)
+
+  private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+  private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     style = Paint.Style.STROKE
     strokeCap = Paint.Cap.ROUND
+    strokeJoin = Paint.Join.ROUND
   }
-  private val point = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-    color = Color.rgb(212, 255, 63)
-    style = Paint.Style.FILL
+  private val bold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
   }
-  private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-    color = Color.WHITE
-    typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-  }
-  private val muted = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-    color = Color.argb(220, 220, 224, 228)
-    typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
-  }
-  private val panel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-    color = Color.argb(185, 10, 11, 13)
-    style = Paint.Style.FILL
+  private val regular = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
   }
 
   override fun onDraw(canvas: Canvas, presentationTimeUs: Long) {
@@ -315,44 +360,161 @@ private class PaceballOverlay(
     canvasHeight = canvas.height
     canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
     validateCanvas(canvas)
-    val scale = min(canvas.width, canvas.height) / 720f
-    line.strokeWidth = 3.5f * scale
+    // Sizes are written for a 720 px short side and scale with the frame.
+    val s = min(canvas.width, canvas.height) / 720f
+    val timeMs = presentationTimeUs / 1_000.0
+    val released = timeMs >= request.releaseAtMs - request.frameToleranceMs
+    val bounced = timeMs >= request.bounceAtMs - request.frameToleranceMs
 
     val a = map(request.calAX, request.calAY, canvas)
     val b = map(request.calBX, request.calBY, canvas)
     val release = map(request.releaseX, request.releaseY, canvas)
     val bounce = map(request.bounceX, request.bounceY, canvas)
-    canvas.drawLine(a.first, a.second, b.first, b.second, line)
-    canvas.drawLine(release.first, release.second, bounce.first, bounce.second, line)
-    for (p in listOf(a, b, release, bounce)) canvas.drawCircle(p.first, p.second, 7f * scale, point)
 
-    val timeMs = presentationTimeUs / 1_000.0
-    val fraction = when {
-      timeMs <= request.releaseAtMs -> 0.0
-      timeMs >= request.bounceAtMs -> 1.0
-      else -> (timeMs - request.releaseAtMs) / (request.bounceAtMs - request.releaseAtMs)
+    // The plate sits on top unless a mark would be under it; then at the foot.
+    val plateHeight = plateHeight(canvas, s)
+    val marks = mutableListOf(release, bounce)
+    if (request.showReferences) {
+      marks.add(a)
+      marks.add(b)
     }
-    val shownSpeed = request.speedKmh * fraction
-    val margin = 28f * scale
-    val top = 28f * scale
-    val panelWidth = 360f * scale
-    val panelHeight = 126f * scale
-    canvas.drawRoundRect(margin, top, margin + panelWidth, top + panelHeight, 12f * scale, 12f * scale, panel)
-    muted.textSize = 18f * scale
-    canvas.drawText("AVG SPEED TO BOUNCE", margin + 18f * scale, top + 30f * scale, muted)
-    text.textSize = 43f * scale
-    canvas.drawText("${shownSpeed.roundToInt()} KM/H", margin + 18f * scale, top + 78f * scale, text)
-    muted.textSize = 18f * scale
-    canvas.drawText("± ${request.errorKmh.roundToInt()} KM/H", margin + 18f * scale, top + 106f * scale, muted)
+    val reach = 56f * s
+    val topClear = marks.all { it.second > plateHeight + reach }
+    val bottomClear = marks.all { it.second < canvas.height - plateHeight - reach }
+    val plateTop = if (topClear || !bottomClear) 0f else canvas.height - plateHeight
 
-    muted.textSize = 14f * scale
-    canvas.drawText("MARK-TO-MARK · NOT TRACKED", margin, canvas.height - 26f * scale, muted)
+    if (request.showReferences) {
+      for ((p, name) in listOf(a to request.referenceALabel, b to request.referenceBLabel)) {
+        ring(canvas, p, s)
+        stroke.color = fg
+        stroke.strokeWidth = 3f * s
+        val c = 10f * s
+        canvas.drawLine(p.first - c, p.second, p.first + c, p.second, stroke)
+        canvas.drawLine(p.first, p.second - c, p.first, p.second + c, stroke)
+        if (name.isNotBlank()) label(canvas, name, p, s)
+      }
+    }
+    if (bounced) {
+      // Straight dots from one mark to the other: the two marks joined, not a flight.
+      fill.color = accent
+      val dx = bounce.first - release.first
+      val dy = bounce.second - release.second
+      val count = max(2, (hypot(dx, dy) / (22f * s)).toInt())
+      for (i in 1 until count) {
+        val t = i.toFloat() / count
+        canvas.drawCircle(release.first + dx * t, release.second + dy * t, 3.5f * s, fill)
+      }
+    }
+    if (released) {
+      ring(canvas, release, s)
+      fill.color = accent
+      canvas.drawCircle(release.first, release.second, 7f * s, fill)
+      label(canvas, "Release", release, s)
+    }
+    if (bounced) {
+      ring(canvas, bounce, s)
+      if (request.bounceUncertain) {
+        stroke.color = accent
+        stroke.strokeWidth = 3f * s
+        val r = 9f * s
+        val diamond = Path().apply {
+          moveTo(bounce.first, bounce.second - r)
+          lineTo(bounce.first + r, bounce.second)
+          lineTo(bounce.first, bounce.second + r)
+          lineTo(bounce.first - r, bounce.second)
+          close()
+        }
+        canvas.drawPath(diamond, stroke)
+      } else {
+        fill.color = accent
+        canvas.drawCircle(bounce.first, bounce.second, 7f * s, fill)
+      }
+      label(canvas, "Bounce", bounce, s)
+      // Beside the plate, on the side away from the marks.
+      val pathY = if (plateTop == 0f) plateHeight + 12f * s else plateTop - 12f * s - 30f * s
+      plate(canvas, request.pathText, 16f * s, pathY, s)
+    }
+
+    drawReading(canvas, plateTop, plateHeight, s)
+  }
+
+  /** Whether the range and "Average speed, release to bounce" share one line. */
+  private fun rangeFits(canvas: Canvas, s: Float): Boolean {
+    regular.textSize = 24f * s
+    val range = regular.measureText(request.rangeText)
+    regular.textSize = 18f * s
+    return 16f * s + range + 16f * s + regular.measureText(request.methodText) + 16f * s <= canvas.width
+  }
+
+  private fun plateHeight(canvas: Canvas, s: Float): Float {
+    var h = 14f * s + 44f * s + 10f * s
+    if (request.watermark) h += 30f * s + 10f * s
+    h += 26f * s
+    if (!rangeFits(canvas, s)) h += 24f * s
+    return h + 12f * s
+  }
+
+  /** The speed, the strip on a free export, then its range and what it is. Opaque, full width. */
+  private fun drawReading(canvas: Canvas, top: Float, height: Float, s: Float) {
+    val oneLine = rangeFits(canvas, s)
+    fill.color = bg
+    canvas.drawRect(0f, top, canvas.width.toFloat(), top + height, fill)
+    val x = 16f * s
+    var y = top + 14f * s
+    bold.color = accent
+    bold.textSize = 44f * s
+    bold.textAlign = Paint.Align.LEFT
+    canvas.drawText(request.speedText, x, y + 36f * s, bold)
+    y += 44f * s + 10f * s
     if (request.watermark) {
-      text.textSize = 22f * scale
-      text.textAlign = Paint.Align.RIGHT
-      canvas.drawText("PACEBALL", canvas.width - margin, canvas.height - 26f * scale, text)
-      text.textAlign = Paint.Align.LEFT
+      // Edge to edge between the speed and its range, so cropping it cuts the reading.
+      fill.color = fg
+      canvas.drawRect(0f, y, canvas.width.toFloat(), y + 30f * s, fill)
+      bold.color = bg
+      bold.textSize = 18f * s
+      bold.textAlign = Paint.Align.CENTER
+      canvas.drawText(request.stripText, canvas.width / 2f, y + 21f * s, bold)
+      bold.textAlign = Paint.Align.LEFT
+      y += 30f * s + 10f * s
     }
+    regular.color = fg
+    regular.textSize = 24f * s
+    val rangeWidth = regular.measureText(request.rangeText)
+    canvas.drawText(request.rangeText, x, y + 20f * s, regular)
+    regular.color = muted
+    regular.textSize = 18f * s
+    if (oneLine) {
+      canvas.drawText(request.methodText, x + rangeWidth + 16f * s, y + 20f * s, regular)
+    } else {
+      canvas.drawText(request.methodText, x, y + 26f * s + 18f * s, regular)
+    }
+  }
+
+  private fun ring(canvas: Canvas, p: Pair<Float, Float>, s: Float) {
+    fill.color = bg
+    canvas.drawCircle(p.first, p.second, 12f * s, fill)
+  }
+
+  /** A label on an opaque plate above its mark, or below it when there is no room. */
+  private fun label(canvas: Canvas, text: String, p: Pair<Float, Float>, s: Float) {
+    regular.textSize = 18f * s
+    val w = regular.measureText(text) + 12f * s
+    val h = 30f * s
+    val above = p.second - 18f * s - h
+    plate(canvas, text, p.first - w / 2f, if (above >= 0f) above else p.second + 18f * s, s)
+  }
+
+  /** Text on an opaque plate, kept inside the frame. */
+  private fun plate(canvas: Canvas, text: String, left: Float, top: Float, s: Float) {
+    regular.textSize = 18f * s
+    regular.color = fg
+    val w = regular.measureText(text) + 12f * s
+    val h = 30f * s
+    val x = left.coerceIn(0f, max(0f, canvas.width - w))
+    val y = top.coerceIn(0f, max(0f, canvas.height - h))
+    fill.color = bg
+    canvas.drawRect(x, y, x + w, y + h, fill)
+    canvas.drawText(text, x + 6f * s, y + 21f * s, regular)
   }
 
   private fun map(x: Double, y: Double, canvas: Canvas): Pair<Float, Float> {
