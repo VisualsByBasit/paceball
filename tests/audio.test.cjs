@@ -31,8 +31,12 @@ test('a denied microphone still records, video only, and is not asked again', ()
   assert.equal(parseSettings({ microphoneAsked: 'yes' }).microphoneAsked, false);
 
   const capture = read('app/capture.tsx');
-  // The shutter records straight away, whatever the microphone's answer.
-  assert.match(capture, /allowed\s*\? capture\.start\s*:/);
+  // The shutter records (after the self-timer, if one is set) whatever the
+  // microphone's answer: nothing about sound stands between it and the start.
+  assert.match(capture, /allowed\s*\? beginRecording\s*:/);
+  const begin = capture.slice(capture.indexOf('const beginRecording'), capture.indexOf('}, [selfTimer, capture]);'));
+  assert.match(begin, /capture\.start\(\);/);
+  assert.doesNotMatch(begin, /microphone|enableAudio/);
   // Both answers mark it asked, and "Video only" never opens the system dialog.
   const answer = capture.slice(capture.indexOf('const answerMicrophone'));
   assert.match(answer, /updateSettings\(\{ microphoneAsked: true \}\);[\s\S]*if \(allow\) await microphone\.requestPermission\(\)/);

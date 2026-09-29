@@ -49,6 +49,12 @@ import {
   usePurchases,
 } from '../src/purchases';
 import { offeredCalibration } from '../src/physics/calibration';
+import {
+  nextSelfTimer,
+  selfTimerLabel,
+  selfTimerSpoken,
+  startCountdown,
+} from '../src/capture/selfTimer';
 import { getSettings, updateSettings, useSettings } from '../src/settings';
 import { ActionButton } from '../src/ui/ActionButton';
 import { AllowanceLine } from '../src/ui/AllowanceLine';
@@ -165,7 +171,7 @@ export default function CaptureScreen() {
       if (swapTimeout.current !== null) clearTimeout(swapTimeout.current);
     };
   }, []);
-  const { exposureBias, lastRecording, calibrationMethod: savedMethod } = useSettings();
+  const { exposureBias, lastRecording, calibrationMethod: savedMethod, selfTimer } = useSettings();
   // The guide for the reference Mark will open on: a default saved before
   // height was hidden opens on stumps.
   const calibrationMethod = offeredCalibration(savedMethod);
@@ -268,6 +274,47 @@ export default function CaptureScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
   }, [capture.isRecording]);
 
+  // The self-timer: a countdown before the same start the button always made.
+  // Seconds left while counting, null otherwise. It only delays the press;
+  // recording, its minimum, the lens, exposure and bitrate are untouched.
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const counting = useRef<{ cancel: () => void } | null>(null);
+  // Read when the count ends, not when it began: the camera may have changed.
+  const startRef = useRef(capture.start);
+  startRef.current = capture.start;
+  const readyRef = useRef(false);
+  readyRef.current = sessionReady && !switchingLens && !capture.isProcessing && !capture.isRecording;
+  const cancelCountdown = useCallback(() => {
+    counting.current?.cancel();
+    counting.current = null;
+    setCountdown(null);
+  }, []);
+  const beginRecording = useCallback(() => {
+    if (selfTimer === 0) {
+      capture.start();
+      return;
+    }
+    if (counting.current) return;
+    counting.current = startCountdown(selfTimer, {
+      onTick: (left) => {
+        setCountdown(left);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+      },
+      onDone: () => {
+        counting.current = null;
+        setCountdown(null);
+        // Exactly the start the button makes without a timer.
+        if (readyRef.current) startRef.current();
+      },
+    });
+  }, [selfTimer, capture]);
+  // Leaving, or the camera going away mid-count, cancels it: nothing records
+  // behind the user's back.
+  useEffect(() => {
+    if (!isFocused || !sessionReady || switchingLens) cancelCountdown();
+  }, [isFocused, sessionReady, switchingLens, cancelCountdown]);
+  useEffect(() => () => counting.current?.cancel(), []);
+
   // The preview is contained in a 3:4 box, as large as the space allows.
   const [area, setArea] = useState({ w: 0, h: 0 });
 
@@ -352,6 +399,7 @@ export default function CaptureScreen() {
 
   let hint: string;
   if (isProcessing) hint = 'Reading the clip…';
+  else if (countdown !== null) hint = `Recording in ${countdown} s · tap to cancel`;
   else if (!allowed) hint = 'Tap to see Pro.';
   else if (!isRecording) hint = `Tap to record · ${MIN_RECORDING_MS / 1000}s minimum`;
   else if (canStop) hint = 'Tap to stop';
@@ -415,6 +463,25 @@ export default function CaptureScreen() {
             rotation={rotation}
             box={box}
           />
+
+          {countdown !== null ? (
+            // Tapping anywhere on the preview cancels the count.
+            <Pressable
+              style={[StyleSheet.absoluteFill, styles.center]}
+              onPress={cancelCountdown}
+              accessibilityRole="button"
+              accessibilityLabel={`Recording starts in ${countdown}. Tap to cancel.`}
+            >
+              <RotateInPlace deg={rotation}>
+                <View style={styles.countPlate}>
+                  <Text style={styles.countNumber} accessibilityLiveRegion="polite">
+                    {countdown}
+                  </Text>
+                  <Text style={styles.countHint}>Tap to cancel</Text>
+                </View>
+              </RotateInPlace>
+            </Pressable>
+          ) : null}
 
           {switchingLens ? (
             <View style={[StyleSheet.absoluteFill, styles.center]} pointerEvents="none">
@@ -494,6 +561,19 @@ export default function CaptureScreen() {
 
         <View style={styles.actionRow}>
           <View style={styles.soundSlot}>
+            <Pressable
+              style={[styles.timerChip, selfTimer !== 0 && styles.timerChipOn]}
+              onPress={() => updateSettings({ selfTimer: nextSelfTimer(selfTimer) })}
+              disabled={isRecording || isProcessing || countdown !== null}
+              accessibilityRole="button"
+              accessibilityLabel={`${selfTimerSpoken(selfTimer)}. Tap to change.`}
+            >
+              <RotateInPlace deg={rotation}>
+                <Text style={[styles.timerChipText, selfTimer !== 0 && styles.timerChipTextOn]}>
+                  {selfTimerLabel(selfTimer)}
+                </Text>
+              </RotateInPlace>
+            </Pressable>
             <RotateInPlace deg={rotation} style={styles.soundTurn}>
               <Text style={styles.sound} numberOfLines={1}>
                 {enableAudio ? 'Sound on' : 'No sound'}
@@ -505,15 +585,19 @@ export default function CaptureScreen() {
             onPress={
               isRecording
                 ? capture.stop
-                : // The limit is checked at the moment of recording, so the clip
-                  // is never taken and then refused.
-                  allowed
-                  ? capture.start
-                  : () => router.push({ pathname: '/paywall', params: { context: 'limit' } })
+                : countdown !== null
+                  ? cancelCountdown
+                  : // The limit is checked at the moment of recording, so the clip
+                    // is never taken and then refused.
+                    allowed
+                    ? beginRecording
+                    : () => router.push({ pathname: '/paywall', params: { context: 'limit' } })
             }
             disabled={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
             accessibilityRole="button"
-            accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
+            accessibilityLabel={
+              isRecording ? 'Stop recording' : countdown !== null ? 'Cancel self-timer' : 'Start recording'
+            }
             style={styles.shutter}
           >
             <RotateInPlace deg={rotation}>
@@ -908,7 +992,31 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: space.xs,
   },
-  soundSlot: { flex: 1, alignItems: 'flex-start' },
+  soundSlot: { flex: 1, alignItems: 'flex-start', gap: space.xs },
+  // The self-timer chip: a 48 dp target, outlined off, filled when set.
+  timerChip: {
+    minWidth: size.target,
+    minHeight: size.target,
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
+  },
+  timerChipOn: { backgroundColor: colors.text, borderColor: colors.text },
+  timerChipText: { ...type.caption, ...type.tabular, color: colors.text, fontWeight: '700' },
+  timerChipTextOn: { color: colors.bg },
+  // The countdown: large lime seconds on an opaque plate, readable over any picture.
+  countPlate: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.xl,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.md,
+    alignItems: 'center',
+  },
+  countNumber: { ...type.hero, ...type.tabular, color: colors.accent },
+  countHint: { ...type.caption, color: colors.muted },
   soundTurn: { alignSelf: 'flex-start' },
   sound: { ...type.caption, color: colors.muted },
   shutter: {

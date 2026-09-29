@@ -1,4 +1,5 @@
 import type { RecordingProfile } from '../capture/bitrate';
+import { isSelfTimer, type SelfTimer } from '../capture/selfTimer';
 import { isCalibrationMethod } from '../physics/calibration';
 import type { CalibrationMethod } from '../types';
 
@@ -46,6 +47,8 @@ export type Settings = {
    * counts falls back to the best wherever this is read.
    */
   featuredDelivery: Record<string, string>;
+  /** The self-timer last chosen on Capture, in seconds. 0 is off. */
+  selfTimer: SelfTimer;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -57,6 +60,7 @@ export const DEFAULT_SETTINGS: Settings = {
   onboardingPaywallShown: false,
   microphoneAsked: false,
   featuredDelivery: {},
+  selfTimer: 0,
 };
 
 export const SPEED_UNITS: SpeedUnit[] = ['kmh', 'mph'];
@@ -110,6 +114,7 @@ export function parseSettings(raw: unknown): Settings {
     onboardingPaywallShown: value.onboardingPaywallShown === true,
     microphoneAsked: value.microphoneAsked === true,
     featuredDelivery: parseFeatured(value.featuredDelivery),
+    selfTimer: isSelfTimer(value.selfTimer) ? value.selfTimer : DEFAULT_SETTINGS.selfTimer,
   };
 }
 

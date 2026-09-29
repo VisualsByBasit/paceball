@@ -227,7 +227,11 @@ Home, History and Settings carry the tab bar. Home's hero is the
 personal best, or the delivery the player picked by tapping it (stored
 per player in settings, falling back to the best if it is deleted or no
 longer counts); it is called "Personal best · Highest estimate" only
-when it is the highest estimate, and "Featured delivery" otherwise. The launcher icon and
+when it is the highest estimate, and "Featured delivery" otherwise. Capture
+has a self-timer chip (off, 3, 5 or 10 s, the last choice remembered):
+record then counts down in large lime seconds, a light haptic each, and
+starts the recorder exactly as the button does without it; a tap, leaving
+or losing the camera cancels it. The launcher icon and
 adaptive icon come from assets/, a copy of the website's logo.
 
 The paywall is reached from Capture (the weekly limit), the share sheet
