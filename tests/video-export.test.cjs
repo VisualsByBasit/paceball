@@ -9,6 +9,7 @@ const listeners = new Set();
 const nativeRequests = [];
 let nativeFailure = null;
 let cancelled = [];
+let frameTimes = null;
 
 const join = (...parts) => parts.slice(1).reduce(
   (uri, part) => `${uri.replace(/\/$/, '')}/${String(part).replace(/^\//, '')}`,
@@ -38,6 +39,9 @@ const native = {
       captureFps: 60,
       derivedFps: 60,
     };
+  },
+  async getFrameTimesMs(uri, frames) {
+    return frameTimes ?? frames.map((frame) => (frame / 59.94) * 1_000);
   },
   async exportVideo(request) {
     nativeRequests.push(request);
@@ -78,10 +82,13 @@ Module._load = function(request, parent, main) {
   if (request.endsWith('modules/frame-extractor/src/FrameExtractorModule')) {
     return { __esModule: true, default: native };
   }
+  if (request === '../ui/tokens') return { colors: {
+    bg: '#0A0B0D', surface: '#14161A', text: '#FFFFFF', muted: '#8A9099', accent: '#D4FF3F',
+  } };
   return originalLoad.call(this, request, parent, main);
 };
 
-const { createSessionVideoExport, renderSessionVideo } = require('../src/export/renderSessionVideo.ts');
+const { createSessionVideoExport, renderSessionVideo, isCancelledExport } = require('../src/export/renderSessionVideo.ts');
 
 after(() => { Module._load = originalLoad; });
 beforeEach(() => {
@@ -90,6 +97,7 @@ beforeEach(() => {
   nativeRequests.length = 0;
   cancelled = [];
   nativeFailure = null;
+  frameTimes = null;
 });
 
 function session() {
@@ -154,4 +162,48 @@ test('recordings outside permanent app storage never reach native code', async (
   files.set(value.videoPath, new Uint8Array(20));
   await assert.rejects(renderSessionVideo(value, { isPro: false }), /permanent app storage/);
   assert.equal(nativeRequests.length, 0);
+});
+
+test('the request carries the HUD as the card writes it, the strip on free, the cap on size', async () => {
+  const value = session();
+  await renderSessionVideo(value, { isPro: false });
+  const free = nativeRequests[0];
+  assert.match(free.speedText, /^\d+\.\d km\/h$/);
+  assert.match(free.rangeText, /^± [\d.]+ km\/h$/);
+  assert.equal(free.methodText, 'Average speed, release to bounce');
+  assert.equal(free.pathText, 'Marked, not tracked');
+  assert.equal(free.stripText, 'PACEBALL · FREE');
+  assert.equal(free.watermark, true);
+  // 3840 x 2160 in, 1080 on the long edge out, never up.
+  assert.equal(free.outputShortSide, 606);
+  assert.equal(free.showReferences, true);
+  assert.deepEqual([free.referenceALabel, free.referenceBLabel], ['Near', 'Far']);
+  assert.deepEqual([free.colorBg, free.colorText, free.colorMuted, free.colorAccent],
+    ['#0A0B0D', '#FFFFFF', '#8A9099', '#D4FF3F']);
+  // Half a second of lead-in before the release mark.
+  assert.ok(Math.abs(free.releaseAtMs - 500) < 1);
+  assert.ok(free.bounceAtMs > free.releaseAtMs);
+
+  await renderSessionVideo(session(), { isPro: true });
+  assert.equal(nativeRequests[1].stripText, '');
+  assert.equal(nativeRequests[1].watermark, false);
+});
+
+test('frame times that do not match the marks stop the export before the encoder starts', async () => {
+  frameTimes = [100, 4_000];
+  const value = session();
+  await assert.rejects(renderSessionVideo(value, { isPro: false }), /do not line up/);
+  assert.equal(nativeRequests.length, 0);
+  assert.equal(files.has(value.videoPath), true);
+});
+
+test('a cancelled export is told apart from a failure and leaves no partial file', async () => {
+  const error = Object.assign(new Error('Video export was cancelled.'), { code: 'E_VIDEO_EXPORT_CANCELLED' });
+  nativeFailure = error;
+  const value = session();
+  await assert.rejects(renderSessionVideo(value, { isPro: false }), (e) => isCancelledExport(e));
+  assert.equal([...files.keys()].some((path) => path.includes('paceball-video-exports')), false);
+  assert.equal(files.has(value.videoPath), true, 'the source recording is untouched');
+  assert.equal(isCancelledExport(new Error('encoder failed')), false);
+  assert.equal(isCancelledExport(null), false);
 });

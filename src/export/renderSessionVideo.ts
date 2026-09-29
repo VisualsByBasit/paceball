@@ -4,6 +4,7 @@ import FrameExtractor, {
   type NativeVideoExportResult,
 } from '../../modules/frame-extractor/src/FrameExtractorModule';
 import type { Session } from '../types';
+import { colors } from '../ui/tokens';
 import { planVideoExport, type VideoExportOptions } from './videoPlan';
 
 export type VideoExportResult = NativeVideoExportResult & {
@@ -29,9 +30,15 @@ function privateSource(uri: string): File {
   return file;
 }
 
+/** Whether an export ended because it was cancelled, rather than because it failed. */
+export function isCancelledExport(error: unknown): boolean {
+  return typeof error === 'object' && error !== null &&
+    (error as { code?: unknown }).code === 'E_VIDEO_EXPORT_CANCELLED';
+}
+
 /**
- * Starts the native Media3 spike while keeping the session/measurement model in
- * TypeScript. Nothing here changes the existing PNG renderer.
+ * Starts the native Media3 export while keeping the session and measurement
+ * model in TypeScript. The source recording is only ever read.
  */
 export function createSessionVideoExport(
   session: Session,
@@ -46,37 +53,57 @@ export function createSessionVideoExport(
     const input = privateSource(session.videoPath);
     try {
       const info = await FrameExtractor.getVideoInfo(input.uri);
+      // When the marked frames really play, from the track's own sample times.
+      const [releaseMs, bounceMs] = await FrameExtractor.getFrameTimesMs(
+        input.uri, [session.release.frame, session.bounce.frame],
+      );
       const plan = planVideoExport(session, {
         durationMs: info.durationMs,
         width: info.width,
         height: info.height,
         rotationDegrees: info.rotationDegrees,
-      }, options);
+      }, options, { releaseMs, bounceMs });
+      const { overlay } = plan;
       const request: NativeVideoExportRequest = {
         exportId,
         inputPath: plan.inputVideoPath,
         outputPath: output.uri,
         clipStartMs: plan.clipStartMs,
         clipEndMs: plan.clipEndMs,
+        outputShortSide: plan.outputShortSide,
         includeAudio: plan.includeAudio,
         watermark: plan.watermark,
         sourceWidth: plan.source.width,
         sourceHeight: plan.source.height,
         sourceRotationDegrees: plan.source.rotationDegrees,
-        coordinateWidth: plan.overlay.width,
-        coordinateHeight: plan.overlay.height,
-        calAX: plan.overlay.calibrationA.x,
-        calAY: plan.overlay.calibrationA.y,
-        calBX: plan.overlay.calibrationB.x,
-        calBY: plan.overlay.calibrationB.y,
-        releaseX: plan.overlay.release.x,
-        releaseY: plan.overlay.release.y,
-        bounceX: plan.overlay.bounce.x,
-        bounceY: plan.overlay.bounce.y,
-        releaseAtMs: Math.round(plan.overlay.releaseAtMs),
-        bounceAtMs: Math.round(plan.overlay.bounceAtMs),
-        speedKmh: plan.overlay.speedKmh,
-        errorKmh: plan.overlay.errorKmh,
+        coordinateWidth: overlay.width,
+        coordinateHeight: overlay.height,
+        calAX: overlay.calibrationA.x,
+        calAY: overlay.calibrationA.y,
+        calBX: overlay.calibrationB.x,
+        calBY: overlay.calibrationB.y,
+        releaseX: overlay.release.x,
+        releaseY: overlay.release.y,
+        bounceX: overlay.bounce.x,
+        bounceY: overlay.bounce.y,
+        showReferences: overlay.showReferences,
+        referenceALabel: overlay.referenceLabels[0],
+        referenceBLabel: overlay.referenceLabels[1],
+        bounceUncertain: overlay.bounceUncertain,
+        releaseAtMs: overlay.releaseAtMs,
+        bounceAtMs: overlay.bounceAtMs,
+        frameToleranceMs: overlay.frameToleranceMs,
+        speedKmh: overlay.speedKmh,
+        errorKmh: overlay.errorKmh,
+        speedText: overlay.speedText,
+        rangeText: overlay.rangeText,
+        methodText: overlay.methodText,
+        pathText: overlay.pathLabel,
+        stripText: overlay.stripText ?? '',
+        colorBg: colors.bg,
+        colorText: colors.text,
+        colorMuted: colors.muted,
+        colorAccent: colors.accent,
       };
       const native = await FrameExtractor.exportVideo(request);
       const artifact = new File(native.outputPath);
