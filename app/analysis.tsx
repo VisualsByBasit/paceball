@@ -398,7 +398,7 @@ function Replay({
             <ReadingBlock reading={view} size="reading" />
             {/* Off the scale or a very wide range: shown as computed, never
                 counted toward a best, Stats or Compare. */}
-            {needsChecking(state, unit) ? (
+            {needsChecking(state) ? (
               <CheckTag center />
             ) : null}
           </>

@@ -84,20 +84,20 @@ export default function Index() {
     () => sessions.map((s) => ({ id: s.id, createdAt: s.createdAt, state: measurementState(s), session: s })),
     [sessions]
   );
-  const best = useMemo(() => personalBest(listed, unit), [listed, unit]);
+  const best = useMemo(() => personalBest(listed), [listed]);
   // The hero: the delivery this player chose, or the best when they chose none
   // or their choice is gone or no longer counts. Named the personal best only
   // when it is the highest estimate.
   const playerId = loaded.status === 'ready' ? loaded.playerId : null;
   const chosenId = playerId ? featuredDelivery[playerId] : null;
-  const hero = useMemo(() => heroDelivery(listed, unit, chosenId), [listed, unit, chosenId]);
+  const hero = useMemo(() => heroDelivery(listed, chosenId), [listed, chosenId]);
   const heroView = hero ? readingView(hero.delivery.state, unit) : null;
   // The hero's needle sweeps once it is laid out. Home is not pushed, so there
   // is no transition to wait for.
   const heroReveal = useReveal({ ready: heroView?.kind === 'measured', afterTransition: false });
   const [picking, setPicking] = useState(false);
   // Newest first, only readings that count: the ones the hero may show.
-  const choices = useMemo(() => countingDeliveries(listed, unit), [listed, unit]);
+  const choices = useMemo(() => countingDeliveries(listed), [listed]);
   const choose = (id: string) => {
     if (!playerId) return;
     // Picking the best follows the best, so a faster delivery later takes over.
@@ -243,7 +243,7 @@ export default function Index() {
                       when={formatWhen(d.createdAt)}
                       best={best?.id === d.id}
                       wide={largeText}
-                      check={needsChecking(d.state, unit)}
+                      check={needsChecking(d.state)}
                     />
                   </Pressable>
                 );

@@ -89,9 +89,9 @@ test('Stats: the best is free, the rest is Pro, and every number is a saved read
     { id: 'new', createdAt: 2, state: { kind: 'measured', speedKmh: 120, errorKmh: 3 } },
     { id: 'old', createdAt: 1, state: { kind: 'measured', speedKmh: 130, errorKmh: 3 } },
   ];
-  assert.equal(latestMeasured(list, 'kmh').id, 'new');
-  assert.equal(latestMeasured([], 'kmh'), null);
-  assert.equal(measuredCount(list, 'kmh'), 2);
+  assert.equal(latestMeasured(list).id, 'new');
+  assert.equal(latestMeasured([]), null);
+  assert.equal(measuredCount(list), 2);
 
   const stats = read('app/stats.tsx');
   assert.match(stats, /const pro = canSeeStats\(entitlements\);/);

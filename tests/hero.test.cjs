@@ -20,28 +20,28 @@ const list = [
 ];
 
 test('the hero is the personal best until the player chooses another', () => {
-  const hero = heroDelivery(list, 'kmh', null);
+  const hero = heroDelivery(list, null);
   assert.equal(hero.delivery.id, 'fast');
   assert.equal(hero.isBest, true);
   assert.equal(hero.title, 'Personal best · Highest estimate');
   assert.equal(HERO_BEST, 'Personal best · Highest estimate');
-  assert.equal(heroDelivery([], 'kmh', null), null);
-  assert.equal(heroDelivery([list[0], list[2]], 'kmh', null), null, 'nothing that counts, no hero');
+  assert.equal(heroDelivery([], null), null);
+  assert.equal(heroDelivery([list[0], list[2]], null), null, 'nothing that counts, no hero');
 });
 
 test('a slower chosen delivery is a featured delivery, never a personal best', () => {
-  const hero = heroDelivery(list, 'kmh', 'slow');
+  const hero = heroDelivery(list, 'slow');
   assert.equal(hero.delivery.id, 'slow');
   assert.equal(hero.isBest, false);
   assert.equal(hero.title, HERO_FEATURED);
   assert.equal(HERO_FEATURED, 'Featured delivery');
   // One that equals the highest estimate is a personal best too.
-  assert.equal(heroDelivery(list, 'kmh', 'tie').title, HERO_BEST);
+  assert.equal(heroDelivery(list, 'tie').title, HERO_BEST);
 });
 
 test('a choice that is deleted, implausible or has no speed falls back to the best', () => {
   for (const gone of ['deleted-long-ago', 'wild', 'guess']) {
-    const hero = heroDelivery(list, 'kmh', gone);
+    const hero = heroDelivery(list, gone);
     assert.equal(hero.delivery.id, 'fast', gone);
     assert.equal(hero.title, HERO_BEST, gone);
   }
@@ -63,11 +63,11 @@ test('the choice is stored per player, and choosing the best follows the best', 
 
   const home = read('app/index.tsx');
   assert.match(home, /const chosenId = playerId \? featuredDelivery\[playerId\] : null;/);
-  assert.match(home, /heroDelivery\(listed, unit, chosenId\)/);
+  assert.match(home, /heroDelivery\(listed, chosenId\)/);
   assert.match(home, /updateSettings\(featuring\(featuredDelivery, playerId, best && id === best\.id \? null : id\)\)/);
   // Tapping the hero opens the picker, which lists only readings that count.
   assert.match(home, /onPress=\{\(\) => setPicking\(true\)\}/);
-  assert.match(home, /const choices = useMemo\(\(\) => countingDeliveries\(listed, unit\), \[listed, unit\]\);/);
+  assert.match(home, /const choices = useMemo\(\(\) => countingDeliveries\(listed\), \[listed\]\);/);
   assert.match(home, /<BottomSheet visible=\{picking\} title="Shown on Home"/);
   assert.match(home, /label="Open this delivery"/);
 });

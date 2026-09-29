@@ -96,14 +96,14 @@ async function loadTrend(playerId: string, range: Range): Promise<TrendState> {
  * checked, so it is left off rather than drawn on trust. Best and average follow
  * the points that remain.
  */
-function readTrend(state: TrendState, states: Map<string, MeasurementState>, unit: SpeedUnit): TrendState {
+function readTrend(state: TrendState, states: Map<string, MeasurementState>): TrendState {
   if (state.status !== 'ready') return state;
   const points: TrendPoint[] = [];
   for (const point of state.trend.points) {
     const reading = states.get(point.id);
     // An implausible reading stays in the list with "Check this reading", but
     // is never the best and never a point on the trend.
-    if (!reading || !countsAsReading(reading, unit)) continue;
+    if (!reading || !countsAsReading(reading)) continue;
     points.push({ ...point, speedKmh: reading.speedKmh, errorKmh: reading.errorKmh });
   }
   const count = points.length;
@@ -195,10 +195,10 @@ export default function HistoryScreen() {
     [sessions]
   );
 
-  const allTimeRead = useMemo(() => readTrend(allTime, states, unit), [allTime, states, unit]);
+  const allTimeRead = useMemo(() => readTrend(allTime, states), [allTime, states]);
   const rangedRead = useMemo(
-    () => (ranged ? { range: ranged.range, state: readTrend(ranged.state, states, unit) } : null),
-    [ranged, states, unit]
+    () => (ranged ? { range: ranged.range, state: readTrend(ranged.state, states) } : null),
+    [ranged, states]
   );
 
   const chart: TrendState =
@@ -235,8 +235,8 @@ export default function HistoryScreen() {
 
   // Only readings that could be compared: measured and plausible.
   const measuredCount = useMemo(
-    () => [...states.values()].filter((s) => countsAsReading(s, unit)).length,
-    [states, unit]
+    () => [...states.values()].filter((s) => countsAsReading(s)).length,
+    [states]
   );
 
   const cancelCompare = useCallback(() => {
@@ -488,7 +488,7 @@ export default function HistoryScreen() {
                   selecting
                     ? {
                         picked: picked.includes(item.id),
-                        selectability: compareSelectability(reading, unit),
+                        selectability: compareSelectability(reading),
                         onToggle: () => setPicked((current) => togglePick(current, item.id)),
                       }
                     : null
@@ -738,7 +738,7 @@ function SessionRow({
   // Travel comes off the same marks as the speed, so it is read out only when
   // the speed is. It stays on the record either way.
   const measured = reading.kind === 'measured';
-  const check = needsChecking(reading, unit);
+  const check = needsChecking(reading);
   // Not-seen and unusable rows have no speed to compare, so in select mode they
   // are dimmed, cannot be tapped, and say why.
   const blocked = select !== null && !select.selectability.selectable;

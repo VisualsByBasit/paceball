@@ -1,5 +1,4 @@
 import type { MeasurementState } from '../physics/measurementState';
-import type { SpeedUnit } from '../settings/settings';
 import { implausible } from './gauge';
 
 /** Compare takes exactly this many deliveries. */
@@ -13,10 +12,10 @@ export type Selectability = { selectable: true } | { selectable: false; reason: 
  * would make any verdict about the marks, not the bowling. The reason is shown
  * on the dimmed row, so it stays short.
  */
-export function compareSelectability(reading: MeasurementState, unit: SpeedUnit): Selectability {
+export function compareSelectability(reading: MeasurementState): Selectability {
   switch (reading.kind) {
     case 'measured':
-      return implausible(reading, unit)
+      return implausible(reading)
         ? { selectable: false, reason: "Can't compare: check this reading" }
         : { selectable: true };
     case 'not-seen':

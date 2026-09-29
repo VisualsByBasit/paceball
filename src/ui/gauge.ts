@@ -1,5 +1,4 @@
 import type { SpeedUnit } from '../settings/settings';
-import { errorIn, speedIn } from './units';
 
 /** Where the dial starts and how far it sweeps, clockwise, in degrees from three o'clock. */
 export const GAUGE_START_DEG = 150;
@@ -63,6 +62,8 @@ export function offScale(speed: number, error: number, unit: SpeedUnit): boolean
 export const OFF_SCALE_LABEL = 'Off the scale';
 export const OFF_SCALE_CAUTION =
   'This reading is faster than a bowled ball can be. Check the reference and your marks.';
+/** Faster than this, in km/h, is not a bowled ball: the marks or the reference are wrong. */
+export const MAX_PLAUSIBLE_KMH = 180;
 /** A range wider than this either side, in km/h, is worth saying so. */
 export const WIDE_RANGE_KMH = 25;
 export const WIDE_RANGE_CAUTION = 'The range is very wide. Re-marking or a clearer clip will narrow it.';
@@ -71,23 +72,21 @@ export const WIDE_RANGE_CAUTION = 'The range is very wide. Re-marking or a clear
 export const CHECK_READING = 'Check this reading';
 
 /**
- * What a measured reading should say beside itself, if anything: off the
- * dial's fixed scale (the speed or the top of its range, in the unit shown),
- * or a range wider than WIDE_RANGE_KMH either side. Display only: the reading
- * and its range are exactly what was computed.
+ * What a measured reading should say beside itself, if anything: a speed over
+ * MAX_PLAUSIBLE_KMH, or a range wider than WIDE_RANGE_KMH either side. Both
+ * are decided in km/h, as the reading is stored, never in the unit shown, so
+ * a reading counts or not the same way for every player whatever their
+ * setting. The dial's "Off the scale" label is separate: it is only where the
+ * needle rests, in the unit shown. Display only: the reading and its range are
+ * exactly what was computed.
  *
  * This is the one place those two rules live. Every caution, every "Check this
  * reading" tag, and every decision about where a reading counts (the personal
  * best, the Home hero, Stats, Compare) reads them from here.
  */
-export function readingCautions(
-  reading: { speedKmh: number; errorKmh: number },
-  unit: SpeedUnit
-): string[] {
+export function readingCautions(reading: { speedKmh: number; errorKmh: number }): string[] {
   const cautions: string[] = [];
-  if (offScale(speedIn(reading.speedKmh, unit), errorIn(reading.errorKmh, unit), unit)) {
-    cautions.push(OFF_SCALE_CAUTION);
-  }
+  if (reading.speedKmh > MAX_PLAUSIBLE_KMH) cautions.push(OFF_SCALE_CAUTION);
   if (reading.errorKmh > WIDE_RANGE_KMH) cautions.push(WIDE_RANGE_CAUTION);
   return cautions;
 }
@@ -98,6 +97,6 @@ export function readingCautions(
  * never a personal best, never the Home hero, never in Stats and never offered
  * for Compare.
  */
-export function implausible(reading: { speedKmh: number; errorKmh: number }, unit: SpeedUnit): boolean {
-  return readingCautions(reading, unit).length > 0;
+export function implausible(reading: { speedKmh: number; errorKmh: number }): boolean {
+  return readingCautions(reading).length > 0;
 }

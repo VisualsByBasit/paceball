@@ -387,7 +387,7 @@ export default function ResultScreen() {
   // Said beside the reading, never changing it: off the dial, or a very wide range.
   const cautions =
     state.kind === 'measured' && view.kind === 'measured'
-      ? readingCautions(state, unit)
+      ? readingCautions(state)
       : [];
   const saved = saveStatus === 'saved';
 

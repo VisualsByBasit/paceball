@@ -62,7 +62,7 @@ async function playerName(id: string): Promise<string> {
  * comparison itself is still getComparison's, and anything it throws past those
  * checks is shown as it is. Nothing here ever stands in a zero.
  */
-async function loadComparison(idA: string, idB: string, unit: SpeedUnit): Promise<Loaded> {
+async function loadComparison(idA: string, idB: string): Promise<Loaded> {
   if (!idA || !idB || idA === idB) {
     return {
       status: 'error',
@@ -99,7 +99,7 @@ async function loadComparison(idA: string, idB: string, unit: SpeedUnit): Promis
       };
     }
     // History never offers one, but a link could still carry it here.
-    if (implausible(reading, unit)) {
+    if (implausible(reading)) {
       return {
         status: 'error',
         title: 'One of these readings needs checking',
@@ -178,7 +178,7 @@ function Comparison() {
   useEffect(() => {
     let alive = true;
     setLoaded({ status: 'loading' });
-    loadComparison(idA, idB, unit)
+    loadComparison(idA, idB)
       .then((next) => {
         if (alive) setLoaded(next);
       })
@@ -194,7 +194,7 @@ function Comparison() {
     return () => {
       alive = false;
     };
-  }, [idA, idB, unit]);
+  }, [idA, idB]);
 
   const header = (
     <View style={styles.appBar}>

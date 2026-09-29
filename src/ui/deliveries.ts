@@ -1,5 +1,4 @@
 import type { MeasurementState } from '../physics/measurementState';
-import type { SpeedUnit } from '../settings/settings';
 import { implausible } from './gauge';
 
 /** A delivery as a list reads it: which one, when, and what it can honestly show. */
@@ -12,20 +11,19 @@ export type ListedDelivery = { id: string; createdAt: number; state: Measurement
  * listed, with "Check this reading"; it just never counts.
  */
 export function countsAsReading(
-  state: MeasurementState,
-  unit: SpeedUnit
+  state: MeasurementState
 ): state is Extract<MeasurementState, { kind: 'measured' }> {
-  return state.kind === 'measured' && !implausible(state, unit);
+  return state.kind === 'measured' && !implausible(state);
 }
 
 /** A measured reading that breaks either rule, for its "Check this reading" tag. */
-export function needsChecking(state: MeasurementState, unit: SpeedUnit): boolean {
-  return state.kind === 'measured' && implausible(state, unit);
+export function needsChecking(state: MeasurementState): boolean {
+  return state.kind === 'measured' && implausible(state);
 }
 
 /** Only the deliveries whose readings count, in the order given. */
-export function countingDeliveries<T extends ListedDelivery>(deliveries: readonly T[], unit: SpeedUnit): T[] {
-  return deliveries.filter((d) => countsAsReading(d.state, unit));
+export function countingDeliveries<T extends ListedDelivery>(deliveries: readonly T[]): T[] {
+  return deliveries.filter((d) => countsAsReading(d.state));
 }
 
 /**
@@ -36,10 +34,10 @@ export function countingDeliveries<T extends ListedDelivery>(deliveries: readonl
  * bowler's pace. Null with nothing that counts: a best of 0.0 would not be a
  * reading.
  */
-export function personalBest<T extends ListedDelivery>(deliveries: readonly T[], unit: SpeedUnit): T | null {
+export function personalBest<T extends ListedDelivery>(deliveries: readonly T[]): T | null {
   let best: T | null = null;
   for (const delivery of deliveries) {
-    if (!countsAsReading(delivery.state, unit)) continue;
+    if (!countsAsReading(delivery.state)) continue;
     if (best === null || best.state.kind !== 'measured') {
       best = delivery;
       continue;
@@ -62,13 +60,12 @@ export const HERO_FEATURED = 'Featured delivery';
  */
 export function heroDelivery<T extends ListedDelivery>(
   deliveries: readonly T[],
-  unit: SpeedUnit,
   chosenId: string | null | undefined
 ): { delivery: T; isBest: boolean; title: string } | null {
-  const best = personalBest(deliveries, unit);
+  const best = personalBest(deliveries);
   if (best === null || best.state.kind !== 'measured') return null;
   const chosen = chosenId
-    ? deliveries.find((d) => d.id === chosenId && countsAsReading(d.state, unit))
+    ? deliveries.find((d) => d.id === chosenId && countsAsReading(d.state))
     : undefined;
   const delivery = chosen ?? best;
   const isBest =
@@ -127,16 +124,16 @@ export function compareFooterLabel(picked: number): string {
  * The newest delivery whose reading counts, for "Latest reading". Deliveries
  * arrive newest first, as listSessions returns them. Null when none counts.
  */
-export function latestMeasured<T extends ListedDelivery>(deliveries: readonly T[], unit: SpeedUnit): T | null {
-  return deliveries.find((d) => countsAsReading(d.state, unit)) ?? null;
+export function latestMeasured<T extends ListedDelivery>(deliveries: readonly T[]): T | null {
+  return deliveries.find((d) => countsAsReading(d.state)) ?? null;
 }
 
 /**
  * How many deliveries carry a reading that counts: guessed, unusable and
  * implausible ones do not.
  */
-export function measuredCount(deliveries: readonly ListedDelivery[], unit: SpeedUnit): number {
-  return countingDeliveries(deliveries, unit).length;
+export function measuredCount(deliveries: readonly ListedDelivery[]): number {
+  return countingDeliveries(deliveries).length;
 }
 
 /** A week, for Home's "This week": the seven days up to now, not a calendar week. */

@@ -41,11 +41,11 @@ test('ranges that exactly touch count as too close', () => {
 });
 
 test('not-seen and unusable deliveries cannot be selected in History', () => {
-  assert.deepEqual(compareSelectability({ kind: 'measured', speedKmh: 120, errorKmh: 4 }, 'kmh'), {
+  assert.deepEqual(compareSelectability({ kind: 'measured', speedKmh: 120, errorKmh: 4 }), {
     selectable: true,
   });
   for (const kind of ['not-seen', 'unusable']) {
-    const result = compareSelectability({ kind }, 'kmh');
+    const result = compareSelectability({ kind });
     assert.equal(result.selectable, false, kind);
     assert.ok(result.reason.length > 0, `${kind} says why`);
   }
@@ -53,7 +53,7 @@ test('not-seen and unusable deliveries cannot be selected in History', () => {
   // History wires the rule into the row: blocked rows are disabled and dimmed,
   // and only rows that are selectable get a pick marker.
   const history = read('app/history.tsx');
-  assert.match(history, /selectability: compareSelectability\(reading, unit\)/);
+  assert.match(history, /selectability: compareSelectability\(reading\)/);
   assert.match(history, /const blocked = select !== null && !select\.selectability\.selectable;/);
   assert.match(history, /disabled=\{blocked\}/);
   assert.match(history, /blocked && styles\.off/);
@@ -165,7 +165,7 @@ test('a link carrying an implausible reading is refused, not compared', () => {
   // History never offers one (compareSelectability), but a route could still
   // carry its id here.
   const compare = read('app/compare.tsx');
-  assert.match(compare, /async function loadComparison\(idA: string, idB: string, unit: SpeedUnit\)/);
-  assert.match(compare, /if \(implausible\(reading, unit\)\) \{\s*return \{\s*status: 'error',/);
-  assert.match(compare, /loadComparison\(idA, idB, unit\)/);
+  assert.match(compare, /async function loadComparison\(idA: string, idB: string\)/);
+  assert.match(compare, /if \(implausible\(reading\)\) \{\s*return \{\s*status: 'error',/);
+  assert.match(compare, /loadComparison\(idA, idB\)/);
 });

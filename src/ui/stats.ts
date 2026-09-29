@@ -69,9 +69,9 @@ export function deliveriesPerDay(times: readonly number[], now: number, days = 7
  * saved deliveries and nowhere else.
  */
 export function statsSummary(list: readonly StatsDelivery[], unit: SpeedUnit, now: number): StatsSummary {
-  const counted = list.filter((d) => !needsChecking(d.state, unit));
+  const counted = list.filter((d) => !needsChecking(d.state));
   const points = counted
-    .filter((d) => countsAsReading(d.state, unit))
+    .filter((d) => countsAsReading(d.state))
     .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
     .flatMap((d): SpeedPoint[] => {
       const view = readingView(d.state, unit);
@@ -83,7 +83,7 @@ export function statsSummary(list: readonly StatsDelivery[], unit: SpeedUnit, no
     deliveries: list.length,
     measured: points.length,
     thisWeek: list.filter((d) => d.createdAt <= now && now - d.createdAt < WEEK_MS).length,
-    best: personalBest(list, unit),
+    best: personalBest(list),
     points,
     perDay: deliveriesPerDay(list.map((d) => d.createdAt), now),
     confidence,
