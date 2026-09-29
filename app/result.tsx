@@ -44,6 +44,7 @@ import { SpeedGauge } from '../src/ui/SpeedGauge';
 import { WicketLock } from '../src/ui/WicketLock';
 import { PathDots, pointsAlong } from '../src/ui/motion/PathDots';
 import { READING_LABEL, readingView, type NoReading } from '../src/ui/reading';
+import { readingCautions } from '../src/ui/gauge';
 import { colors, radius, size, space, stroke, type } from '../src/ui/tokens';
 import { useLargeText } from '../src/ui/useLargeText';
 import { errorMessage } from '../src/ui/format';
@@ -382,6 +383,11 @@ export default function ResultScreen() {
   // Everything downstream of the bounce mark (the flight time, the frame delta
   // and the distance travelled) is only worth as much as that mark.
   const measured = state.kind === 'measured';
+  // Said beside the reading, never changing it: off the dial, or a very wide range.
+  const cautions =
+    state.kind === 'measured' && view.kind === 'measured'
+      ? readingCautions(state, { value: view.value, error: view.error }, unit)
+      : [];
   const saved = saveStatus === 'saved';
 
   // How much of the frame's width the two calibration marks spanned, in the
@@ -486,6 +492,9 @@ export default function ResultScreen() {
         )}
 
         <View style={styles.cautions}>
+          {cautions.map((line) => (
+            <Notice key={line} tone="caution">{line}</Notice>
+          ))}
           {/* The warning quotes the travel figure, so on a guessed bounce it would
               leak the very number the rest of the screen is withholding. */}
           {warning && measured ? <Notice tone="caution">{warning.message}</Notice> : null}
