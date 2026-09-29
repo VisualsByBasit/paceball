@@ -14,7 +14,7 @@ import { motion } from './tokens';
 export const INTRO = motion.intro;
 
 /** How high the camera sits above the pitch. Screen y grows downwards, so the pitch is at +y. */
-const CAMERA_HEIGHT = 1.1;
+export const CAMERA_HEIGHT = 1.1;
 /** How far down the pitch the stumps stand. */
 export const STUMP_Z = 6;
 export const STUMP_HEIGHT = 0.71;
@@ -195,3 +195,19 @@ export function introOpacity(t: number): number {
 }
 
 export const WORDMARK = 'PACEBALL';
+
+/** When the light sweeps across the resolved wordmark, from its first letter to past its last. */
+export const SWEEP = { from: INTRO.wordmark + 180, to: INTRO.fadeOut };
+
+/**
+ * How brightly the sweep lights one letter at a moment, 0 to 1: a soft band
+ * of light crossing the wordmark once, left to right, and gone before the fade.
+ */
+export function sweepAt(t: number, index: number): number {
+  'worklet';
+  const u = clamp01((t - SWEEP.from) / (SWEEP.to - SWEEP.from));
+  if (u <= 0 || u >= 1) return 0;
+  const at = -1.5 + u * (WORDMARK.length + 2);
+  const d = (index - at) / 1.3;
+  return Math.exp(-d * d);
+}

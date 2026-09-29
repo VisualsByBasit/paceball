@@ -84,3 +84,32 @@ test('the intro is a picture, never a reading, and adds no 3D library', () => {
   assert.doesNotMatch(source, /—/);
   assert.doesNotMatch(read(COMPONENT), /#[0-9a-f]{3,8}\b/i);
 });
+
+test('the light sweeps across the wordmark once, after it resolves and before the fade', () => {
+  const { SWEEP, sweepAt } = intro;
+  assert.ok(SWEEP.from > motion.intro.wordmark && SWEEP.to <= motion.intro.fadeOut);
+  for (let i = 0; i < intro.WORDMARK.length; i++) {
+    assert.equal(sweepAt(SWEEP.from - 1, i), 0);
+    assert.equal(sweepAt(SWEEP.to, i), 0);
+  }
+  // It reaches the first letter before the last.
+  const peak = (i) => {
+    let best = 0, when = 0;
+    for (let t = SWEEP.from; t < SWEEP.to; t += 2) if (sweepAt(t, i) > best) { best = sweepAt(t, i); when = t; }
+    return when;
+  };
+  assert.ok(peak(0) < peak(intro.WORDMARK.length - 1));
+});
+
+test('the intro is drawn with the 3D kit, the static stadium and pitch in a canvas of their own', () => {
+  const source = read(COMPONENT);
+  const staticCanvas = source.slice(source.indexOf('{/* Static'), source.indexOf('</Canvas>', source.indexOf('{/* Static')));
+  assert.match(staticCanvas, /<Stadium3D /);
+  assert.match(staticCanvas, /<Pitch3D /);
+  assert.doesNotMatch(staticCanvas, /useDerivedValue|t\.value/);
+  assert.match(source, /<Wicket3D x=\{base\.x\} y=\{base\.y\} height=\{stumpH\} lean=\{lean\} bails=\{bails\} \/>/);
+  assert.match(source, /<Ball3D cx=\{cx\} cy=\{cy\} r=\{r\} spin=\{spin\} opacity=\{o\} \/>/);
+  // Bails fall with shadows; no trajectory line anywhere.
+  assert.match(source, /function BailShadow/);
+  assert.doesNotMatch(source, /pointsAlong|PathDots|DashPathEffect/);
+});

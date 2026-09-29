@@ -2,21 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import {
   Blur,
-  BlurMask,
   Canvas,
   Circle,
-  DashPathEffect,
   Group,
-  Line,
-  LinearGradient,
   matchFont,
-  Oval,
-  Path,
-  RadialGradient,
-  RoundedRect,
-  Skia,
   Text as SkiaText,
-  vec,
   type SkFont,
 } from '@shopify/react-native-skia';
 import Animated, {
@@ -31,9 +21,18 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import {
+  Ball3D,
+  GroundShadow,
+  Pitch3D,
+  Stadium3D,
+  Wicket3D,
+  type BailMotion,
+  type Camera,
+} from './cricket3d';
+import {
   bailAt,
   ballAt,
-  BAIL_HEIGHT,
+  CAMERA_HEIGHT,
   INTRO,
   introOpacity,
   letterAt,
@@ -41,27 +40,19 @@ import {
   project,
   sceneOpacity,
   seamPhase,
-  seamPoints,
   shakeAt,
   STUMP_HEIGHT,
-  STUMP_WIDTH,
   STUMP_Z,
   stumpLean,
+  sweepAt,
   viewFor,
-  WICKET_WIDTH,
   WORDMARK,
   type View,
 } from './introScene';
-import { colors, opacity, size, stroke } from './tokens';
+import { colors, opacity, size } from './tokens';
 
 /** Once per launch of the app's process: a warm return to the app never plays it again. */
 let played = false;
-
-// Shades of the ball's lime and the stumps' white, mixed from the tokens.
-const LIME_LIGHT = interpolateColor(0.55, [0, 1], [colors.accent, colors.text]);
-const LIME_DARK = interpolateColor(0.62, [0, 1], [colors.accent, colors.bg]);
-const STUMP_SHADE = interpolateColor(0.55, [0, 1], [colors.text, colors.bg]);
-const SEAM = interpolateColor(0.5, [0, 1], [colors.accent, colors.bg]);
 
 /** Ghost copies behind the ball, milliseconds back, and how strongly each shows: the motion blur. */
 const GHOSTS = [
@@ -70,18 +61,20 @@ const GHOSTS = [
   { back: 24, alpha: 0.1 },
 ];
 
-/** Tilt of the ball's spin axis on screen: the seam stands nearly upright, as a seamer's does. */
-const SEAM_AXIS = (-70 * Math.PI) / 180;
+/** The wordmark's resting colour, and the light the sweep carries across it. */
+const WORD_REST = interpolateColor(0.12, [0, 1], [colors.text, colors.bg]);
 
 /**
- * A short intro after the native splash, on a cold start only: a lime ball
- * bowled in out of the dark hits the stumps, the bails fly, and the PACEBALL
- * wordmark resolves before the app shows through. At most motion.intro.total.
+ * A short intro after the native splash, on a cold start only, drawn with the
+ * 3D cricket kit: under the floodlights, a lit lime ball comes out of the dark
+ * down the pitch, hits the stumps, the bails fly off turning and fall with
+ * their shadows, and the PACEBALL wordmark resolves with a light sweeping
+ * across it before the app shows through. At most motion.intro.total.
  *
- * Drawn in Skia and driven by one Reanimated clock on the UI thread, so it
- * stays smooth while the first screen mounts underneath. A tap skips it;
- * reduced motion never plays it. No speed, no path and no number is drawn:
- * it is a picture, never a reading.
+ * The stadium and pitch never move, so they sit in a canvas of their own and
+ * are drawn once; only the ball, the wicket and the wordmark redraw. A tap
+ * skips it; reduced motion never plays it. No speed, no path and no number is
+ * drawn: it is a picture, never a reading.
  */
 export function LaunchIntro() {
   const reduced = useReducedMotion();
@@ -119,280 +112,146 @@ export function LaunchIntro() {
 
 function Scene({ t, width, height }: { t: SharedValue<number>; width: number; height: number }) {
   const view = useMemo(() => viewFor(width, height), [width, height]);
+  const cam = useMemo<Camera>(
+    () => ({ cx: view.cx, horizon: view.cy, focal: view.focal, camH: CAMERA_HEIGHT }),
+    [view]
+  );
 
   const shake = useDerivedValue(() => [{ translateX: shakeAt(t.value) }, { translateY: shakeAt(t.value) * 0.5 }]);
+  const backdrop = useAnimatedStyle(() => ({
+    opacity: sceneOpacity(t.value),
+    transform: [{ translateX: shakeAt(t.value) }, { translateY: shakeAt(t.value) * 0.5 }],
+  }));
   const scene = useDerivedValue(() => sceneOpacity(t.value));
 
   return (
-    <Canvas style={StyleSheet.absoluteFill}>
-      <Group transform={shake}>
-        <Group opacity={scene}>
-          <Pitch view={view} height={height} />
-          <BallShadow t={t} view={view} />
-          <Wicket t={t} view={view} height={height} />
-        </Group>
-        <Ball t={t} view={view} />
-      </Group>
-      <Wordmark t={t} width={width} height={height} />
-    </Canvas>
-  );
-}
-
-/** The pitch running away into the dark, with the popping crease in front of the stumps. */
-function Pitch({ view, height }: { view: View; height: number }) {
-  const { path, crease } = useMemo(() => {
-    const near = STUMP_Z - 2;
-    const far = 60;
-    const halfWidth = 1.5;
-    const a = project(onGround(-halfWidth, near), view);
-    const b = project(onGround(halfWidth, near), view);
-    const c = project(onGround(halfWidth, far), view);
-    const d = project(onGround(-halfWidth, far), view);
-    const p = Skia.Path.Make();
-    p.moveTo(a.x, a.y);
-    p.lineTo(b.x, b.y);
-    p.lineTo(c.x, c.y);
-    p.lineTo(d.x, d.y);
-    p.close();
-    const creaseZ = STUMP_Z - 1.22;
-    return {
-      path: p,
-      crease: {
-        from: project(onGround(-1.3, creaseZ), view),
-        to: project(onGround(1.3, creaseZ), view),
-      },
-    };
-  }, [view]);
-  return (
     <>
-      <Path path={path}>
-        <LinearGradient start={vec(0, view.cy)} end={vec(0, height)} colors={[colors.bg, colors.surface]} />
-      </Path>
-      <Line
-        p1={vec(crease.from.x, crease.from.y)}
-        p2={vec(crease.to.x, crease.to.y)}
-        color={colors.control}
-        strokeWidth={stroke.medium}
-      />
+      {/* Static: drawn once, faded and shaken as a whole. */}
+      <Animated.View style={[StyleSheet.absoluteFill, backdrop]}>
+        <Canvas style={StyleSheet.absoluteFill}>
+          <Stadium3D width={width} height={height} horizon={view.cy} />
+          <Pitch3D width={width} height={height} cam={cam} stumpZ={STUMP_Z} />
+        </Canvas>
+      </Animated.View>
+      <Canvas style={StyleSheet.absoluteFill}>
+        <Group transform={shake}>
+          <Group opacity={scene}>
+            <BallShadow t={t} view={view} />
+            <Wicket t={t} view={view} height={height} />
+          </Group>
+          <Ball t={t} view={view} />
+        </Group>
+        <Wordmark t={t} width={width} height={height} />
+      </Canvas>
     </>
   );
 }
 
 /** The ball's shadow on the pitch, straight below it. It sharpens as the ball comes close. */
 function BallShadow({ t, view }: { t: SharedValue<number>; view: View }) {
-  const rect = useDerivedValue(() => {
+  const g = useDerivedValue(() => {
     const b = ballAt(t.value);
-    const g = project(onGround(b.p.x, b.p.z), view);
-    const r = b.radius * g.scale;
-    return Skia.XYWHRect(g.x - r * 1.3, g.y - r * 0.3, r * 2.6, r * 0.6);
+    const p = project(onGround(b.p.x, b.p.z), view);
+    return { x: p.x, y: p.y, r: b.radius * p.scale, o: b.opacity };
   });
-  const blur = useDerivedValue(() => {
-    const b = ballAt(t.value);
-    return Math.max(b.radius * project(b.p, view).scale * 0.5, 1);
-  });
-  const alpha = useDerivedValue(() => ballAt(t.value).opacity * opacity.secondary);
-  return (
-    <Oval rect={rect} color={colors.bg} opacity={alpha}>
-      <BlurMask blur={blur} style="normal" />
-    </Oval>
-  );
+  const cx = useDerivedValue(() => g.value.x);
+  const cy = useDerivedValue(() => g.value.y);
+  const rx = useDerivedValue(() => g.value.r * 1.3);
+  const ry = useDerivedValue(() => g.value.r * 0.3);
+  const blur = useDerivedValue(() => Math.max(g.value.r * 0.5, 1));
+  const o = useDerivedValue(() => g.value.o * opacity.secondary);
+  return <GroundShadow cx={cx} cy={cy} rx={rx} ry={ry} blur={blur} opacity={o} />;
 }
 
-/** Three stumps, lit from the left like cylinders, and two bails on top. */
+/** The kit's wicket at the far end, its stumps kicked back and its bails thrown by the hit. */
 function Wicket({ t, view, height }: { t: SharedValue<number>; view: View; height: number }) {
-  const geometry = useMemo(() => {
-    const base = project(onGround(0, STUMP_Z), view);
-    const px = base.scale;
-    const stumpW = STUMP_WIDTH * px;
-    const stumpH = STUMP_HEIGHT * px;
-    const gap = (WICKET_WIDTH * px - stumpW * 3) / 2;
-    const left = base.x - (WICKET_WIDTH * px) / 2;
-    const stumps = [0, 1, 2].map((i) => ({ x: left + i * (stumpW + gap), y: base.y - stumpH }));
-    const bailH = BAIL_HEIGHT * px;
-    const bailW = stumpW + gap;
-    const bails = [0, 1].map((i) => ({
-      x: stumps[i].x + stumpW / 2,
-      y: stumps[i].y - bailH,
-      w: bailW,
-      h: bailH,
-    }));
-    return { stumps, bails, stumpW, stumpH, baseY: base.y };
-  }, [view]);
-
+  const base = useMemo(() => project(onGround(0, STUMP_Z), view), [view]);
+  const stumpH = STUMP_HEIGHT * base.scale;
+  const lean = useDerivedValue(() => [0, 1, 2].map((i) => stumpLean(t.value, i)));
+  const bails = useDerivedValue<BailMotion[]>(() =>
+    [0, 1].map((i) => {
+      const b = bailAt(t.value, i);
+      return { dx: b.dx * height, dy: b.dy * height, turn: (b.turn * Math.PI) / 180, opacity: b.opacity };
+    })
+  );
   return (
     <>
-      {geometry.stumps.map((s, i) => (
-        <Stump key={i} t={t} index={i} x={s.x} y={s.y} w={geometry.stumpW} h={geometry.stumpH} />
+      {[0, 1].map((i) => (
+        <BailShadow key={i} index={i} bails={bails} x={base.x} y={base.y} stumpH={stumpH} />
       ))}
-      {geometry.bails.map((b, i) => (
-        <Bail key={i} t={t} index={i} {...b} height={height} />
-      ))}
+      <Wicket3D x={base.x} y={base.y} height={stumpH} lean={lean} bails={bails} />
     </>
   );
 }
 
-function Stump({
-  t,
-  index,
-  x,
-  y,
-  w,
-  h,
-}: {
-  t: SharedValue<number>;
-  index: number;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}) {
-  // Leans about its foot, where it goes into the ground.
-  const transform = useDerivedValue(() => [{ rotate: (stumpLean(t.value, index) * Math.PI) / 180 }]);
-  return (
-    <Group transform={transform} origin={vec(x + w / 2, y + h)}>
-      <RoundedRect x={x} y={y} width={w} height={h} r={w / 2}>
-        <LinearGradient
-          start={vec(x, 0)}
-          end={vec(x + w, 0)}
-          colors={[colors.text, colors.text, STUMP_SHADE]}
-          positions={[0, 0.35, 1]}
-        />
-      </RoundedRect>
-    </Group>
-  );
-}
-
-function Bail({
-  t,
-  index,
-  x,
-  y,
-  w,
-  h,
-  height,
-}: {
-  t: SharedValue<number>;
-  index: number;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  height: number;
-}) {
-  const transform = useDerivedValue(() => {
-    const b = bailAt(t.value, index);
-    return [
-      { translateX: b.dx * height },
-      { translateY: b.dy * height },
-      { rotate: (b.turn * Math.PI) / 180 },
-    ];
-  });
-  const alpha = useDerivedValue(() => bailAt(t.value, index).opacity);
-  return (
-    <Group transform={transform} origin={vec(x + w / 2, y + h / 2)} opacity={alpha}>
-      <RoundedRect x={x} y={y} width={w} height={h} r={h / 2} color={colors.text} />
-    </Group>
-  );
-}
-
 /**
- * The ball: lime, lit from the upper left so it reads as a sphere, a soft
- * highlight, and a stitched seam turning with the spin. Short ghost copies
- * behind it are its motion blur, never a trail: they sit within its own width.
+ * A flying bail's shadow on the ground under it: it slides with the bail and
+ * grows sharper and darker as the bail falls back towards the pitch.
  */
+function BailShadow({
+  index,
+  bails,
+  x,
+  y,
+  stumpH,
+}: {
+  index: number;
+  bails: SharedValue<BailMotion[]>;
+  x: number;
+  y: number;
+  stumpH: number;
+}) {
+  const cx = useDerivedValue(() => x + (index === 0 ? -1 : 1) * stumpH * 0.08 + bails.value[index].dx);
+  // How high the bail is above the pitch: dy grows as it falls.
+  const lift = useDerivedValue(() => Math.max(stumpH - bails.value[index].dy, 0));
+  const blur = useDerivedValue(() => Math.max(stumpH * 0.03 + lift.value * 0.05, 1));
+  const o = useDerivedValue(() => {
+    const flying = bails.value[index].dx !== 0 ? 1 : 0;
+    const near = Math.min(Math.max(1 - lift.value / (stumpH * 1.5), 0.2), 1);
+    return flying * near * bails.value[index].opacity * opacity.inactive;
+  });
+  return <GroundShadow cx={cx} cy={y} rx={stumpH * 0.09} ry={stumpH * 0.025} blur={blur} opacity={o} />;
+}
+
+/** The kit's lit ball, spinning, with short ghost copies behind it as motion blur, never a trail. */
 function Ball({ t, view }: { t: SharedValue<number>; view: View }) {
-  const at = (back: number) => {
-    'worklet';
-    const b = ballAt(Math.max(t.value - back, 0));
+  const at = useDerivedValue(() => {
+    const b = ballAt(t.value);
     const s = project(b.p, view);
-    return { x: s.x, y: s.y, r: b.radius * s.scale, opacity: b.opacity };
-  };
-
-  const cx = useDerivedValue(() => at(0).x);
-  const cy = useDerivedValue(() => at(0).y);
-  const r = useDerivedValue(() => at(0).r);
-  const alpha = useDerivedValue(() => at(0).opacity);
-  const light = useDerivedValue(() => {
-    const b = at(0);
-    return vec(b.x - b.r * 0.35, b.y - b.r * 0.4);
+    return { x: s.x, y: s.y, r: b.radius * s.scale, o: b.opacity };
   });
-  const shadeR = useDerivedValue(() => at(0).r * 1.35);
-
-  const highlightX = useDerivedValue(() => at(0).x - at(0).r * 0.38);
-  const highlightY = useDerivedValue(() => at(0).y - at(0).r * 0.42);
-  const highlightR = useDerivedValue(() => at(0).r * 0.26);
-  const highlightBlur = useDerivedValue(() => Math.max(at(0).r * 0.18, 0.5));
-
-  const seam = useDerivedValue(() => {
-    const b = at(0);
-    const points = seamPoints(b.x, b.y, b.r * 0.97, seamPhase(t.value), SEAM_AXIS, 24);
-    const p = Skia.Path.Make();
-    p.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) p.lineTo(points[i].x, points[i].y);
-    return p;
-  });
-  const seamWidth = useDerivedValue(() => Math.max(at(0).r * 0.14, stroke.hairline));
-  const stitchWidth = useDerivedValue(() => Math.max(at(0).r * 0.26, stroke.hairline));
-  const stitchDash = useDerivedValue(() => {
-    const d = Math.max(at(0).r * 0.06, 0.5);
-    return [d, d * 2.2];
-  });
-
+  const cx = useDerivedValue(() => at.value.x);
+  const cy = useDerivedValue(() => at.value.y);
+  const r = useDerivedValue(() => at.value.r);
+  const o = useDerivedValue(() => at.value.o);
+  const spin = useDerivedValue(() => seamPhase(t.value));
   // Hidden once the ball is gone, so nothing is drawn at a zero radius.
-  const shown = useDerivedValue(() => (at(0).opacity > 0.01 ? 1 : 0));
-
+  const shown = useDerivedValue(() => (at.value.o > 0.01 ? 1 : 0));
   return (
     <Group opacity={shown}>
       {GHOSTS.map((g) => (
-        <Ghost key={g.back} t={t} back={g.back} alpha={g.alpha} at={at} />
+        <Ghost key={g.back} t={t} back={g.back} alpha={g.alpha} view={view} />
       ))}
-      <Group opacity={alpha}>
-        <Circle cx={cx} cy={cy} r={r}>
-          <RadialGradient
-            c={light}
-            r={shadeR}
-            colors={[LIME_LIGHT, colors.accent, LIME_DARK]}
-            positions={[0, 0.4, 1]}
-          />
-        </Circle>
-        <Path path={seam} style="stroke" strokeWidth={seamWidth} strokeCap="round" color={SEAM} />
-        <Path
-          path={seam}
-          style="stroke"
-          strokeWidth={stitchWidth}
-          color={LIME_LIGHT}
-          opacity={opacity.secondary}
-        >
-          <DashPathEffect intervals={stitchDash} />
-        </Path>
-        <Circle cx={highlightX} cy={highlightY} r={highlightR} color={colors.text} opacity={opacity.inactive}>
-          <BlurMask blur={highlightBlur} style="normal" />
-        </Circle>
-      </Group>
+      <Ball3D cx={cx} cy={cy} r={r} spin={spin} opacity={o} />
     </Group>
   );
 }
 
-function Ghost({
-  t,
-  back,
-  alpha,
-  at,
-}: {
-  t: SharedValue<number>;
-  back: number;
-  alpha: number;
-  at: (back: number) => { x: number; y: number; r: number; opacity: number };
-}) {
-  const cx = useDerivedValue(() => at(back).x);
-  const cy = useDerivedValue(() => at(back).y);
-  const r = useDerivedValue(() => at(back).r);
+function Ghost({ t, back, alpha, view }: { t: SharedValue<number>; back: number; alpha: number; view: View }) {
+  const at = useDerivedValue(() => {
+    const b = ballAt(Math.max(t.value - back, 0));
+    const s = project(b.p, view);
+    return { x: s.x, y: s.y, r: b.radius * s.scale, o: b.opacity };
+  });
+  const cx = useDerivedValue(() => at.value.x);
+  const cy = useDerivedValue(() => at.value.y);
+  const r = useDerivedValue(() => at.value.r);
   // Only while the ball is in flight: nothing lingers once it has hit.
-  const o = useDerivedValue(() => (t.value < INTRO.impact ? alpha * at(back).opacity : 0));
+  const o = useDerivedValue(() => (t.value < INTRO.impact ? alpha * at.value.o : 0));
   return <Circle cx={cx} cy={cy} r={r} color={colors.accent} opacity={o} />;
 }
 
-/** PACEBALL, resolving out of a blur letter by letter, above the wicket. */
+/** PACEBALL, resolving out of a blur letter by letter, then a light sweeping across it. */
 function Wordmark({ t, width, height }: { t: SharedValue<number>; width: number; height: number }) {
   const font = useMemo<SkFont | null>(() => {
     try {
@@ -449,9 +308,14 @@ function Letter({
   const alpha = useDerivedValue(() => letterAt(t.value, index).opacity);
   const blur = useDerivedValue(() => letterAt(t.value, index).blur);
   const transform = useDerivedValue(() => [{ translateY: letterAt(t.value, index).rise }]);
+  // At rest a soft silver; the sweep lights it white hot with a touch of lime.
+  const color = useDerivedValue(() => {
+    const s = sweepAt(t.value, index);
+    return interpolateColor(s, [0, 0.7, 1], [WORD_REST, colors.text, colors.accent]);
+  });
   return (
     <Group opacity={alpha} transform={transform}>
-      <SkiaText x={x} y={y} text={ch} font={font} color={colors.text}>
+      <SkiaText x={x} y={y} text={ch} font={font} color={color}>
         <Blur blur={blur} />
       </SkiaText>
     </Group>
