@@ -46,6 +46,8 @@ export const size = {
   detent: 72,
   /** The magnifier over the frame while a mark is being placed. */
   loupe: 96,
+  /** The PACEBALL wordmark in the launch intro. */
+  introWordmark: 44,
   /** The emblem shown once a purchase is confirmed. */
   emblem: 96,
   /** The widest the Result speedometer is drawn, and its dial's stroke. */
@@ -142,6 +144,12 @@ export const motion = {
   record: 160,
   /** A deleted row leaving its list. */
   collapse: 160,
+  /**
+   * The launch intro, cold start only, as the time each beat lands: the ball
+   * reaches the stumps, the wordmark starts to resolve letter by letter, and
+   * the whole intro fades to the app. Never longer than total.
+   */
+  intro: { impact: 620, wordmark: 850, letter: 220, letterStagger: 25, fadeOut: 1250, total: 1500 },
   /** A lens swap: the preview fades out, waits for the new lens, then fades back in. */
   lens: { out: 120, in: 180 },
   /** Playhead chasing the finger. Just under critical damping, so it lags a touch. */
