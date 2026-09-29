@@ -43,3 +43,17 @@ test('the sheet: Image card or Video clip, create, remove the watermark, share o
   assert.doesNotMatch(read('app/result.tsx').slice(read('app/result.tsx').indexOf('<DeliveryShareSheet')), /^[^\n]*onDeleted/);
   assert.doesNotMatch(sheet, /—/);
 });
+
+test('a created image is shown from its own PNG, full width and contained, above Share and Save', () => {
+  const sheet = read('src/ui/DeliveryShareSheet.tsx');
+  const made = sheet.slice(sheet.indexOf('{made ? ('), sheet.indexOf(') : null}', sheet.indexOf('{made ? (')));
+  // The real output file, not a re-render: the path renderExport wrote.
+  assert.match(sheet, /setMade\(\{ path: result\.imagePath, clean: withoutWatermark \}\)/);
+  assert.match(made, /<Image\s+key=\{made\.path\}\s+source=\{\{ uri: made\.path \}\}\s+style=\{styles\.preview\}\s+resizeMode="contain"/);
+  // Before the actions, so they sit under it.
+  assert.ok(made.indexOf('<Image') < made.indexOf('label="Share"'));
+  assert.ok(made.indexOf('label="Share"') < made.indexOf('label="Save to gallery"'));
+  assert.match(sheet, /preview: \{\s*width: '100%',\s*aspectRatio: EXPORT_WIDTH \/ EXPORT_HEIGHT,/);
+  // Branded or clean, whichever was made last.
+  assert.match(made, /made\.clean \? 'IMAGE WITHOUT WATERMARK' : 'IMAGE WITH WATERMARK'/);
+});

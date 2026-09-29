@@ -220,9 +220,9 @@ home). A launch intro plays over the root stack on a cold start only.
 Home, History and Settings carry the tab bar. The launcher icon and
 adaptive icon come from assets/, a copy of the website's logo.
 
-The paywall is reached from Capture (the weekly limit), Analysis (the
-clean export), History (compare), Settings, and once at the end of
-onboarding. It renders the store's offering and buys and restores
+The paywall is reached from Capture (the weekly limit), the share sheet
+on Result and Analysis (the clean export), History (compare), Stats,
+Settings, and once at the end of onboarding. It renders the store's offering and buys and restores
 through RevenueCat. A purchase the store confirms with the `pro`
 entitlement replaces it with the celebration, once; a restore never
 does, and the route shows nothing when opened any other way. Result and
@@ -230,7 +230,9 @@ Analysis open one share sheet (src/ui/DeliveryShareSheet.tsx): an image
 card or a video clip. "Create image" makes the card with the "PACEBALL ·
 FREE" strip between the speed and its range; "Remove watermark" opens the
 paywall for a free user and makes the clean card for Pro. Pro's clips
-carry no watermark, everyone else's carry the strip. The clip runs
+carry no watermark, everyone else's carry the strip. A created image
+is previewed from its own PNG, and a finished clip plays back muted from
+its own file, before either is shared or saved. The clip runs
 from 0.5 s before release to 0.75 s after bounce, timed from the video
 track's own frame times, at most 1080 on the long edge and never scaled
 up. Its HUD shows the whole reading on an opaque plate from the first

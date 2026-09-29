@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { deleteSession, renderExport } from '../data';
 import { saveExportToGallery, shareExport } from '../export/deliveryActions';
+import { EXPORT_HEIGHT, EXPORT_WIDTH } from '../export/layout';
 import { VideoActions } from '../export/VideoActions';
 import { canExportWithoutWatermark, useEntitlements } from '../purchases';
 import { ActionButton } from './ActionButton';
@@ -11,7 +12,7 @@ import { createDeliveryDelete, DELETE_CONFIRM } from './deleteDelivery';
 import { errorMessage } from './format';
 import { Notice } from './Notice';
 import { ShareChoice } from './ShareChoice';
-import { colors, space, type } from './tokens';
+import { colors, radius, space, stroke, type } from './tokens';
 
 export const SHARE_TITLE = 'Share reading';
 export const CREATE_IMAGE = 'Create image';
@@ -122,7 +123,17 @@ function ImageShare({ sessionId, clean, onLeave }: { sessionId: string; clean: b
 
       {made ? (
         <View style={styles.section}>
-          <Text style={styles.madeLabel}>{made.clean ? 'Image without watermark' : 'Image with watermark'}</Text>
+          <Text style={styles.madeLabel}>{made.clean ? 'IMAGE WITHOUT WATERMARK' : 'IMAGE WITH WATERMARK'}</Text>
+          {/* The PNG that was written, read back from its file: exactly what
+              Share and Save to gallery will send, not a drawing of it. */}
+          <Image
+            key={made.path}
+            source={{ uri: made.path }}
+            style={styles.preview}
+            resizeMode="contain"
+            fadeDuration={0}
+            accessibilityLabel={made.clean ? 'The image without the watermark' : 'The image with the Paceball watermark'}
+          />
           <ActionButton
             label="Share"
             busy={busy === 'Opening...' ? busy : null}
@@ -192,5 +203,14 @@ const styles = StyleSheet.create({
   section: { gap: space.sm, marginTop: space.md },
   caption: { ...type.caption, color: colors.muted },
   madeLabel: { ...type.label, color: colors.muted },
+  // Full width, the card's own proportions, the whole card inside it.
+  preview: {
+    width: '100%',
+    aspectRatio: EXPORT_WIDTH / EXPORT_HEIGHT,
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    borderWidth: stroke.hairline,
+    borderColor: colors.line,
+  },
   delete: { gap: space.sm, marginTop: space.xl },
 });

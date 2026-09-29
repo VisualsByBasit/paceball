@@ -84,6 +84,8 @@ export const size = {
   gaugeSmall: 200,
   /** A delivery row's minimum height. */
   row: 80,
+  /** The finished video clip, played back muted in the share sheet before it is shared. */
+  clipPreview: 200,
   /** A settings row's minimum height: one line and its value, Android's standard. */
   listRow: 56,
   /** A delivery row's release-frame thumbnail. */
