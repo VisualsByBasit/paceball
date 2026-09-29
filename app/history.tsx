@@ -15,7 +15,7 @@ import { releaseFrameUri } from '../src/capture/useFrames';
 import { deleteSession, getActivePlayer, getTrend, listSessions } from '../src/data';
 import { CALIBRATION_SPECS } from '../src/physics/calibration';
 import { measurementState, type MeasurementState } from '../src/physics/measurementState';
-import { canCompare, useEntitlements } from '../src/purchases';
+import { canCompare, canSeeStats, useEntitlements, usePurchases } from '../src/purchases';
 import { useSettings, type SpeedUnit } from '../src/settings';
 import {
   COMPARE_COUNT,
@@ -24,6 +24,7 @@ import {
   togglePick,
   type Selectability,
 } from '../src/ui/compareSelection';
+import { ActionButton } from '../src/ui/ActionButton';
 import { createDeliveryDelete } from '../src/ui/deleteDelivery';
 import { AppBar } from '../src/ui/AppBar';
 import { DeliveryRow } from '../src/ui/DeliveryRow';
@@ -126,6 +127,10 @@ export default function HistoryScreen() {
   // km/h as stored, and converted at the moment they are drawn.
   const { unit } = useSettings();
   const entitlements = useEntitlements();
+  const { loading: checkingPlan } = usePurchases();
+  // The trend chart is Pro, like Stats; the delivery list and the personal
+  // best mark on it stay free. Pro reads as false until the store answers.
+  const trendUnlocked = canSeeStats(entitlements);
 
   const [loaded, setLoaded] = useState<Loaded>({ status: 'loading' });
   const [reload, setReload] = useState(0);
@@ -171,7 +176,7 @@ export default function HistoryScreen() {
   }, [playerId, sessions]);
 
   useEffect(() => {
-    if (range === 'all' || !playerId || !sessions || sessions.length === 0) return;
+    if (!trendUnlocked || range === 'all' || !playerId || !sessions || sessions.length === 0) return;
     let alive = true;
     loadTrend(playerId, range).then((state) => {
       if (alive) setRanged({ range, state });
@@ -179,7 +184,7 @@ export default function HistoryScreen() {
     return () => {
       alive = false;
     };
-  }, [playerId, sessions, range]);
+  }, [trendUnlocked, playerId, sessions, range]);
 
   // Every delivery read once, and every number below comes from here.
   const states = useMemo(
@@ -403,33 +408,47 @@ export default function HistoryScreen() {
           <>
             {playerRow}
 
-            <View style={styles.ranges}>
-              {RANGES.map((r) => {
-                const on = r.key === range;
-                return (
-                  <Pressable
-                    key={r.key}
-                    onPress={() => setRange(r.key)}
-                    // Downwards only: the player row above is not a target.
-                    hitSlop={{ top: space.xs, bottom: space.md }}
-                    style={[styles.range, on && styles.rangeOn]}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: on }}
-                  >
-                    <Text style={[styles.rangeText, on && styles.rangeTextOn]}>{r.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            {trendUnlocked ? (
+              <>
+                <View style={styles.ranges}>
+                  {RANGES.map((r) => {
+                    const on = r.key === range;
+                    return (
+                      <Pressable
+                        key={r.key}
+                        onPress={() => setRange(r.key)}
+                        // Downwards only: the player row above is not a target.
+                        hitSlop={{ top: space.xs, bottom: space.md }}
+                        style={[styles.range, on && styles.rangeOn]}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: on }}
+                      >
+                        <Text style={[styles.rangeText, on && styles.rangeTextOn]}>{r.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
 
-            <TrendCard
-              key={range}
-              range={range}
-              state={chart}
-              empty={RANGES.find((r) => r.key === range)!.empty}
-              unit={unit}
-              onOpen={open}
-            />
+                <TrendCard
+                  key={range}
+                  range={range}
+                  state={chart}
+                  empty={RANGES.find((r) => r.key === range)!.empty}
+                  unit={unit}
+                  onOpen={open}
+                />
+              </>
+            ) : (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>AVG SPEED TO BOUNCE, BY DELIVERY</Text>
+                <Text style={styles.lockedTrend}>See your trend with Pro</Text>
+                <ActionButton
+                  label="See Pro stats"
+                  onPress={() => router.push({ pathname: '/paywall', params: { context: 'stats' } })}
+                  disabledReason={checkingPlan ? 'Checking your plan…' : null}
+                />
+              </View>
+            )}
 
             <View style={styles.listTop}>
               <Text style={styles.listTopLabel}>
@@ -815,6 +834,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: { ...type.label, color: colors.text },
   cardNote: { ...type.caption, color: colors.muted, marginTop: space.xs, marginBottom: space.md },
+  lockedTrend: { ...type.body, color: colors.text, marginTop: space.xs, marginBottom: space.md },
   chartLoading: { minHeight: PLOT_HEIGHT },
   chartEmpty: { ...type.body, color: colors.muted, paddingVertical: space.xl, textAlign: 'center' },
 

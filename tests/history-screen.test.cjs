@@ -45,3 +45,19 @@ test('History takes every colour and size from tokens', () => {
   const styles = source.slice(source.indexOf('StyleSheet.create'));
   assert.doesNotMatch(styles.replace(/\bflex(Grow|Shrink)?:\s*[01]\b/g, ''), /:\s*-?\d+(\.\d+)?\s*[,}\n]/);
 });
+
+test('the trend chart is Pro; free sees one way to it and keeps the delivery list', () => {
+  const history = read(HISTORY);
+  // The same gate as Stats, read from the entitlement, never assumed.
+  assert.match(history, /const trendUnlocked = canSeeStats\(entitlements\);/);
+  // The range chips and the chart only behind it.
+  assert.match(history, /\{trendUnlocked \? \(\s*<>\s*<View style=\{styles\.ranges\}>/);
+  const locked = history.slice(history.indexOf(') : (', history.indexOf('{trendUnlocked ? (')));
+  assert.match(locked.slice(0, 600), /See your trend with Pro/);
+  assert.match(locked.slice(0, 600), /params: \{ context: 'stats' \}/);
+  assert.doesNotMatch(locked.slice(0, 600), /TrendCard|TrendPlot/);
+  // A free user's ranged trend is never even read.
+  assert.match(history, /if \(!trendUnlocked \|\| range === 'all'/);
+  // The list is outside the gate.
+  assert.ok(history.indexOf('renderItem=') > history.indexOf('See your trend with Pro'));
+});
