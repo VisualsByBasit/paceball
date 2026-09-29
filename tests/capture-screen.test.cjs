@@ -146,6 +146,17 @@ test('held sideways either way, rotated content lands with its bottom on the gro
   assert.match(read(CAPTURE), /baselineRow: \{[^}]*bottom: space\.xxl,/);
 });
 
+test('the framing guide is drawn in lime, and its plate stays an opaque bg plate', () => {
+  const capture = read(CAPTURE);
+  const style = (name) => capture.slice(capture.indexOf(`  ${name}: {`), capture.indexOf('},', capture.indexOf(`  ${name}: {`)));
+  for (const name of ['bracket', 'baseline', 'stumpIcon', 'markerIcon']) {
+    assert.match(style(name), /colors\.accent/, name);
+    assert.doesNotMatch(style(name), /colors\.text/, name);
+  }
+  assert.match(style('plate'), /backgroundColor: colors\.bg/);
+  assert.match(capture, /plateText: \{ \.\.\.type\.caption, color: colors\.text/);
+});
+
 test('held sideways, the overlay turns to meet the phone and the recording does not', () => {
   const { uiRotation } = require('../src/capture/orientation.ts');
   assert.equal(uiRotation('up'), 0);

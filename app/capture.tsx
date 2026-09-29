@@ -777,11 +777,13 @@ const styles = StyleSheet.create({
   plateText: { ...type.caption, color: colors.text, textAlign: 'center' },
 
   guideDimmed: { opacity: opacity.inactive },
+  // The guide is lime so it reads as the app's own drawing over any picture,
+  // the plate apart. Still only a guide: nothing here looks at the frame.
   bracket: {
     position: 'absolute',
     width: space.lg,
     height: space.lg,
-    borderColor: colors.text,
+    borderColor: colors.accent,
   },
   bracketTopLeft: {
     top: space.md,
@@ -818,21 +820,20 @@ const styles = StyleSheet.create({
   baseline: {
     flex: 1,
     height: stroke.hairline,
-    backgroundColor: colors.text,
-    opacity: opacity.secondary,
+    backgroundColor: colors.accent,
   },
   // Outlined, like a drawing of the thing, never a filled detection box.
   stumpIcon: {
     width: space.sm,
     height: space.lg,
     borderWidth: stroke.hairline,
-    borderColor: colors.text,
+    borderColor: colors.accent,
   },
   markerIcon: {
     width: space.sm,
     height: space.sm,
     borderWidth: stroke.hairline,
-    borderColor: colors.text,
+    borderColor: colors.accent,
   },
   guideFrame: { position: 'absolute' },
   guidePlateRow: {
