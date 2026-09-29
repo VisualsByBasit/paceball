@@ -194,8 +194,18 @@ meaning: the ball, measured data, primary actions. Never decorative.
 type.mono for measured data only. type.tabular for numbers that change
 in place, like timers and frame counters.
 
-Numbers are the hero. Flat: no shadows, no gradients on surfaces, no
-glassmorphism.
+Numbers are the hero. The interface is flat: cards, lists, buttons and
+sheets have no shadows, no gradients and no glassmorphism.
+
+The pictures are 3D: the ball, stumps and bails, the pitch and the
+floodlit stadium, the speedometer, the launch intro, the purchase
+celebration, Home's hero and empty state, and the placement guide. They
+all come from the kit in src/ui/cricket3d (Skia runtime shaders, one
+floodlight, materials from `scene` in tokens.ts), and static layers sit
+in a canvas of their own so they are drawn once. No expo-gl or three.
+Evidence stays flat and exact: the marks, the connector and "Marked, not
+tracked" on Mark, Result, Analysis and the share and video exports, and
+the Capture framing guide.
 
 ## Screens
 
