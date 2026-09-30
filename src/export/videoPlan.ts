@@ -15,7 +15,11 @@ export const VIDEO_MAX_EDGE = 1080;
  */
 export const VIDEO_TIMING_TOLERANCE_MS = 250;
 
-export const VIDEO_STRIP = 'PACEBALL · FREE';
+/**
+ * A free clip's band across the picture, as the free card carries it: the
+ * wordmark, drawn from its traced paths, then FREE in lime.
+ */
+export const VIDEO_BAND = ['PACEBALL', 'FREE'] as const;
 export const VIDEO_METHOD = 'Average speed, release to bounce';
 export const VIDEO_PATH_LABEL = 'Marked, not tracked';
 
@@ -85,8 +89,8 @@ export type VideoExportPlan = {
     rangeText: string;
     methodText: typeof VIDEO_METHOD;
     pathLabel: typeof VIDEO_PATH_LABEL;
-    /** Between the speed and its range on a free export; null only for Pro. */
-    stripText: typeof VIDEO_STRIP | null;
+    /** The band's word after the wordmark on a free clip; null for Pro, which is clean. */
+    bandText: (typeof VIDEO_BAND)[1] | null;
   };
 };
 
@@ -178,7 +182,7 @@ export function planVideoExport(
       rangeText: `± ${reading.errorKmh} km/h`,
       methodText: VIDEO_METHOD,
       pathLabel: VIDEO_PATH_LABEL,
-      stripText: watermark ? VIDEO_STRIP : null,
+      bandText: watermark ? VIDEO_BAND[1] : null,
     },
   };
 }

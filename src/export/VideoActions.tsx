@@ -23,9 +23,10 @@ type Phase =
 
 /**
  * The delivery as a short clip with its reading burned in. Free clips carry the
- * watermark strip; the caller passes watermark={false} only when the Pro
- * entitlement allows a clean one. Sound is off for every export until switched
- * on for that export. A failure never falls back to anything: it says so and
+ * free card's band, the wordmark and FREE in lime across the picture, and the
+ * preview plays the finished file, band and all; the caller passes
+ * watermark={false} only when the Pro entitlement allows a clean one. Sound
+ * is off for every export until switched on for that export. A failure never falls back to anything: it says so and
  * offers the image card instead.
  */
 export function VideoActions({ sessionId, watermark = true, onUseImage }: {

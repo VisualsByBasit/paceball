@@ -104,7 +104,7 @@ test('the HUD carries the whole reading as the card writes it, and only marked p
   assert.equal(overlay.rangeText, `± ${reading.errorKmh} km/h`);
   assert.equal(overlay.methodText, 'Average speed, release to bounce');
   assert.equal(overlay.pathLabel, 'Marked, not tracked');
-  assert.equal(overlay.stripText, 'PACEBALL · FREE');
+  assert.equal(overlay.bandText, 'FREE');
   assert.equal('trackedPositions' in overlay, false);
   assert.deepEqual(overlay.calibrationA, session.calA);
   assert.deepEqual(overlay.calibrationB, session.calB);
@@ -114,9 +114,9 @@ test('the HUD carries the whole reading as the card writes it, and only marked p
   overlay.release.x = 7;
   assert.notEqual(session.release.x, 7, 'the plan does not mutate the saved marks');
 
-  // Pro drops the strip and nothing else.
+  // Pro drops the band and nothing else.
   const pro = planVideoExport(session, source(5_000), { isPro: true }, timing(session)).overlay;
-  assert.equal(pro.stripText, null);
+  assert.equal(pro.bandText, null);
   assert.equal(pro.speedText, overlay.speedText);
   assert.equal(pro.rangeText, overlay.rangeText);
 });

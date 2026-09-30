@@ -164,7 +164,7 @@ test('recordings outside permanent app storage never reach native code', async (
   assert.equal(nativeRequests.length, 0);
 });
 
-test('the request carries the HUD as the card writes it, the strip on free, the cap on size', async () => {
+test('the request carries the HUD as the card writes it, the band on free, the cap on size', async () => {
   const value = session();
   await renderSessionVideo(value, { isPro: false });
   const free = nativeRequests[0];
@@ -172,7 +172,13 @@ test('the request carries the HUD as the card writes it, the strip on free, the 
   assert.match(free.rangeText, /^± [\d.]+ km\/h$/);
   assert.equal(free.methodText, 'Average speed, release to bounce');
   assert.equal(free.pathText, 'Marked, not tracked');
-  assert.equal(free.stripText, 'PACEBALL · FREE');
+  // The free card's band: the traced wordmark, then FREE in lime.
+  const { WORDMARK_PATHS } = require('../src/ui/wordmarkPaths.ts');
+  assert.equal(free.bandText, 'FREE');
+  assert.equal(free.wordmarkWhite, WORDMARK_PATHS.white);
+  assert.equal(free.wordmarkLime, WORDMARK_PATHS.lime);
+  assert.deepEqual([free.wordmarkWidth, free.wordmarkHeight], [WORDMARK_PATHS.width, WORDMARK_PATHS.height]);
+  assert.equal('stripText' in free, false, 'the old strip is gone');
   assert.equal(free.watermark, true);
   // 3840 x 2160 in, 1080 on the long edge out, never up.
   assert.equal(free.outputShortSide, 606);
@@ -185,7 +191,9 @@ test('the request carries the HUD as the card writes it, the strip on free, the 
   assert.ok(free.bounceAtMs > free.releaseAtMs);
 
   await renderSessionVideo(session(), { isPro: true });
-  assert.equal(nativeRequests[1].stripText, '');
+  // Pro clips are clean: no band, no wordmark.
+  assert.equal(nativeRequests[1].bandText, '');
+  assert.equal(nativeRequests[1].wordmarkWhite, '');
   assert.equal(nativeRequests[1].watermark, false);
 });
 

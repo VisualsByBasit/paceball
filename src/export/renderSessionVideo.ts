@@ -5,6 +5,7 @@ import FrameExtractor, {
 } from '../../modules/frame-extractor/src/FrameExtractorModule';
 import type { Session } from '../types';
 import { colors } from '../ui/tokens';
+import { WORDMARK_PATHS } from '../ui/wordmarkPaths';
 import { planVideoExport, type VideoExportOptions } from './videoPlan';
 
 export type VideoExportResult = NativeVideoExportResult & {
@@ -99,7 +100,12 @@ export function createSessionVideoExport(
         rangeText: overlay.rangeText,
         methodText: overlay.methodText,
         pathText: overlay.pathLabel,
-        stripText: overlay.stripText ?? '',
+        bandText: overlay.bandText ?? '',
+        // Only a free clip carries the band, so only it carries the wordmark.
+        wordmarkWhite: overlay.bandText ? WORDMARK_PATHS.white : '',
+        wordmarkLime: overlay.bandText ? WORDMARK_PATHS.lime : '',
+        wordmarkWidth: overlay.bandText ? WORDMARK_PATHS.width : 0,
+        wordmarkHeight: overlay.bandText ? WORDMARK_PATHS.height : 0,
         colorBg: colors.bg,
         colorText: colors.text,
         colorMuted: colors.muted,
