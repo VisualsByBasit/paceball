@@ -294,8 +294,8 @@ npm run build
 
 ## Team
 
-- **Abdulbasit**, founder, design and product
-- **Mustafa Asim**, partner, lead developer
+- **Abdulbasit**, founder and lead developer (design, product and app)
+- **Mustafa Asim**, developer and partner
 
 Built for RevenueCat Shipaton 2026.
 

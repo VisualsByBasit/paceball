@@ -116,6 +116,6 @@ export const FAQ = [
 ] as const;
 
 export const TEAM = [
-  { name: "Abdulbasit", role: "Founder, design and product", initial: "A" },
-  { name: "Mustafa Asim", role: "Partner, lead developer", initial: "M" },
+  { name: "Abdulbasit", role: "Founder and lead developer (design, product and app)", initial: "A" },
+  { name: "Mustafa Asim", role: "Developer and partner", initial: "M" },
 ] as const;
