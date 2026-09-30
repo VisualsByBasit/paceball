@@ -20,17 +20,30 @@ export function recordsSound(status: MicrophoneStatus): boolean {
   return status === 'authorized';
 }
 
+/**
+ * Whether the Sound chip, and the Settings switch beside it, read on: the
+ * user wants sound and the system allows the microphone. Either one off and
+ * the clip is video only, measured exactly the same way.
+ */
+export function soundOn(status: MicrophoneStatus, wanted: boolean): boolean {
+  return wanted && recordsSound(status);
+}
+
+/** Said under the Sound chip when turning it on was refused by the system. */
+export const MICROPHONE_DENIED_LINE =
+  'Microphone permission is off. Turn it on in Settings to record sound.';
+export const MICROPHONE_DENIED_LINK = 'Open settings';
+
 export const MICROPHONE_OFFER_TITLE = 'Record sound too?';
 export const MICROPHONE_OFFER_REASON =
   'Sound is optional. Measurement works without it. Replays and exports start muted.';
 export const MICROPHONE_OFFER_ALLOW = 'Allow microphone';
 export const MICROPHONE_OFFER_SKIP = 'Continue without sound';
 
-/** The Settings note. Off is stated calmly: the measurement never needed sound. */
-export function microphoneSettingLine(status: MicrophoneStatus, asked: boolean): string {
-  if (status === 'authorized') return 'On. Recordings include the sound of the delivery.';
-  if (status === 'not-determined' && !asked) {
-    return 'Not asked yet. Paceball asks the first time you record.';
+/** The Settings note under the Sound switch. Off is stated calmly: the measurement never needed sound. */
+export function microphoneSettingLine(status: MicrophoneStatus, wanted: boolean): string {
+  if (soundOn(status, wanted)) {
+    return 'On. Recordings include the sound of the delivery, kept on this phone.';
   }
   return 'Off. Recordings are video only, and speeds are measured the same way.';
 }

@@ -1,4 +1,5 @@
 import type { RecordingProfile } from '../capture/bitrate';
+import { isRecordLength, type RecordLength } from '../capture/recordLength';
 import { isSelfTimer, type SelfTimer } from '../capture/selfTimer';
 import { isCalibrationMethod } from '../physics/calibration';
 import type { CalibrationMethod } from '../types';
@@ -47,8 +48,17 @@ export type Settings = {
    * counts falls back to the best wherever this is read.
    */
   featuredDelivery: Record<string, string>;
-  /** The self-timer last chosen on Capture, in seconds. 0 is off. */
+  /** The start delay last chosen on Capture, in seconds. 0 is off. */
   selfTimer: SelfTimer;
+  /**
+   * Whether recordings carry sound, from Capture's chip and the Settings
+   * switch alike. Only a wish: without the microphone allowed the clip is
+   * video only whatever this says. On by default, so a phone that allows the
+   * microphone records sound as it always has.
+   */
+  recordSound: boolean;
+  /** How long Capture records, in seconds. 0 records until stopped. */
+  recordLength: RecordLength;
   /** Whether the logo intro on a cold start plays its sound. Muted when off. */
   introSound: boolean;
 };
@@ -63,6 +73,8 @@ export const DEFAULT_SETTINGS: Settings = {
   microphoneAsked: false,
   featuredDelivery: {},
   selfTimer: 0,
+  recordSound: true,
+  recordLength: 0,
   introSound: true,
 };
 
@@ -118,6 +130,10 @@ export function parseSettings(raw: unknown): Settings {
     microphoneAsked: value.microphoneAsked === true,
     featuredDelivery: parseFeatured(value.featuredDelivery),
     selfTimer: isSelfTimer(value.selfTimer) ? value.selfTimer : DEFAULT_SETTINGS.selfTimer,
+    recordSound: value.recordSound !== false,
+    recordLength: isRecordLength(value.recordLength)
+      ? value.recordLength
+      : DEFAULT_SETTINGS.recordLength,
     introSound: value.introSound !== false,
   };
 }

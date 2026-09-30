@@ -54,21 +54,25 @@ test('the microphone permission is declared exactly because capture records soun
   const blocked = (android.blockedPermissions ?? []).includes('android.permission.RECORD_AUDIO');
 
   // How Vision Camera records sound: ask for the microphone, then an output
-  // with audio enabled. Capture has to do both.
+  // with audio enabled. Capture does both, asking through the shared sound
+  // setting that its Sound chip and the Settings switch turn on.
   const capture = read('app/capture.tsx');
+  const hook = read('src/capture/useSound.ts');
   const captureAsks =
-    /useMicrophonePermission\(\)/.test(capture) &&
-    requestsMicrophone.test(capture) &&
+    /useMicrophonePermission\(\)/.test(hook) &&
+    requestsMicrophone.test(hook) &&
+    /useSoundSetting\(\)/.test(capture) &&
     /enableAudio\b/.test(capture);
 
   assert.equal(audioProblem({ declared, blocked, captureAsks }), null);
   assert.ok(declared, 'recordings are meant to carry the delivery sound');
 
-  // Capture is the only place that asks. Settings may read the status, never request it.
+  // The shared sound setting is the only place that asks, when the user turns
+  // sound on: Capture's chip, its first-visit offer or the Settings switch.
   const requesters = [...sources('app'), ...sources('src')].filter((file) =>
     requestsMicrophone.test(read(file))
   );
-  assert.deepEqual(requesters, [path.join('app', 'capture.tsx')]);
+  assert.deepEqual(requesters, [path.join('src', 'capture', 'useSound.ts')]);
 });
 
 test('the native splash is the app\'s own near-black, so the launch intro follows it without a flash', () => {

@@ -18,14 +18,14 @@ export function nextSelfTimer(current: SelfTimer): SelfTimer {
   return SELF_TIMER_OPTIONS[(i + 1) % SELF_TIMER_OPTIONS.length];
 }
 
-/** As the chip writes it. */
+/** The value the Delay chip writes under its label. */
 export function selfTimerLabel(seconds: SelfTimer): string {
-  return seconds === 0 ? 'Timer off' : `Timer ${seconds} s`;
+  return seconds === 0 ? 'Off' : `${seconds} s`;
 }
 
 /** As a screen reader says it. */
 export function selfTimerSpoken(seconds: SelfTimer): string {
-  return seconds === 0 ? 'Self-timer off' : `Self-timer ${seconds} seconds`;
+  return seconds === 0 ? 'Start delay off' : `Start delay ${seconds} seconds`;
 }
 
 /** The clock a countdown runs on: the real one on the phone, a fake in tests. */

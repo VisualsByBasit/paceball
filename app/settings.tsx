@@ -11,9 +11,13 @@ import {
 } from 'react-native';
 import Constants from 'expo-constants';
 import { useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
-import { useMicrophonePermission } from 'react-native-vision-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { microphoneSettingLine } from '../src/capture/microphone';
+import {
+  MICROPHONE_DENIED_LINE,
+  MICROPHONE_DENIED_LINK,
+  microphoneSettingLine,
+} from '../src/capture/microphone';
+import { useSoundSetting } from '../src/capture/useSound';
 import { getActivePlayer } from '../src/data';
 import { CALIBRATION_SPECS, OFFERED_CALIBRATIONS, offeredCalibration } from '../src/physics/calibration';
 import {
@@ -324,8 +328,9 @@ function MeasurementPage() {
 
 function RecordingPage() {
   const settings = useSettings();
-  // Read only. Asking happens on Capture; changing it afterwards is the system's.
-  const microphone = useMicrophonePermission();
+  // The same setting as Capture's Sound chip, through the same toggle, so the
+  // two always agree.
+  const sound = useSoundSetting();
   return (
     <>
       <Section title="EXPOSURE">
@@ -357,18 +362,35 @@ function RecordingPage() {
       </Section>
 
       <Section title="SOUND">
-        <Text style={styles.rowTitle}>Microphone</Text>
-        <Text style={styles.rowDetail}>
-          {microphoneSettingLine(microphone.status, settings.microphoneAsked)}
-        </Text>
+        <View style={styles.switchRow}>
+          <View style={styles.switchText}>
+            <Text style={styles.rowTitle}>Record sound</Text>
+            <Text style={styles.rowDetail}>
+              {microphoneSettingLine(sound.microphone.status, settings.recordSound)}
+            </Text>
+          </View>
+          <Switch
+            value={sound.on}
+            onValueChange={() => void sound.toggle()}
+            accessibilityLabel={sound.on ? 'Sound on' : 'Sound off'}
+            trackColor={{ false: colors.line, true: colors.accent }}
+            thumbColor={colors.text}
+          />
+        </View>
+        {sound.denied ? (
+          <Text style={styles.rowDetail}>{MICROPHONE_DENIED_LINE}</Text>
+        ) : null}
         <Pressable
           style={styles.button}
           onPress={() => void Linking.openSettings().catch(() => undefined)}
           accessibilityRole="link"
         >
-          <Text style={styles.buttonText}>Open system settings</Text>
+          <Text style={styles.buttonText}>
+            {sound.denied ? MICROPHONE_DENIED_LINK : 'Open system settings'}
+          </Text>
         </Pressable>
       </Section>
+
 
       <Section title="LAUNCH">
         <View style={styles.switchRow}>

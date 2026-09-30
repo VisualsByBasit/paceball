@@ -52,8 +52,10 @@ test('Off, 3 s, 5 s and 10 s, stepping round, remembered in settings', () => {
   assert.equal(nextSelfTimer(3), 5);
   assert.equal(nextSelfTimer(5), 10);
   assert.equal(nextSelfTimer(10), 0);
-  assert.equal(selfTimerLabel(0), 'Timer off');
-  assert.equal(selfTimerLabel(10), 'Timer 10 s');
+  // The chip reads DELAY over its value.
+  assert.equal(selfTimerLabel(0), 'Off');
+  assert.equal(selfTimerLabel(3), '3 s');
+  assert.equal(selfTimerLabel(10), '10 s');
   assert.equal(DEFAULT_SETTINGS.selfTimer, 0);
   assert.equal(parseSettings({ selfTimer: 5 }).selfTimer, 5);
   assert.equal(parseSettings({ selfTimer: 7 }).selfTimer, 0);
@@ -115,10 +117,10 @@ test('Capture: record starts the count, tapping cancels, and the start is the sa
   assert.match(begin, /if \(readyRef\.current\) startRef\.current\(\);/);
   // The shutter: stop while recording, cancel while counting, else begin.
   assert.match(capture, /isRecording\s*\? capture\.stop\s*: countdown !== null\s*\? cancelCountdown\s*:/);
-  // Tapping the countdown cancels it, and it turns with the overlay rules.
+  // Tapping the countdown cancels it. It stays upright on the portrait screen.
   const overlay = capture.slice(capture.indexOf('{countdown !== null ? ('), capture.indexOf('{switchingLens ? ('));
   assert.match(overlay, /onPress=\{cancelCountdown\}/);
-  assert.match(overlay, /<RotateInPlace deg=\{rotation\}>/);
+  assert.doesNotMatch(overlay, /RotateInPlace|rotation/);
   assert.match(capture, /countNumber: \{ \.\.\.type\.hero, \.\.\.type\.tabular, color: colors\.accent \}/);
   // Leaving, losing the camera or switching lens cancels it.
   assert.match(capture, /if \(!isFocused \|\| !sessionReady \|\| switchingLens\) cancelCountdown\(\);/);
@@ -126,6 +128,7 @@ test('Capture: record starts the count, tapping cancels, and the start is the sa
   assert.match(capture, /Tap to record · \$\{MIN_RECORDING_MS \/ 1000\}s minimum/);
   assert.doesNotMatch(read('src/capture/selfTimer.ts'), /import /);
   // The chip is a 48 dp target and is off while recording or counting.
-  assert.match(capture, /timerChip: \{\s*minWidth: size\.target,\s*minHeight: size\.target,/);
-  assert.match(capture, /disabled=\{isRecording \|\| isProcessing \|\| countdown !== null\}/);
+  assert.match(capture, /chip: \{\s*minWidth: size\.target,\s*minHeight: size\.target,/);
+  assert.match(capture, /const settingsLocked = isRecording \|\| isProcessing \|\| countdown !== null;/);
+  assert.match(capture, />DELAY<\/Text>\s*<Text[^>]*>\s*\{selfTimerLabel\(selfTimer\)\}/);
 });

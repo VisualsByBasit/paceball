@@ -18,7 +18,6 @@ import {
   useCameraDevice,
   useCameraDevices,
   useCameraPermission,
-  useMicrophonePermission,
   useOrientation,
   useVideoOutput,
 } from 'react-native-vision-camera';
@@ -33,13 +32,23 @@ import { captureExposure, exposureSteps, stepExposure } from '../src/capture/exp
 import { highBitRate, profileFrom } from '../src/capture/bitrate';
 import { deviceForLens, hasUltraWide, LENS_LABEL, type Lens } from '../src/capture/lenses';
 import {
+  MICROPHONE_DENIED_LINE,
+  MICROPHONE_DENIED_LINK,
   MICROPHONE_OFFER_ALLOW,
   MICROPHONE_OFFER_REASON,
   MICROPHONE_OFFER_SKIP,
   MICROPHONE_OFFER_TITLE,
-  recordsSound,
   shouldOfferMicrophone,
 } from '../src/capture/microphone';
+import { useSoundSetting } from '../src/capture/useSound';
+import {
+  canStepRecordLength,
+  reachedLength,
+  readoutMs,
+  recordLengthLabel,
+  recordLengthSpoken,
+  stepRecordLength,
+} from '../src/capture/recordLength';
 import {
   allowanceLine,
   canAnalyse,
@@ -107,8 +116,10 @@ export default function CaptureScreen() {
   const { hasPermission, requestPermission, canRequestPermission } = useCameraPermission();
   // Offered the first time Capture opens, never at launch and never from the
   // shutter. Refused or not, recording goes ahead; without it the clip is
-  // simply video only.
-  const microphone = useMicrophonePermission();
+  // simply video only. The Sound chip and the Settings switch share the one
+  // setting, so they always agree.
+  const sound = useSoundSetting();
+  const { microphone } = sound;
   const [offeringMicrophone, setOfferingMicrophone] = useState(false);
   // The microphone was held by something else (a call, a voice note) and a
   // recording fell back to video only. Kept for this visit, never saved.
@@ -171,7 +182,13 @@ export default function CaptureScreen() {
       if (swapTimeout.current !== null) clearTimeout(swapTimeout.current);
     };
   }, []);
-  const { exposureBias, lastRecording, calibrationMethod: savedMethod, selfTimer } = useSettings();
+  const {
+    exposureBias,
+    lastRecording,
+    calibrationMethod: savedMethod,
+    selfTimer,
+    recordLength,
+  } = useSettings();
   // The guide for the reference Mark will open on: a default saved before
   // height was hidden opens on stumps.
   const calibrationMethod = offeredCalibration(savedMethod);
@@ -226,7 +243,7 @@ export default function CaptureScreen() {
 
   // Sound is a second track in the same file. fps, frame count and dimensions
   // are read off the video track alone, so it cannot move a reading.
-  const enableAudio = recordsSound(microphone.status) && !microphoneBusy;
+  const enableAudio = sound.on && !microphoneBusy;
   const videoOutput = useVideoOutput(
     bitRate === null
       ? { fileType: 'mp4', enableAudio }
@@ -318,10 +335,26 @@ export default function CaptureScreen() {
   // The preview is contained in a 3:4 box, as large as the space allows.
   const [area, setArea] = useState({ w: 0, h: 0 });
 
-  // Which way the phone is physically held. The screen stays portrait-locked;
-  // only what is drawn over the preview turns to meet it, as in a camera app.
+  // Which way the phone is physically held. The screen stays portrait-locked
+  // and every control and label below the viewfinder stays exactly where and
+  // how it is: only the guide inside the viewfinder turns to stay readable.
   // Read-only: the recording's own orientation is not touched.
   const rotation = uiRotation(useOrientation('device'));
+
+  // A set length stops the recording by itself once that much has been
+  // filmed, with a firmer tap than the start's. The elapsed time runs from the
+  // recorder's start event, so the 3-second minimum is always met by then.
+  const autoStopped = useRef(false);
+  useEffect(() => {
+    if (!capture.isRecording) {
+      autoStopped.current = false;
+      return;
+    }
+    if (autoStopped.current || !reachedLength(capture.elapsedMs, recordLength)) return;
+    autoStopped.current = true;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    void capture.stop();
+  }, [capture, recordLength]);
 
   // Offered on the first visit, once the camera itself is allowed so two system
   // dialogs never stack. Answering it restarts the session for sound, which is
@@ -338,9 +371,11 @@ export default function CaptureScreen() {
       // Recorded before the dialog, so closing the app on it still counts as asked.
       updateSettings({ microphoneAsked: true });
       setOfferingMicrophone(false);
-      if (allow) await microphone.requestPermission().catch(() => false);
+      // Allowing is the same as turning the Sound chip on; declining turns it off.
+      if (allow) await sound.toggle();
+      else updateSettings({ recordSound: false });
     },
-    [microphone]
+    [sound]
   );
 
   // Tearing the session down on navigation rejects any in-flight control write.
@@ -396,13 +431,15 @@ export default function CaptureScreen() {
   const { isRecording, isProcessing, elapsedMs, remainingMs, canStop, error } =
     capture;
   const lockedSeconds = Math.ceil(remainingMs / 1000);
+  // The chips are set before a recording and held while it runs or counts in.
+  const settingsLocked = isRecording || isProcessing || countdown !== null;
 
   let hint: string;
   if (isProcessing) hint = 'Reading the clip…';
   else if (countdown !== null) hint = `Recording in ${countdown} s · tap to cancel`;
   else if (!allowed) hint = 'Tap to see Pro.';
   else if (!isRecording) hint = `Tap to record · ${MIN_RECORDING_MS / 1000}s minimum`;
-  else if (canStop) hint = 'Tap to stop';
+  else if (canStop) hint = recordLength === 0 ? 'Tap to stop' : `Stops at ${recordLength} s · tap to stop now`;
   else hint = `Stop unlocks in ${lockedSeconds}s`;
 
   // The largest 3:4 box the space holds. The preview is contained in it, so
@@ -472,14 +509,12 @@ export default function CaptureScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Recording starts in ${countdown}. Tap to cancel.`}
             >
-              <RotateInPlace deg={rotation}>
-                <View style={styles.countPlate}>
-                  <Text style={styles.countNumber} accessibilityLiveRegion="polite">
-                    {countdown}
-                  </Text>
-                  <Text style={styles.countHint}>Tap to cancel</Text>
-                </View>
-              </RotateInPlace>
+              <View style={styles.countPlate}>
+                <Text style={styles.countNumber} accessibilityLiveRegion="polite">
+                  {countdown}
+                </Text>
+                <Text style={styles.countHint}>Tap to cancel</Text>
+              </View>
             </Pressable>
           ) : null}
 
@@ -532,11 +567,9 @@ export default function CaptureScreen() {
                         : 'Standard lens, 1x'
                     }
                   >
-                    <RotateInPlace deg={rotation}>
-                      <Text style={[styles.lensText, on && styles.lensTextOn]}>
-                        {LENS_LABEL[option]}
-                      </Text>
-                    </RotateInPlace>
+                    <Text style={[styles.lensText, on && styles.lensTextOn]}>
+                      {LENS_LABEL[option]}
+                    </Text>
                   </Pressable>
                 );
               })}
@@ -549,7 +582,6 @@ export default function CaptureScreen() {
             exposure={exposure}
             device={device}
             locked={isRecording || isProcessing}
-            rotation={rotation}
             onChange={setBias}
           />
         </View>
@@ -559,27 +591,77 @@ export default function CaptureScreen() {
           </Text>
         )}
 
-        <View style={styles.actionRow}>
-          <View style={styles.soundSlot}>
-            <Pressable
-              style={[styles.timerChip, selfTimer !== 0 && styles.timerChipOn]}
-              onPress={() => updateSettings({ selfTimer: nextSelfTimer(selfTimer) })}
-              disabled={isRecording || isProcessing || countdown !== null}
-              accessibilityRole="button"
-              accessibilityLabel={`${selfTimerSpoken(selfTimer)}. Tap to change.`}
-            >
-              <RotateInPlace deg={rotation}>
-                <Text style={[styles.timerChipText, selfTimer !== 0 && styles.timerChipTextOn]}>
-                  {selfTimerLabel(selfTimer)}
-                </Text>
-              </RotateInPlace>
-            </Pressable>
-            <RotateInPlace deg={rotation} style={styles.soundTurn}>
-              <Text style={styles.sound} numberOfLines={1}>
-                {enableAudio ? 'Sound on' : 'No sound'}
-              </Text>
-            </RotateInPlace>
+        {/* Delay, Sound and Length: one row of equal-height chips, each as
+            wide as its words, set before recording and held while it runs. */}
+        <View style={styles.chipRow}>
+          <Pressable
+            style={[styles.chip, selfTimer !== 0 && styles.chipOn, settingsLocked && styles.off]}
+            onPress={() => updateSettings({ selfTimer: nextSelfTimer(selfTimer) })}
+            disabled={settingsLocked}
+            accessibilityRole="button"
+            accessibilityLabel={`${selfTimerSpoken(selfTimer)}. Tap to change.`}
+          >
+            <Text style={[styles.chipLabel, selfTimer !== 0 && styles.chipLabelOn]}>DELAY</Text>
+            <Text style={[styles.chipValue, selfTimer !== 0 && styles.chipValueOn]}>
+              {selfTimerLabel(selfTimer)}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.chip, sound.on && styles.chipOn, settingsLocked && styles.off]}
+            onPress={() => void sound.toggle()}
+            disabled={settingsLocked}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: sound.on, disabled: settingsLocked }}
+            accessibilityLabel={sound.on ? 'Sound on' : 'Sound off'}
+          >
+            <Text style={[styles.chipLabel, sound.on && styles.chipLabelOn]}>SOUND</Text>
+            <Text style={[styles.chipValue, sound.on && styles.chipValueOn]}>
+              {sound.on ? 'On' : 'Off'}
+            </Text>
+          </Pressable>
+
+          <View
+            style={[styles.chip, styles.lengthChip, settingsLocked && styles.off]}
+            accessible
+            accessibilityRole="adjustable"
+            accessibilityLabel={recordLengthSpoken(recordLength)}
+            accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+            onAccessibilityAction={(e) => {
+              if (settingsLocked) return;
+              const direction = e.nativeEvent.actionName === 'increment' ? 1 : -1;
+              updateSettings({ recordLength: stepRecordLength(recordLength, direction) });
+            }}
+          >
+            <Text style={styles.chipLabel}>LENGTH</Text>
+            <Text style={styles.chipValue}>{recordLengthLabel(recordLength)}</Text>
+            <LengthStep
+              symbol="−"
+              enabled={!settingsLocked && canStepRecordLength(recordLength, -1)}
+              onPress={() => updateSettings({ recordLength: stepRecordLength(recordLength, -1) })}
+            />
+            <LengthStep
+              symbol="+"
+              enabled={!settingsLocked && canStepRecordLength(recordLength, 1)}
+              onPress={() => updateSettings({ recordLength: stepRecordLength(recordLength, 1) })}
+            />
           </View>
+        </View>
+        {sound.denied ? (
+          <Text style={styles.micLine}>
+            {MICROPHONE_DENIED_LINE}{' '}
+            <Text
+              style={styles.micLink}
+              onPress={() => void Linking.openSettings().catch(() => undefined)}
+              accessibilityRole="link"
+            >
+              {MICROPHONE_DENIED_LINK}
+            </Text>
+          </Text>
+        ) : null}
+
+        <View style={styles.actionRow}>
+          <View style={styles.sideSlot} />
 
           <Pressable
             onPress={
@@ -596,26 +678,30 @@ export default function CaptureScreen() {
             disabled={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
             accessibilityRole="button"
             accessibilityLabel={
-              isRecording ? 'Stop recording' : countdown !== null ? 'Cancel self-timer' : 'Start recording'
+              isRecording ? 'Stop recording' : countdown !== null ? 'Cancel start delay' : 'Start recording'
             }
             style={styles.shutter}
           >
-            <RotateInPlace deg={rotation}>
-              <RecordButtonFace
-                recording={isRecording}
-                lockedSeconds={isRecording && !canStop ? lockedSeconds : null}
-                dimmed={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
-              />
-            </RotateInPlace>
+            <RecordButtonFace
+              recording={isRecording}
+              lockedSeconds={isRecording && !canStop ? lockedSeconds : null}
+              dimmed={!sessionReady || switchingLens || isProcessing || (isRecording && !canStop)}
+            />
           </Pressable>
 
-          <View style={styles.timerSlot}>
+          {/* Time filmed, or with a length set, time left counting down. */}
+          <View style={[styles.sideSlot, styles.timerSlot]}>
             {isRecording ? <View style={styles.recDot} /> : null}
-            <RotateInPlace deg={rotation}>
-              <Text style={[styles.timer, !isRecording && styles.timerIdle]}>
-                {formatElapsed(isRecording ? elapsedMs : 0)}
-              </Text>
-            </RotateInPlace>
+            <Text
+              style={[styles.timer, !isRecording && styles.timerIdle]}
+              accessibilityLabel={
+                recordLength !== 0 && isRecording
+                  ? `${formatElapsed(readoutMs(elapsedMs, recordLength, true))} left`
+                  : undefined
+              }
+            >
+              {formatElapsed(readoutMs(elapsedMs, recordLength, isRecording))}
+            </Text>
           </View>
         </View>
 
@@ -724,15 +810,12 @@ function ExposureControl({
   exposure,
   device,
   locked,
-  rotation,
   onChange,
 }: {
   /** What is actually sent, after the camera's own limits. Undefined when unsupported. */
   exposure: number | undefined;
   device: { minExposureBias: number; maxExposureBias: number };
   locked: boolean;
-  /** How far to turn the labels so they read upright on a phone held sideways. */
-  rotation: number;
   onChange: (bias: number) => void;
 }) {
   const supported = exposure !== undefined;
@@ -745,18 +828,14 @@ function ExposureControl({
   if (!supported) {
     return (
       <View style={styles.exposure}>
-        <RotateInPlace deg={rotation}>
-          <Text style={styles.exposureAuto}>Exposure uses camera auto on this phone.</Text>
-        </RotateInPlace>
+        <Text style={styles.exposureAuto}>Exposure uses camera auto on this phone.</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.exposure}>
-      <RotateInPlace deg={rotation}>
-        <Text style={styles.exposureLabel}>Exposure</Text>
-      </RotateInPlace>
+      <Text style={styles.exposureLabel}>Exposure</Text>
       <Pressable
         style={[styles.exposureStep, !canDarken && styles.off]}
         onPress={() => onChange(stepExposure(exposure, -1, device))}
@@ -765,18 +844,14 @@ function ExposureControl({
         accessibilityLabel="Darker"
         accessibilityState={{ disabled: !canDarken }}
       >
-        <RotateInPlace deg={rotation}>
-          <Text style={styles.exposureStepText}>−</Text>
-        </RotateInPlace>
+        <Text style={styles.exposureStepText}>−</Text>
       </Pressable>
-      <RotateInPlace deg={rotation}>
-        <Text
-          style={styles.exposureValue}
-          accessibilityLabel={`Exposure bias ${exposure}${locked ? ', locked while recording' : ''}`}
-        >
-          {formatBias(exposure)}
-        </Text>
-      </RotateInPlace>
+      <Text
+        style={styles.exposureValue}
+        accessibilityLabel={`Exposure bias ${exposure}${locked ? ', locked while recording' : ''}`}
+      >
+        {formatBias(exposure)}
+      </Text>
       <Pressable
         style={[styles.exposureStep, !canBrighten && styles.off]}
         onPress={() => onChange(stepExposure(exposure, 1, device))}
@@ -785,11 +860,40 @@ function ExposureControl({
         accessibilityLabel="Brighter"
         accessibilityState={{ disabled: !canBrighten }}
       >
-        <RotateInPlace deg={rotation}>
-          <Text style={styles.exposureStepText}>+</Text>
-        </RotateInPlace>
+        <Text style={styles.exposureStepText}>+</Text>
       </Pressable>
     </View>
+  );
+}
+
+/**
+ * One half of the Length stepper. Each half of the chip is its own target,
+ * the full chip height and at least 48 dp wide, with its sign drawn small at
+ * the chip's edge so the words between keep the room. Off at either end of the
+ * options and while recording.
+ */
+function LengthStep({
+  symbol,
+  enabled,
+  onPress,
+}: {
+  symbol: '−' | '+';
+  enabled: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={[styles.lengthStep, symbol === '+' ? styles.lengthPlus : styles.lengthMinus]}
+      onPress={onPress}
+      disabled={!enabled}
+      accessibilityRole="button"
+      accessibilityLabel={symbol === '+' ? 'Longer' : 'Shorter'}
+      accessibilityState={{ disabled: !enabled }}
+      importantForAccessibility="no"
+      accessibilityElementsHidden
+    >
+      <Text style={[styles.lengthStepText, !enabled && styles.off]}>{symbol}</Text>
+    </Pressable>
   );
 }
 
@@ -950,7 +1054,7 @@ const styles = StyleSheet.create({
   guideTitle: { ...type.body, color: colors.text, fontWeight: '700' },
   guideBody: { ...type.caption, color: colors.muted, marginTop: space.xs },
 
-  controls: { paddingHorizontal: space.lg, paddingTop: space.sm, gap: space.sm },
+  controls: { paddingHorizontal: space.md, paddingTop: space.sm, gap: space.sm },
 
   settingsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   lenses: { flexDirection: 'row', gap: space.xs },
@@ -992,21 +1096,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: space.xs,
   },
-  soundSlot: { flex: 1, alignItems: 'flex-start', gap: space.xs },
-  // The self-timer chip: a 48 dp target, outlined off, filled when set.
-  timerChip: {
-    minWidth: size.target,
-    minHeight: size.target,
-    borderRadius: radius.md,
-    borderWidth: stroke.medium,
-    borderColor: colors.control,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: space.sm,
-  },
-  timerChipOn: { backgroundColor: colors.text, borderColor: colors.text },
-  timerChipText: { ...type.caption, ...type.tabular, color: colors.text, fontWeight: '700' },
-  timerChipTextOn: { color: colors.bg },
   // The countdown: large lime seconds on an opaque plate, readable over any picture.
   countPlate: {
     backgroundColor: colors.bg,
@@ -1017,15 +1106,49 @@ const styles = StyleSheet.create({
   },
   countNumber: { ...type.hero, ...type.tabular, color: colors.accent },
   countHint: { ...type.caption, color: colors.muted },
-  soundTurn: { alignSelf: 'flex-start' },
-  sound: { ...type.caption, color: colors.muted },
+
+  // Delay, Sound and Length. The row stretches its chips to one height; each
+  // chip is as wide as its words, and Length takes the rest, so at a larger
+  // text size a value wraps at a space inside its chip rather than clipping.
+  chipRow: { flexDirection: 'row', alignItems: 'stretch', gap: space.sm },
+  chip: {
+    minWidth: size.target,
+    minHeight: size.target,
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+  },
+  chipOn: { backgroundColor: colors.text, borderColor: colors.text },
+  chipLabel: { ...type.label, color: colors.muted, textAlign: 'center' },
+  chipLabelOn: { color: colors.bg, opacity: opacity.secondary },
+  chipValue: { ...type.caption, ...type.tabular, color: colors.text, fontWeight: '700', textAlign: 'center' },
+  chipValueOn: { color: colors.bg },
+  // Room either side for the signs; the two halves over it are the targets.
+  lengthChip: { flex: 1, minWidth: size.target * 2, paddingHorizontal: space.lg },
+  lengthStep: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
+  },
+  lengthMinus: { right: '50%', alignItems: 'flex-start' },
+  lengthPlus: { left: '50%', alignItems: 'flex-end' },
+  lengthStepText: { ...type.button, color: colors.text },
+  micLine: { ...type.caption, color: colors.muted },
+  micLink: { ...type.caption, color: colors.text, textDecorationLine: 'underline' },
+
   shutter: {
     width: SHUTTER_SIZE,
     height: SHUTTER_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  timerSlot: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  // Equal slots either side keep the shutter centred whatever the readout says.
+  sideSlot: { flex: 1 },
+  timerSlot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   recDot: {
     width: space.sm,
     height: space.sm,

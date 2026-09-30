@@ -39,9 +39,14 @@ test('a denied microphone still records, video only, and is not asked again', ()
   assert.doesNotMatch(begin, /microphone|enableAudio/);
   // Both answers mark it asked, and "Video only" never opens the system dialog.
   const answer = capture.slice(capture.indexOf('const answerMicrophone'));
-  assert.match(answer, /updateSettings\(\{ microphoneAsked: true \}\);[\s\S]*if \(allow\) await microphone\.requestPermission\(\)/);
-  // The output only asks for sound when it has been granted, and it is free.
-  assert.match(capture, /const enableAudio = recordsSound\(microphone\.status\) && !microphoneBusy;/);
+  assert.match(answer, /updateSettings\(\{ microphoneAsked: true \}\);[\s\S]*if \(allow\) await sound\.toggle\(\);\s*else updateSettings\(\{ recordSound: false \}\);/);
+  // The output only asks for sound when it is wanted, granted and free.
+  assert.match(capture, /const enableAudio = sound\.on && !microphoneBusy;/);
+  assert.equal(microphone.soundOn('authorized', true), true);
+  assert.equal(microphone.soundOn('authorized', false), false);
+  for (const status of ['not-determined', 'denied', 'restricted']) {
+    assert.equal(microphone.soundOn(status, true), false, status);
+  }
   // The camera screen is never held back on the microphone the way it is on the camera.
   assert.doesNotMatch(capture, /!microphone\.hasPermission/);
   // The recorder never asks for or reads the permission; it is told whether sound is on.
@@ -175,9 +180,9 @@ test('playback starts muted on every clip, with a visible switch', () => {
   assert.match(analysis, /<Replay\s+\/\/[^\n]*\n\s*key=\{loaded\.session\.id\}/);
   // The choice is not kept anywhere that outlives the clip.
   assert.doesNotMatch(analysis, /updateSettings|muted:\s*(true|false|muted)/);
-  // The only sound preference kept is the launch intro's, never a replay's.
+  // The sound preferences kept are recording's and the launch intro's, never a replay's.
   const { DEFAULT_SETTINGS: saved } = require('../src/settings/settings.ts');
-  assert.deepEqual(Object.keys(saved).filter((k) => /mute|sound|audio/i.test(k)), ['introSound']);
+  assert.deepEqual(Object.keys(saved).filter((k) => /mute|sound|audio/i.test(k)), ['recordSound', 'introSound']);
   // The switch is on the player controls, and says which way it is.
   assert.match(analysis, /accessibilityRole="switch"\s+accessibilityState=\{\{ checked: !muted \}\}/);
   assert.match(analysis, /\{muted \? 'Sound off' : 'Sound on'\}/);
@@ -255,9 +260,12 @@ test('new copy uses no em dashes', () => {
   ];
   for (const line of copy) assert.doesNotMatch(line, /—/, line);
 
-  // Settings reads the status and sends the user to the system to change it.
+  // Settings shows the same setting as Capture's chip, through the same hook,
+  // and sends the user to the system when the microphone was refused.
   const settings = read('app/settings.tsx');
-  assert.match(settings, /microphoneSettingLine\(microphone\.status, settings\.microphoneAsked\)/);
+  assert.match(settings, /const sound = useSoundSetting\(\);/);
+  assert.match(settings, /microphoneSettingLine\(sound\.microphone\.status, settings\.recordSound\)/);
+  assert.match(settings, /<Switch\s+value=\{sound\.on\}\s+onValueChange=\{\(\) => void sound\.toggle\(\)\}/);
   assert.match(settings, /Linking\.openSettings\(\)/);
   assert.doesNotMatch(settings, /requestPermission/);
   // Off is said without alarm.

@@ -168,19 +168,9 @@ test('held sideways, the overlay turns to meet the phone and the recording does 
   const capture = read(CAPTURE);
   // Physical orientation, from vision-camera itself: nothing new installed.
   assert.match(capture, /const rotation = uiRotation\(useOrientation\('device'\)\);/);
-  // The guide's baseline, stumps and label turn to the landscape framing.
+  // The guide inside the viewfinder, and only it, turns to the landscape framing.
   assert.match(capture, /<RotateInPlace deg=\{rotation\} style=\{\[styles\.guideFrame, frame\]\}>/);
   assert.match(capture, /width: box\.height,\s*height: box\.width,/);
-  // Labels and controls turn in place: lens chips, exposure, timer, sound
-  // and the record button's countdown.
-  assert.ok((capture.match(/<RotateInPlace deg=\{rotation\}/g) ?? []).length >= 9);
-  // The quality chip in the app bar never turns: it stays upright and whole.
-  const bar = capture.slice(capture.indexOf('<AppBar'), capture.indexOf('/>', capture.indexOf('</View>', capture.indexOf('STANDARD'))));
-  assert.match(bar, /PRO QUALITY/);
-  assert.match(bar, /STANDARD/);
-  assert.doesNotMatch(bar, /RotateInPlace|rotation/);
-  // The exposure value between minus and plus turns with the buttons beside it.
-  assert.match(capture, /<RotateInPlace deg=\{rotation\}>\s*<Text\s+style=\{styles\.exposureValue\}/);
   assert.match(read('src/ui/RotateInPlace.tsx'), /transform: \[\{ rotate: `\$\{turn\.value\}deg` \}\]/);
   // The recording is untouched: no orientation reaches the camera, the
   // recorder, or what Mark is handed.
@@ -189,4 +179,89 @@ test('held sideways, the overlay turns to meet the phone and the recording does 
   const onFinished = capture.slice(capture.indexOf('const onFinished'), capture.indexOf('const onAudioFailure'));
   assert.doesNotMatch(onFinished, /rotation|orientation/i);
   assert.doesNotMatch(read('src/capture/useCapture.ts'), /useOrientation|uiRotation/);
+});
+
+test('turning the phone sideways never turns, moves or reflows a control', () => {
+  const capture = read(CAPTURE);
+  // The rotation reaches exactly one place: the guide inside the viewfinder.
+  assert.equal((capture.match(/<RotateInPlace\b/g) ?? []).length, 1);
+  assert.equal((capture.match(/rotation=\{rotation\}/g) ?? []).length, 1);
+  assert.match(capture, /<GuideOverlay[^>]*rotation=\{rotation\}/);
+  const overlay = capture.slice(capture.indexOf('function GuideOverlay'), capture.indexOf('function ExposureControl'));
+  assert.match(overlay, /<RotateInPlace deg=\{rotation\}/);
+
+  // Everything under the viewfinder: lens, exposure and its value, Delay,
+  // Sound, Length, the record button, the time readout and the hints. None of
+  // it reads the orientation, and no style it uses carries a transform, so its
+  // layout is the same whichever way the phone is held.
+  const controls = capture.slice(capture.indexOf('<View style={[styles.controls'), capture.indexOf('<BottomSheet'));
+  assert.ok(controls.includes('<ExposureControl') && controls.includes('styles.chipRow') && controls.includes('<RecordButtonFace'));
+  assert.doesNotMatch(controls, /rotation|RotateInPlace|transform|useOrientation/);
+  for (const name of ['ExposureControl', 'LengthStep']) {
+    const body = capture.slice(capture.indexOf(`function ${name}`), capture.indexOf('\n}\n', capture.indexOf(`function ${name}`)));
+    assert.doesNotMatch(body, /rotation|RotateInPlace|transform/, name);
+  }
+  const styles = capture.slice(capture.indexOf('StyleSheet.create'));
+  assert.doesNotMatch(styles, /transform|rotate/);
+  assert.doesNotMatch(read('src/ui/RecordButtonFace.tsx'), /rotate/);
+  // The countdown over the preview stays upright too.
+  const count = capture.slice(capture.indexOf('{countdown !== null ? ('), capture.indexOf('{switchingLens ? ('));
+  assert.doesNotMatch(count, /rotation|RotateInPlace/);
+});
+
+test('Length steps from until stopped to 30 s, and a set length stops by itself', () => {
+  const rl = require('../src/capture/recordLength.ts');
+  const { DEFAULT_SETTINGS, parseSettings } = require('../src/settings/settings.ts');
+  assert.deepEqual([...rl.RECORD_LENGTH_OPTIONS], [0, 3, 5, 10, 15, 20, 30]);
+  assert.equal(DEFAULT_SETTINGS.recordLength, 0, 'until stopped, like a camera app');
+  assert.equal(rl.recordLengthLabel(0), 'Until stopped');
+  assert.equal(rl.recordLengthLabel(15), '15 s');
+  // Minus from 3 s goes back to until stopped; the ends hold.
+  assert.equal(rl.stepRecordLength(3, -1), 0);
+  assert.equal(rl.stepRecordLength(0, 1), 3);
+  assert.equal(rl.stepRecordLength(0, -1), 0);
+  assert.equal(rl.stepRecordLength(30, 1), 30);
+  assert.equal(rl.canStepRecordLength(0, -1), false);
+  assert.equal(rl.canStepRecordLength(30, 1), false);
+  // Remembered, and a stored value that is no longer offered falls back.
+  assert.equal(parseSettings({ recordLength: 20 }).recordLength, 20);
+  assert.equal(parseSettings({ recordLength: 7 }).recordLength, 0);
+  // Never below the 3-second minimum, so stopping at the length is always allowed.
+  const { MIN_RECORDING_MS } = require('../src/capture/recording.ts');
+  for (const s of rl.RECORD_LENGTH_OPTIONS.filter(Boolean)) assert.ok(s * 1000 >= MIN_RECORDING_MS, s);
+  assert.equal(rl.reachedLength(4999, 5), false);
+  assert.equal(rl.reachedLength(5000, 5), true);
+  assert.equal(rl.reachedLength(600_000, 0), false, 'until stopped never stops itself');
+  // The readout counts down with a length, and up without one.
+  assert.equal(rl.readoutMs(1200, 5, true), 3800);
+  assert.equal(rl.readoutMs(9000, 5, true), 0);
+  assert.equal(rl.readoutMs(0, 5, false), 5000);
+  assert.equal(rl.readoutMs(1200, 0, true), 1200);
+
+  const capture = read(CAPTURE);
+  const auto = capture.slice(capture.indexOf('const autoStopped'), capture.indexOf('}, [capture, recordLength]);'));
+  assert.match(auto, /reachedLength\(capture\.elapsedMs, recordLength\)/);
+  assert.match(auto, /Haptics\.notificationAsync/);
+  assert.match(auto, /void capture\.stop\(\);/);
+  // Tapping stop early still goes through the same locked stop.
+  assert.match(capture, /isRecording\s*\? capture\.stop/);
+  assert.match(capture, /formatElapsed\(readoutMs\(elapsedMs, recordLength, isRecording\)\)/);
+});
+
+test('Delay, Sound and Length sit in one row of equal-height chips that never clip', () => {
+  const capture = read(CAPTURE);
+  const row = capture.slice(capture.indexOf('<View style={styles.chipRow}>'), capture.indexOf('{sound.denied ? ('));
+  const order = ['>DELAY<', '>SOUND<', '>LENGTH<'].map((label) => row.indexOf(label));
+  assert.ok(order.every((i) => i > 0) && order[0] < order[1] && order[1] < order[2], String(order));
+  // Stretched to one height; no chip limits its lines, so words wrap at a space rather than clip.
+  assert.match(capture, /chipRow: \{ flexDirection: 'row', alignItems: 'stretch'/);
+  assert.doesNotMatch(row, /numberOfLines|adjustsFontSizeToFit|height: /);
+  // Each half of the stepper is a target of at least 48 dp.
+  assert.match(capture, /lengthChip: \{ flex: 1, minWidth: size\.target \* 2,/);
+  // Sound says which it is, and a refusal is one muted line with the way to fix it.
+  assert.match(row, /accessibilityLabel=\{sound\.on \? 'Sound on' : 'Sound off'\}/);
+  const microphone = require('../src/capture/microphone.ts');
+  assert.equal(microphone.MICROPHONE_DENIED_LINE, 'Microphone permission is off. Turn it on in Settings to record sound.');
+  assert.match(capture, /\{sound\.denied \? \(\s*<Text style=\{styles\.micLine\}>/);
+  assert.match(capture, /micLine: \{ \.\.\.type\.caption, color: colors\.muted \}/);
 });
