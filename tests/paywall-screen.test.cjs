@@ -86,7 +86,9 @@ test('while plans load the button waits and leaving is still possible', () => {
   assert.match(paywall, /\{\(cta \|\| waitingForPlans\) && !restored \? \(/);
   assert.match(paywall, /\(buying \|\| sample \|\| cta === null\) && styles\.ctaOff/);
   // The dismiss is at the top as well as below.
-  assert.match(paywall, /<AppBar\s+title="Paceball Pro"\s+onBack=\{leave\}/);
+  assert.match(paywall, /<AppBar\s+title="Pro"\s+onBack=\{leave\}/);
+  // The brand heads the offer: the logo's own wordmark, read out as Paceball Pro.
+  assert.match(paywall, /accessibilityLabel="Paceball Pro">\s*<Wordmark height=\{size\.wordmark\.lockup\} \/>/);
   assert.equal(paywall.match(/onPress=\{leave\}/g).length, 1);
 });
 

@@ -79,7 +79,10 @@ test('the intro is a picture, never a reading, and adds no 3D library', () => {
   assert.doesNotMatch(source, /km\/h|mph|formatSpeed|readingView|speedKmh/);
   // The only text it draws is the wordmark.
   assert.equal(intro.WORDMARK, 'PACEBALL');
-  assert.equal((read(COMPONENT).match(/<SkiaText\b/g) ?? []).length, 1);
+  // The logo's own traced letters, drawn as paths: no system font anywhere.
+  assert.doesNotMatch(read(COMPONENT), /<SkiaText\b|matchFont|<Text\b/);
+  assert.match(read(COMPONENT), /Skia\.Path\.MakeFromSVGString\(WORDMARK_PATHS\.white\)/);
+  assert.match(read(COMPONENT), /Skia\.Path\.MakeFromSVGString\(WORDMARK_PATHS\.lime\)/);
   assert.doesNotMatch(source, /expo-gl|from 'three'|expo-three/);
   const pkg = JSON.parse(read('package.json'));
   for (const dep of ['expo-gl', 'three', 'expo-three']) assert.equal(pkg.dependencies[dep], undefined, dep);

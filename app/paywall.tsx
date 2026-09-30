@@ -20,6 +20,7 @@ import { armCelebration } from '../src/ui/celebration';
 import { Notice, type NoticeTone } from '../src/ui/Notice';
 import { ctaFor, planTerms, renewalLine } from '../src/ui/paywallCopy';
 import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
+import { Wordmark } from '../src/ui/Wordmark';
 
 /** What sent the user here. Same layout; the headline speaks to what they just tried. */
 type PaywallContext = 'export' | 'limit' | 'compare' | 'stats' | 'pro' | 'onboarding';
@@ -245,7 +246,7 @@ export default function PaywallScreen() {
       {/* Leaving is reachable from the top as well as below the offer. */}
       <View style={styles.bar}>
         <AppBar
-          title="Paceball Pro"
+          title="Pro"
           onBack={leave}
           backLabel={restored ? 'Done' : copy.dismiss}
         />
@@ -254,6 +255,13 @@ export default function PaywallScreen() {
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.lg }]}
       >
+        {/* The brand: the logo's own wordmark and Pro's lime mark. */}
+        <View style={styles.lockup} accessible accessibilityRole="image" accessibilityLabel="Paceball Pro">
+          <Wordmark height={size.wordmark.lockup} />
+          <View style={styles.proMark}>
+            <Text style={styles.proMarkText}>PRO</Text>
+          </View>
+        </View>
         <Text style={styles.headline} accessibilityRole="header">
           {copy.headline(annualTrial)}
         </Text>
@@ -437,6 +445,15 @@ const styles = StyleSheet.create({
   bar: { paddingHorizontal: space.md },
   content: { paddingHorizontal: space.lg, paddingTop: space.md },
 
+  lockup: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.md },
+  proMark: {
+    borderRadius: radius.pill,
+    borderWidth: stroke.medium,
+    borderColor: colors.accent,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs / 2,
+  },
+  proMarkText: { ...type.label, color: colors.accent },
   headline: { ...type.h1, color: colors.text },
   reset: { ...type.body, color: colors.muted, marginTop: space.sm },
 

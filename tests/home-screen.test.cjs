@@ -18,8 +18,10 @@ test('Home greets the active bowler and leads with recording', () => {
   assert.match(home, /const allowanceNote = isPro \? null : allowanceLine\(allowance, weekdayOf\);/);
   // The avatar is the first letter of the name, outlined in lime, never a photo.
   assert.match(home, /bowler\.trim\(\)\.charAt\(0\)\.toUpperCase\(\)/);
-  // The only image is the app's own logo beside the wordmark.
+  // The only image is the app's own logo, beside the logo's own wordmark.
   assert.equal((home.match(/<Image\b/g) ?? []).length, 1);
+  assert.match(home, /<Wordmark height=\{size\.wordmark\.header\} \/>/);
+  assert.doesNotMatch(home, />Paceball<\/Text>/);
   assert.match(home, /const LOGO = require\('\.\.\/assets\/icon\.png'\);/);
   assert.match(home, /<Image source=\{LOGO\}/);
   // The greeting is smaller than it was.

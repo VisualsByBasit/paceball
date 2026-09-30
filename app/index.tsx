@@ -25,6 +25,7 @@ import { readingView } from '../src/ui/reading';
 import { colors, radius, size, space, stroke, type } from '../src/ui/tokens';
 import type { Session } from '../src/types';
 import { useLargeText } from '../src/ui/useLargeText';
+import { Wordmark } from '../src/ui/Wordmark';
 
 /** How many of the latest deliveries Home lists before "See all". */
 const RECENT = 3;
@@ -263,7 +264,7 @@ export default function Index() {
         <View style={styles.brand}>
           {/* The logo, not a photo: decorative beside the name. */}
           <Image source={LOGO} style={styles.logo} accessibilityIgnoresInvertColors accessible={false} />
-          <Text style={styles.wordmark}>Paceball</Text>
+          <Wordmark height={size.wordmark.header} />
         </View>
         {bowler ? (
           // The first letter of the bowler's name, in place of a photo. It
@@ -365,7 +366,6 @@ const styles = StyleSheet.create({
   },
   brand: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   logo: { width: size.logo, height: size.logo, borderRadius: radius.sm },
-  wordmark: { ...type.h2, color: colors.text },
   avatar: {
     width: size.target,
     height: size.target,

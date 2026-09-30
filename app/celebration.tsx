@@ -27,6 +27,7 @@ import {
 import { CELEBRATE, checkAt, copyAt, glowAt, itemAt, pushAt, UNLOCKED } from '../src/ui/celebrationScene';
 import { GlossCard, IconBadge, type StatIconName } from '../src/ui/GlossCard';
 import { colors, opacity, radius, size, space, type } from '../src/ui/tokens';
+import { Wordmark } from '../src/ui/Wordmark';
 
 /** The lit icon on each unlocked card, in UNLOCKED's order. */
 const UNLOCKED_ICON: Record<(typeof UNLOCKED)[number], StatIconName> = {
@@ -137,6 +138,7 @@ function Celebration({ from }: { from: CelebrationFrom }) {
         showsVerticalScrollIndicator={false}
       >
         <Animated.View style={copy}>
+          <Wordmark height={size.wordmark.lockup} style={styles.wordmark} />
           <Text style={styles.title} accessibilityRole="header">
             You're on Pro
           </Text>
@@ -235,6 +237,7 @@ const styles = StyleSheet.create({
   stage: { alignItems: 'center' },
   bottomScroll: { flex: 1 },
   bottom: { flexGrow: 1, justifyContent: 'flex-end', paddingHorizontal: space.lg },
+  wordmark: { alignSelf: 'center', marginBottom: space.sm },
   title: { ...type.h1, color: colors.text, textAlign: 'center' },
   body: { ...type.body, color: colors.muted, textAlign: 'center', marginTop: space.sm },
   list: { marginTop: space.md, marginBottom: space.lg, gap: space.xs },

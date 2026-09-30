@@ -119,6 +119,11 @@ export const size = {
   thumb: 48,
   /** The logo beside the wordmark at the top of Home. */
   logo: 28,
+  /**
+   * The PACEBALL wordmark's height: beside the logo at the top of Home, and
+   * heading the paywall and the purchase celebration.
+   */
+  wordmark: { header: 16, lockup: 24 },
   /** The 3D still life at the top of an empty Home. */
   still: 200,
   /** A recent delivery's card on Home, and the release frame across its top. */

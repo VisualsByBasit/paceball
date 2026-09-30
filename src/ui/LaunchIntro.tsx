@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
-import {
-  Blur,
-  Canvas,
-  Circle,
-  Group,
-  matchFont,
-  Text as SkiaText,
-  type SkFont,
-} from '@shopify/react-native-skia';
+import { Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import { Blur, Canvas, Circle, Group, Path, rect, Skia } from '@shopify/react-native-skia';
 import Animated, {
   Easing,
   interpolateColor,
@@ -50,6 +42,7 @@ import {
   type View,
 } from './introScene';
 import { colors, opacity, size } from './tokens';
+import { WORDMARK_PATHS, wordmarkWidth } from './wordmarkPaths';
 
 /** Once per launch of the app's process: a warm return to the app never plays it again. */
 let played = false;
@@ -251,73 +244,64 @@ function Ghost({ t, back, alpha, view }: { t: SharedValue<number>; back: number;
   return <Circle cx={cx} cy={cy} r={r} color={colors.accent} opacity={o} />;
 }
 
-/** PACEBALL, resolving out of a blur letter by letter, then a light sweeping across it. */
+/** The logo's own wordmark, traced: built once, never set in a system font. */
+const WORD_WHITE = Skia.Path.MakeFromSVGString(WORDMARK_PATHS.white);
+const WORD_LIME = Skia.Path.MakeFromSVGString(WORDMARK_PATHS.lime);
+
+/**
+ * PACEBALL, resolving out of a blur a letter's width at a time from the left,
+ * then a light sweeping across it. The logo's own letters, drawn from paths.
+ */
 function Wordmark({ t, width, height }: { t: SharedValue<number>; width: number; height: number }) {
-  const font = useMemo<SkFont | null>(() => {
-    try {
-      return matchFont({
-        fontFamily: Platform.select({ ios: 'Helvetica Neue', default: 'sans-serif' }),
-        fontSize: size.introWordmark,
-        fontWeight: 'bold',
-      });
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const letters = useMemo(() => {
-    if (!font) return [];
-    const advances = font.getGlyphWidths(font.getGlyphIDs(WORDMARK));
-    // Tracked out a little, like a wordmark, and centred as a whole.
-    const tracking = size.introWordmark * 0.08;
-    const total = advances.reduce((sum, a) => sum + a, 0) + tracking * (WORDMARK.length - 1);
-    let x = (width - total) / 2;
-    return WORDMARK.split('').map((ch, i) => {
-      const at = x;
-      x += advances[i] + tracking;
-      return { ch, x: at };
-    });
-  }, [font, width]);
-
-  if (!font) return null;
-  const baseline = height * 0.3;
+  const markWidth = Math.min(width * 0.72, wordmarkWidth(size.introWordmark));
+  const k = markWidth / WORDMARK_PATHS.width;
+  const top = height * 0.3 - WORDMARK_PATHS.height * k;
+  const left = (width - markWidth) / 2;
+  // One column per letter: the letters are near enough equal widths.
+  const column = WORDMARK_PATHS.width / WORDMARK.length;
+  if (!WORD_WHITE || !WORD_LIME) return null;
   return (
-    <>
-      {letters.map((l, i) => (
-        <Letter key={i} t={t} index={i} ch={l.ch} x={l.x} y={baseline} font={font} />
+    <Group transform={[{ translateX: left }, { translateY: top }]}>
+      {WORDMARK.split('').map((_, i) => (
+        <Letter key={i} t={t} index={i} k={k} from={i * column} width={column} />
       ))}
-    </>
+    </Group>
   );
 }
 
 function Letter({
   t,
   index,
-  ch,
-  x,
-  y,
-  font,
+  k,
+  from,
+  width,
 }: {
   t: SharedValue<number>;
   index: number;
-  ch: string;
-  x: number;
-  y: number;
-  font: SkFont;
+  /** Screen points per unit of the traced wordmark. */
+  k: number;
+  from: number;
+  width: number;
 }) {
   const alpha = useDerivedValue(() => letterAt(t.value, index).opacity);
-  const blur = useDerivedValue(() => letterAt(t.value, index).blur);
-  const transform = useDerivedValue(() => [{ translateY: letterAt(t.value, index).rise }]);
+  // Blur and rise are in screen points; the paths are drawn scaled by k.
+  const blur = useDerivedValue(() => letterAt(t.value, index).blur / k);
+  const transform = useDerivedValue(() => [{ translateY: letterAt(t.value, index).rise }, { scale: k }]);
   // At rest a soft silver; the sweep lights it white hot with a touch of lime.
   const color = useDerivedValue(() => {
     const s = sweepAt(t.value, index);
     return interpolateColor(s, [0, 0.7, 1], [WORD_REST, colors.text, colors.accent]);
   });
+  // Tall enough that a blurred letter is never cut at its top or foot.
+  const clip = rect(from, -WORDMARK_PATHS.height, width, WORDMARK_PATHS.height * 3);
   return (
-    <Group opacity={alpha} transform={transform}>
-      <SkiaText x={x} y={y} text={ch} font={font} color={color}>
+    <Group opacity={alpha} transform={transform} clip={clip}>
+      <Path path={WORD_WHITE!} color={color}>
         <Blur blur={blur} />
-      </SkiaText>
+      </Path>
+      <Path path={WORD_LIME!} color={colors.accent}>
+        <Blur blur={blur} />
+      </Path>
     </Group>
   );
 }
