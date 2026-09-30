@@ -16,27 +16,39 @@ export const CARD = {
   width: 820,
   radius: 48,
   border: 4,
-  /** The soft lime glow around the border, as a blur sigma. */
-  glow: 16,
+  /**
+   * The soft lime glow around the border, as a blur sigma. The card always
+   * leaves it room on the export (see `glowRoom`), so it is even on all sides.
+   */
+  glow: 12,
   /** The inner dark panel, inside the border. */
   innerInset: 9,
   innerRadius: 40,
   /** From the card's edge to the panels inside it, and between panels. */
   inset: 16,
   gap: 14,
+  /**
+   * Every panel's inner padding, the one measure: the header's icon and pill,
+   * the reading, the cautions, the footer and the upgrade bar all sit this far
+   * in, so their contents share one left edge.
+   */
+  pad: 28,
   /** The wordmark's height is its traced letters' height, drawn from paths. */
-  header: { height: 118, icon: 88, wordmark: 46, pill: { width: 184, height: 64 } },
+  header: { height: 118, icon: 96, wordmark: 46, pill: { width: 176, height: 60 } },
   frame: { radius: 28, border: 3, min: 360 },
-  reading: { radius: 28, pad: 28, border: 2 },
-  footer: { height: 96, radius: 24 },
-  upgrade: { height: 86, radius: 26, border: 3 },
+  reading: { radius: 28, border: 2 },
+  /** The footer's calendar and the upgrade bar's crown, and the gap after each. */
+  footer: { height: 96, radius: 24, icon: 48, iconGap: 24 },
+  upgrade: { height: 86, radius: 26, border: 3, crown: 24, iconGap: 20 },
   /** The free card and the Pro card, whole, top to bottom. */
-  heightFree: 1272,
+  heightFree: 1248,
   heightPro: 1172,
   text: {
-    pill: 40,
+    pill: 38,
     label: 32,
-    speed: 104,
+    /** The speed's number, and its unit beside it on the same baseline. */
+    speed: 112,
+    unit: 48,
     range: 44,
     check: 24,
     method: 29,
@@ -48,10 +60,14 @@ export const CARD = {
     upgrade: 34,
     band: 58,
   },
-  /** Reading panel: baselines, each from the one above it. */
-  lines: { label: 52, speed: 91, range: 56, check: 52, method: 44, name: 46, bottom: 26 },
+  /**
+   * The reading panel's rhythm: from the foot of one line to the capitals of
+   * the next. `lead` opens the room above the speed; every line after it, the
+   * range, the check chip, how it was measured and the name, is `gap` apart.
+   */
+  rhythm: { lead: 24, gap: 20 },
   check: { height: 40, pad: 14 },
-  caution: { pad: 16, labelLine: 30, line: 32 },
+  caution: { labelLine: 30, line: 32 },
   /** The diagonal band on a free card's frame. */
   band: { angle: -30, thickness: 96, margin: 10 },
   /** Marks on the frame, exactly as they have always been drawn. */
@@ -62,6 +78,9 @@ export const CARD = {
 
 /** Roughly where a line's capitals start, measured up from its baseline. */
 export const capHeight = (size: number) => Math.round(size * 0.74);
+
+/** How far the card's glow reaches past its edge: its stroke's half width and three sigma. */
+export const glowRoom = () => CARD.border * 1.5 + CARD.glow * 3;
 
 export type ShareCardLayout = {
   card: Box;
@@ -98,10 +117,17 @@ export function shareCardLayout(options: {
   /** Height of each caution box, in order. */
   cautionHeights: number[];
 }): ShareCardLayout {
-  const { inset, gap, lines } = CARD;
-  const readingHeight =
-    lines.label + lines.speed + lines.range + (options.implausible ? lines.check : 0) + lines.method +
-    (options.hasName ? lines.name : 0) + lines.bottom;
+  const { inset, gap, pad, rhythm, text } = CARD;
+  // The reading, from its top: padding, then each line's capitals `gap` below
+  // the foot of the one above, then padding again under the last.
+  const labelAt = pad + capHeight(text.label);
+  const speedAt = labelAt + rhythm.lead + capHeight(text.speed);
+  const rangeAt = speedAt + rhythm.gap + capHeight(text.range);
+  const checkAt = options.implausible ? rangeAt + rhythm.gap : null;
+  const afterRange = checkAt === null ? rangeAt : checkAt + CARD.check.height;
+  const methodAt = afterRange + rhythm.gap + capHeight(text.method);
+  const nameAt = options.hasName ? methodAt + rhythm.gap + capHeight(text.name) : null;
+  const readingHeight = (nameAt ?? methodAt) + pad;
   // Everything but the frame, top to bottom.
   const fixed = inset + CARD.header.height + gap / 2 + gap + readingHeight +
     options.cautionHeights.reduce((sum, h) => sum + gap + h, 0) +
@@ -109,6 +135,8 @@ export function shareCardLayout(options: {
   // The card keeps its height, and grows (never past the export) only when
   // cautions would squeeze the frame under its least.
   const base = options.pro ? CARD.heightPro : CARD.heightFree;
+  // At its usual height the card leaves its glow the room it needs on every
+  // side; only cautions that would squeeze the photo may grow it past that.
   const height = Math.min(Math.max(base, fixed + CARD.frame.min), EXPORT_HEIGHT - inset * 2);
   const card = { x: (EXPORT_WIDTH - CARD.width) / 2, y: Math.round((EXPORT_HEIGHT - height) / 2), width: CARD.width, height };
   const x = card.x + inset;
@@ -116,11 +144,12 @@ export function shareCardLayout(options: {
 
   const header = { x, y: card.y + inset, width, height: CARD.header.height };
   const icon = {
-    x: x + 10, y: header.y + (header.height - CARD.header.icon) / 2,
+    x: x + pad, y: header.y + (header.height - CARD.header.icon) / 2,
     width: CARD.header.icon, height: CARD.header.icon,
   };
+  // Centred on the wordmark, which is centred on the header.
   const pill = {
-    x: x + width - CARD.header.pill.width - 8, y: header.y + (header.height - CARD.header.pill.height) / 2,
+    x: x + width - pad - CARD.header.pill.width, y: header.y + (header.height - CARD.header.pill.height) / 2,
     width: CARD.header.pill.width, height: CARD.header.pill.height,
   };
 
@@ -136,12 +165,16 @@ export function shareCardLayout(options: {
   const footer = { x, y: y + gap, width, height: CARD.footer.height };
   const upgrade = options.pro ? null : { x, y: footer.y + footer.height + gap, width, height: CARD.upgrade.height };
 
-  const labelBaseline = readingTop + lines.label;
-  const speedBaseline = labelBaseline + lines.speed;
-  const rangeBaseline = speedBaseline + lines.range;
-  const checkTop = options.implausible ? rangeBaseline + 14 : null;
-  const methodBaseline = rangeBaseline + (options.implausible ? lines.check : 0) + lines.method;
-  const nameBaseline = options.hasName ? methodBaseline + lines.name : null;
+  const labelBaseline = readingTop + labelAt;
+  const speedBaseline = readingTop + speedAt;
+  const rangeBaseline = readingTop + rangeAt;
+  const checkTop = checkAt === null ? null : readingTop + checkAt;
+  const methodBaseline = readingTop + methodAt;
+  const nameBaseline = nameAt === null ? null : readingTop + nameAt;
+  // The footer's two lines, centred as a pair.
+  const dateCap = capHeight(text.date);
+  const footCap = capHeight(text.foot);
+  const footTop = footer.y + (footer.height - (dateCap + rhythm.gap / 1.5 + footCap)) / 2;
 
   return {
     card,
@@ -156,8 +189,8 @@ export function shareCardLayout(options: {
     cautions,
     footer: {
       ...footer,
-      dateBaseline: footer.y + 42,
-      footBaseline: footer.y + 76,
+      dateBaseline: Math.round(footTop + dateCap),
+      footBaseline: Math.round(footTop + dateCap + rhythm.gap / 1.5 + footCap),
     },
     upgrade,
   };
@@ -317,25 +350,6 @@ export function bandPlacement(
     }
   }
   return { cx, cy, nx, ny, offset: best.offset, clear: best.hits === 0 };
-}
-
-/**
- * The Pro card's decorative ball: to the right of the reading's text, never
- * over it, as big as the room allows up to its full size. Null when there is
- * too little room to draw it.
- */
-/** How far the ball's drawing reaches left of the panel's edge, in radii. */
-export const BALL_REACH = 2.7;
-
-export function ballBox(reading: Box, textRight: number): { cx: number; cy: number; r: number } | null {
-  const gap = 24;
-  const full = reading.height * 0.62;
-  // Its circle sits 0.72 r in from the panel's edge, and the circuit traces
-  // run out up to 0.9 r beyond its left side: 2.7 r in all, from the edge.
-  const room = reading.x + reading.width - (textRight + gap);
-  const r = Math.min(full, room / BALL_REACH);
-  if (r < 44) return null;
-  return { cx: reading.x + reading.width - r * 0.72, cy: reading.y + reading.height / 2, r };
 }
 
 export function frameFileName(frame: number): string {

@@ -8,7 +8,6 @@ import { CHECK_READING, implausible } from '../ui/gauge';
 import { errorIn, formatSpeed, unitLabel } from '../ui/units';
 import { WORDMARK_PATHS, wordmarkWidth } from '../ui/wordmarkPaths';
 import {
-  ballBox,
   bandPlacement,
   capHeight,
   CARD,
@@ -106,12 +105,6 @@ function fitLine(value: string, width: number, widthOf: (line: string) => number
   return `${cut.trimEnd()}...`;
 }
 
-/** A small deterministic scatter, so the decoration is the same on every card. */
-const jitter = (i: number) => {
-  const s = Math.sin(i * 12.9898 + 4.1414) * 43758.5453;
-  return s - Math.floor(s);
-};
-
 /**
  * Shared by the phone renderer and the real CanvasKit rendering test. Drawn
  * at 1080 x 1350 in its own pixels, after docs/design/share-card/*-reference.
@@ -140,9 +133,9 @@ export function drawCard(
   const { text: size, reading: panel, mark } = CARD;
   const widthAt = (px: number, bold = false) => (value: string) => measure(font(px, bold), value, px);
 
-  const innerWidth = CARD.width - CARD.inset * 2 - CARD.caution.pad * 2;
-  const cautions = cardCautions(session).map((message) => wrapText(message, innerWidth - 12, widthAt(size.caution)));
-  const cautionHeights = cautions.map((lines) => CARD.caution.pad * 2 + CARD.caution.labelLine + lines.length * CARD.caution.line);
+  const innerWidth = CARD.width - CARD.inset * 2 - CARD.pad * 2;
+  const cautions = cardCautions(session).map((message) => wrapText(message, innerWidth, widthAt(size.caution)));
+  const cautionHeights = cautions.map((lines) => CARD.pad * 2 + CARD.caution.labelLine + lines.length * CARD.caution.line);
   const refsOnFrame = !spec.sameFrame ||
     (session.calA.frame === session.release.frame && session.calB.frame === session.release.frame);
   const caption = refsOnFrame ? null : `${spec.short} reference marked on frame ${session.calA.frame}`;
@@ -180,7 +173,18 @@ export function drawCard(
     p.setShader(skia.Shader.MakeLinearGradient(
       skia.Point(0, y0), skia.Point(0, y1), [skia.Color(from), skia.Color(to)], null, SK.clamp,
     ));
+    // Two near-blacks over a tall panel step visibly in 8 bits; dither smooths them.
+    p.setDither(true);
     return p;
+  };
+  /** A faint lime dot grid across a box, fading in to the right. */
+  const dotGrid = (from: number, top: number, right: number, bottom: number, step: number, dot: number, lo: number, hi: number) => {
+    for (let gx = from; gx < right; gx += step) {
+      for (let gy = top; gy < bottom; gy += step) {
+        const fade = (gx - from) / Math.max(right - from, 1);
+        canvas.drawCircle(gx, gy, dot, fill(colors.accent, lo + hi * fade));
+      }
+    }
   };
   const rrect = (b: { x: number; y: number; width: number; height: number }, r: number) =>
     skia.RRectXY(skia.XYWHRect(b.x, b.y, b.width, b.height), r, r);
@@ -219,18 +223,10 @@ export function drawCard(
     canvas.drawRRect(rrect(inner, CARD.innerRadius), vertical(fill(colors.panel), inner.y, inner.y + inner.height * 0.5, colors.panel, colors.bg));
     canvas.drawRRect(rrect(inner, CARD.innerRadius), stroke(colors.line, 1.5));
 
-    // Header: a faint dot grid, the icon, the wordmark, and PRO or FREE.
+    // Header: the icon, the wordmark, and PRO or FREE centred on the wordmark.
     const { header, icon, pill } = layout;
-    const wordX = icon.x + icon.width + 18;
-    const wordHeight = Math.min(CARD.header.wordmark, (pill.x - 40 - wordX) * WORDMARK_PATHS.height / WORDMARK_PATHS.width);
-    const wordWidth = wordmarkWidth(wordHeight);
-    const gridFrom = wordX + wordWidth + 24;
-    for (let gx = gridFrom; gx < pill.x - 14; gx += 16) {
-      for (let gy = header.y + 26; gy < header.y + header.height - 20; gy += 16) {
-        const fade = 1 - (gx - gridFrom) / Math.max(pill.x - gridFrom, 1);
-        canvas.drawCircle(gx, gy, 1.8, fill(colors.accent, 0.08 + 0.12 * fade));
-      }
-    }
+    const wordX = icon.x + icon.width + 16;
+    const wordHeight = Math.min(CARD.header.wordmark, (pill.x - 24 - wordX) * WORDMARK_PATHS.height / WORDMARK_PATHS.width);
     if (details.icon) {
       const p = newPaint();
       // Its own black background adds nothing on screen blend: only the lit ball shows.
@@ -246,7 +242,7 @@ export function drawCard(
     canvas.drawRRect(rrect(pill, pill.height / 2), stroke(colors.accent, 3));
     const pillWord = pro ? 'PRO' : 'FREE';
     text(pillWord, pill.x + (pill.width - widthAt(size.pill, true)(pillWord)) / 2,
-      pill.y + pill.height / 2 + Math.round(size.pill * 0.36), size.pill, colors.accent, true);
+      pill.y + pill.height / 2 + Math.round(capHeight(size.pill) / 2), size.pill, colors.accent, true);
 
     // The frame, cropped to fill, the marks on it exactly as the app draws them.
     const frame = layout.frame;
@@ -353,40 +349,40 @@ export function drawCard(
     const readingShape = rrect(r, panel.radius);
     canvas.drawRRect(readingShape, vertical(fill(colors.panel), r.y, r.y + r.height, colors.panel, colors.bg));
     canvas.drawRRect(readingShape, stroke(colors.control, panel.border, 0.45));
-    const left = r.x + panel.pad;
-    const speedLine = `${formatSpeed(reading.speedKmh, unit)} ${unitLabel(unit)}`;
+    const left = r.x + CARD.pad;
+    const room = r.width - CARD.pad * 2;
+    // The number large and its unit smaller beside it, on the one baseline.
+    const speedValue = formatSpeed(reading.speedKmh, unit);
+    const speedUnit = unitLabel(unit);
+    const speedFull = widthAt(size.speed, true)(speedValue) + size.unit * 0.3 + widthAt(size.unit, true)(speedUnit);
+    const fit = Math.min(1, room / Math.max(speedFull, 1));
+    const speedSize = size.speed * fit;
+    const unitSize = size.unit * fit;
+    const speedValueWidth = widthAt(speedSize, true)(speedValue);
+    const unitX = left + speedValueWidth + unitSize * 0.3;
     const rangeLine = `± ${errorIn(reading.errorKmh, unit)} ${unitLabel(unit)}`;
-    const speedSize = Math.min(size.speed, size.speed * (r.width - panel.pad * 2) / Math.max(widthAt(size.speed, true)(speedLine), 1));
-    const nameLine = name ? fitLine(name, r.width - panel.pad * 2, widthAt(size.name, true)) : null;
+    const nameLine = name ? fitLine(name, room, widthAt(size.name, true)) : null;
     const checkWidth = widthAt(size.check, true)(CHECK_READING) + CARD.check.pad * 2 + 26;
     const textRight = left + Math.max(
       widthAt(size.label)(CARD_LABEL),
-      widthAt(speedSize, true)(speedLine),
+      unitX - left + widthAt(unitSize, true)(speedUnit),
       widthAt(size.range, true)(rangeLine),
       flagged ? checkWidth : 0,
       widthAt(size.method)(CARD_METHOD),
       nameLine ? widthAt(size.name, true)(nameLine) : 0,
     );
 
+    // The same faint dot grid on both cards, clear of the text, so the number has the room.
     canvas.save();
     canvas.clipRRect(readingShape, SK.intersect, true);
-    if (pro) {
-      const ball = ballBox(r, textRight);
-      if (ball) drawBall(ball);
-    } else {
-      // A faint dot grid where Pro has its ball.
-      const from = Math.max(textRight + 30, r.x + r.width * 0.55);
-      for (let gx = from; gx < r.x + r.width - 18; gx += 18) {
-        for (let gy = r.y + 22; gy < r.y + r.height - 16; gy += 18) {
-          const fade = (gx - from) / Math.max(r.x + r.width - from, 1);
-          canvas.drawCircle(gx, gy, 2, fill(colors.accent, 0.05 + 0.1 * fade));
-        }
-      }
-    }
+    const gridStep = 18;
+    dotGrid(Math.max(textRight + CARD.pad * 2, r.x + r.width * 0.58), r.y + CARD.pad, r.x + r.width - CARD.pad + 1,
+      r.y + r.height - CARD.pad + 1, gridStep, 2, 0.05, 0.1);
     canvas.restore();
 
     text(CARD_LABEL, left, r.labelBaseline, size.label, colors.lavender);
-    text(speedLine, left, r.speedBaseline, speedSize, colors.accent, true);
+    text(speedValue, left, r.speedBaseline, speedSize, colors.accent, true);
+    text(speedUnit, unitX, r.speedBaseline, unitSize, colors.accent, true);
     text(rangeLine, left, r.rangeBaseline, size.range, colors.text, true);
     if (flagged && r.checkTop !== null) {
       const chip = { x: left, y: r.checkTop, width: checkWidth, height: CARD.check.height };
@@ -403,10 +399,10 @@ export function drawCard(
     layout.cautions.forEach((box, i) => {
       canvas.drawRRect(rrect(box, 20), fill(colors.panel));
       canvas.drawRRect(rrect(box, 20), stroke(colors.warn, 1.5, 0.6));
-      const x = box.x + CARD.caution.pad;
-      text('Caution', x, box.y + CARD.caution.pad + 22, size.caution, colors.warn, true);
+      const x = box.x + CARD.pad;
+      text('Caution', x, box.y + CARD.pad + 22, size.caution, colors.warn, true);
       cautions[i].forEach((value, j) => text(value, x,
-        box.y + CARD.caution.pad + CARD.caution.labelLine + (j + 1) * CARD.caution.line - 8, size.caution));
+        box.y + CARD.pad + CARD.caution.labelLine + (j + 1) * CARD.caution.line - 8, size.caution));
     });
 
     // Footer: a calendar, the date and how it was estimated.
@@ -414,26 +410,28 @@ export function drawCard(
     const footerShape = rrect(f, CARD.footer.radius);
     canvas.drawRRect(footerShape, vertical(fill(colors.panel), f.y, f.y + f.height, colors.panel, colors.bg));
     canvas.drawRRect(footerShape, stroke(colors.control, panel.border, 0.45));
-    drawCalendar(f.x + 34, f.y + (f.height - 48) / 2, 48);
-    text(cardDate(session.createdAt), f.x + 118, f.dateBaseline, size.date);
-    text(CARD_FOOT, f.x + 118, f.footBaseline, size.foot, colors.lavender);
+    const { icon: cal, iconGap } = CARD.footer;
+    drawCalendar(f.x + CARD.pad, f.y + (f.height - cal) / 2, cal);
+    const footText = f.x + CARD.pad + cal + iconGap;
+    text(cardDate(session.createdAt), footText, f.dateBaseline, size.date);
+    text(CARD_FOOT, footText, f.footBaseline, size.foot, colors.lavender);
 
-    // Free: the way to a clean card.
+    // Free: the way to a clean card. In a shared image it is a label, not a
+    // button, so no arrow: the crown and the words, centred together.
     if (layout.upgrade) {
       const u = layout.upgrade;
       const shape = rrect(u, CARD.upgrade.radius);
       canvas.drawRRect(shape, glow(stroke(colors.accent, CARD.upgrade.border * 3, 0.5), 12));
       canvas.drawRRect(shape, vertical(fill(colors.limeDeep), u.y, u.y + u.height, colors.limeDeep, colors.bg));
       canvas.drawRRect(shape, stroke(colors.accent, CARD.upgrade.border));
-      drawCrown(u.x + 44, u.y + u.height / 2, 24);
-      text(CARD_UPGRADE, u.x + 100, u.y + u.height / 2 + Math.round(size.upgrade * 0.36), size.upgrade, colors.text, true);
-      const cx = u.x + u.width - 44;
-      const cy = u.y + u.height / 2;
-      const chevron = skia.Path.Make();
-      chevron.moveTo(cx - 7, cy - 14);
-      chevron.lineTo(cx + 7, cy);
-      chevron.lineTo(cx - 7, cy + 14);
-      canvas.drawPath(chevron, stroke(colors.accent, 5));
+      const { crown, iconGap } = CARD.upgrade;
+      // The crown's widest points, its outer jewels included.
+      const crownWidth = crown * 2.4;
+      const groupWidth = crownWidth + iconGap + widthAt(size.upgrade, true)(CARD_UPGRADE);
+      const gx = u.x + (u.width - groupWidth) / 2;
+      drawCrown(gx + crownWidth / 2, u.y + u.height / 2, crown);
+      text(CARD_UPGRADE, gx + crownWidth + iconGap, u.y + u.height / 2 + Math.round(capHeight(size.upgrade) / 2),
+        size.upgrade, colors.text, true);
     }
   } finally {
     for (const p of paints) p.dispose();
@@ -464,63 +462,5 @@ export function drawCard(
     canvas.drawPath(crown, fill(colors.accent));
     canvas.drawRect(skia.XYWHRect(cx - s, cy + s * 0.6, s * 2, s * 0.3), fill(colors.accent));
     for (const dx of [-1.05, 0, 1.05]) canvas.drawCircle(cx + s * dx, cy - s * (dx === 0 ? 0.8 : 0.6), s * 0.14, fill(colors.accent));
-  }
-
-  /**
-   * The Pro card's ball, as in the logo: lime dots filling its near half,
-   * circuit traces running off to the left, a stitched seam, a lit rim and
-   * light swinging round it. Decoration only; it carries no data.
-   */
-  function drawBall({ cx, cy, r: R }: { cx: number; cy: number; r: number }) {
-    // Light swinging round the ball.
-    canvas.save();
-    canvas.rotate(-16, cx, cy);
-    for (const [k, alpha] of [[1.18, 0.55], [1.32, 0.35], [1.06, 0.7]] as const) {
-      const orbit = skia.Path.Make();
-      orbit.addArc(skia.XYWHRect(cx - R * k, cy - R * 0.42 * k, R * 2 * k, R * 0.84 * k), -10, 150);
-      canvas.drawPath(orbit, glow(stroke(colors.accent, 3, alpha), 3));
-      canvas.drawPath(orbit, stroke(colors.accent, 2, alpha));
-    }
-    canvas.restore();
-    // The rim, lit.
-    canvas.drawCircle(cx, cy, R, glow(stroke(colors.accent, 6, 0.5), 8));
-    canvas.drawCircle(cx, cy, R, stroke(colors.accent, 2.5, 0.9));
-    // Dots across the near half of the ball.
-    const step = R * 0.12;
-    for (let row = -7; row <= 7; row++) {
-      const y = cy + row * step;
-      const half = Math.sqrt(Math.max(R * R - (y - cy) ** 2, 0));
-      for (let col = 0; col < 12; col++) {
-        const x = cx - half + step * 0.6 + col * step;
-        if (x > cx + R * 0.1) break;
-        const depth = 1 - col / 12;
-        canvas.drawCircle(x, y, step * (0.14 + 0.16 * depth), fill(colors.accent, 0.35 + 0.55 * depth));
-      }
-    }
-    // Circuit traces running off to the left, each ending in a ring.
-    for (let i = 0; i < 9; i++) {
-      const y = cy + (i - 4) * step * 1.6;
-      const edge = cx - Math.sqrt(Math.max(R * R - (y - cy) ** 2, 0));
-      const reach = R * (0.35 + 0.55 * jitter(i));
-      const start = edge - reach;
-      canvas.drawLine(start + 6, y, edge + step * 0.3, y, stroke(colors.accent, 2, 0.75));
-      canvas.drawCircle(start, y, 5, stroke(colors.accent, 2, 0.9));
-    }
-    // The seam: two stitched curves from top to bottom, bowing right.
-    for (const shift of [-0.07, 0.07]) {
-      const p0 = { x: cx + R * (0.12 + shift), y: cy - R * 0.97 };
-      const c1 = { x: cx + R * (0.75 + shift), y: cy - R * 0.4 };
-      const c2 = { x: cx - R * (0.25 - shift), y: cy + R * 0.35 };
-      const p1 = { x: cx + R * (0.28 + shift), y: cy + R * 0.97 };
-      const at = (t: number) => ({
-        x: (1 - t) ** 3 * p0.x + 3 * (1 - t) ** 2 * t * c1.x + 3 * (1 - t) * t ** 2 * c2.x + t ** 3 * p1.x,
-        y: (1 - t) ** 3 * p0.y + 3 * (1 - t) ** 2 * t * c1.y + 3 * (1 - t) * t ** 2 * c2.y + t ** 3 * p1.y,
-      });
-      for (let i = 0; i < 18; i++) {
-        const a = at(i / 18 + 0.01);
-        const b = at(i / 18 + 0.035);
-        canvas.drawLine(a.x, a.y, b.x, b.y, stroke(colors.text, 3.2, 0.85));
-      }
-    }
   }
 }

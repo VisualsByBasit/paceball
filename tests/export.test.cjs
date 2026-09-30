@@ -90,7 +90,7 @@ test('the share card is 1080 x 1350 and carries the whole reading, whose it is a
   assert.equal(header.find((p) => p.svg === WORDMARK_PATHS.white)?.color, '#FFFFFF');
   assert.equal(header.find((p) => p.svg === WORDMARK_PATHS.lime)?.color, '#D4FF3F');
   assert.ok(!values.includes('PACEBALL') && !values.includes('P'));
-  for (const expected of ['Bowling Speed', `${reading.speedKmh.toFixed(1)} km/h`, `± ${reading.errorKmh} km/h`,
+  for (const expected of ['Bowling Speed', reading.speedKmh.toFixed(1), 'km/h', `± ${reading.errorKmh} km/h`,
     'Average speed, release to bounce', 'Sam', 'Release', 'Bounce', 'Near', 'Far', 'Marked, not tracked',
     '29 September 2026', 'Estimated from marked distance and frame timing.']) {
     assert.ok(values.includes(expected), expected);

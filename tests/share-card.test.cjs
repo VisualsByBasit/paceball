@@ -5,12 +5,11 @@ const path = require('node:path');
 const { test } = require('node:test');
 const { createMockSession } = require('../src/data/mockData.ts');
 const {
-  BALL_REACH,
   CARD,
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
-  ballBox,
   bandPlacement,
+  glowRoom,
   coverGeometry,
   labelBox,
   shareCardLayout,
@@ -42,17 +41,23 @@ test('the Pro card: PRO pill, the reading with its range, the frame and the foot
   const drawn = drawMock(s, false, { playerName: 'Abdulbasit' });
   const values = texts(drawn);
   for (const expected of [
-    'PRO', CARD_LABEL, `${reading.speedKmh.toFixed(1)} km/h`, `± ${reading.errorKmh} km/h`, CARD_METHOD,
+    'PRO', CARD_LABEL, reading.speedKmh.toFixed(1), 'km/h', `± ${reading.errorKmh} km/h`, CARD_METHOD,
     'Abdulbasit', 'Release', 'Bounce', 'Near', 'Far', CARD_PATH_LABEL, '29 September 2026', CARD_FOOT,
   ]) assert.ok(values.includes(expected), expected);
   for (const absent of ['FREE', ...CARD_BAND, CARD_UPGRADE, CHECK_READING]) assert.ok(!values.includes(absent), absent);
   assert.equal(CARD_LABEL, 'Bowling Speed');
   // Top to bottom: label, speed, its range, how, whose.
-  const order = [CARD_LABEL, `${reading.speedKmh.toFixed(1)} km/h`, `± ${reading.errorKmh} km/h`, CARD_METHOD, 'Abdulbasit']
+  const order = [CARD_LABEL, reading.speedKmh.toFixed(1), `± ${reading.errorKmh} km/h`, CARD_METHOD, 'Abdulbasit']
     .map((v) => at(drawn, v).y);
   for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1]);
   // The speed and the range are lime and white.
-  assert.equal(at(drawn, `${reading.speedKmh.toFixed(1)} km/h`).color, '#D4FF3F');
+  // The number and its smaller unit, both lime, on the one baseline.
+  const number = at(drawn, reading.speedKmh.toFixed(1));
+  const unit = at(drawn, 'km/h');
+  assert.equal(number.color, '#D4FF3F');
+  assert.equal(unit.color, '#D4FF3F');
+  assert.equal(unit.y, number.y);
+  assert.ok(unit.x > number.x);
   assert.equal(at(drawn, `± ${reading.errorKmh} km/h`).color, '#FFFFFF');
 });
 
@@ -130,22 +135,17 @@ test('the band never covers the Release or Bounce labels', () => {
   assert.match(card, /plateAt\('Bounce', bounceLabel\);/);
 });
 
-test('the Pro ball never overlaps the reading, and shrinks for long numbers', () => {
-  const r = shareCardLayout({ pro: true, hasName: true, implausible: false, cautionHeights: [] }).reading;
-  let last = Infinity;
-  for (let textRight = r.x + 200; textRight < r.x + r.width; textRight += 20) {
-    const ball = ballBox(r, textRight);
-    if (!ball) continue;
-    assert.ok(ball.cx - ball.r * (BALL_REACH - 0.72) >= textRight, `clear of text ending at ${textRight}`);
-    assert.ok(ball.r <= last + 1e-9, 'never grows as the text does');
-    last = ball.r;
-  }
-  assert.equal(ballBox(r, r.x + r.width - 60), null, 'no room, no ball');
-  // The circuits reach no further left than BALL_REACH says.
+test('the Pro card has no ball: both cards share one faint dot grid, and the upgrade bar has no arrow', () => {
   const card = read('src/export/drawCard.ts');
-  assert.match(card, /const reach = R \* \(0\.35 \+ 0\.55 \* jitter\(i\)\);/);
-  assert.match(card, /orbit\.addArc\(skia\.XYWHRect\(cx - R \* k,/);
-  assert.match(card, /\[1\.18, 0\.55\], \[1\.32, 0\.35\]/);
+  assert.doesNotMatch(card, /drawBall|circuit|orbit|seam|chevron/i);
+  assert.equal((card.match(/dotGrid\(/g) ?? []).length, 1, 'one grid, the same for both cards');
+  assert.doesNotMatch(card.slice(card.indexOf('dotGrid(Math.max') - 200, card.indexOf('dotGrid(Math.max')), /if \(pro\)/);
+  // The crown and the words are centred together, as one group.
+  assert.match(card, /const gx = u\.x \+ \(u\.width - groupWidth\) \/ 2;/);
+  const free = drawMock(session(), true);
+  const bar = at(free, CARD_UPGRADE);
+  const layout = shareCardLayout({ pro: false, hasName: true, implausible: false, cautionHeights: [] });
+  assert.ok(bar.x > layout.upgrade.x + CARD.pad, 'centred, not left-aligned');
 });
 
 test('the frame fills its panel but never crops a mark', () => {
@@ -199,7 +199,22 @@ test('the layout: a centred lime card, panels in order, all on the 1080 x 1350 e
   assert.ok(CARD.border >= 3 && CARD.border <= 4);
   assert.equal(CARD.frame.radius, 28);
   assert.equal(CARD.frame.border, 3);
-  assert.equal(CARD.header.icon, 88);
+  assert.equal(CARD.header.icon, 96);
+  // One inner padding everywhere, and the glow never clipped by the export's edge.
+  for (const pro of [true, false]) {
+    const l = shareCardLayout({ pro, hasName: true, implausible: true, cautionHeights: [] });
+    assert.ok(l.card.y >= glowRoom() && EXPORT_HEIGHT - (l.card.y + l.card.height) >= glowRoom(), `glow room, ${pro}`);
+    assert.equal(l.icon.x, l.header.x + CARD.pad);
+    assert.equal(l.pill.x + l.pill.width, l.header.x + l.header.width - CARD.pad);
+    // The pill is centred on the header's midline, where the wordmark is centred.
+    assert.equal(l.pill.y + l.pill.height / 2, l.header.y + l.header.height / 2);
+    // The reading's lines keep one rhythm: each cap top the same gap below the line above.
+    const r = l.reading;
+    const cap = (px) => Math.round(px * 0.74);
+    assert.equal(r.rangeBaseline - cap(CARD.text.range) - r.speedBaseline, CARD.rhythm.gap);
+    assert.equal(r.methodBaseline - cap(CARD.text.method) - (r.checkTop + CARD.check.height), CARD.rhythm.gap);
+    assert.equal(r.nameBaseline - cap(CARD.text.name) - r.methodBaseline, CARD.rhythm.gap);
+  }
 });
 
 test('the Skia constants drawCard uses are Skia\'s own', () => {
@@ -219,7 +234,7 @@ test('the unit the player reads in, and the app icon, reach the renderer', () =>
   assert.match(read('src/export/renderSessionImage.ts'), /require\('\.\.\/\.\.\/assets\/icon\.png'\)/);
   const mph = drawMock(session(), false, { playerName: 'Sam', unit: 'mph' }).map((d) => d.value);
   assert.ok(mph.some((v) => /^± \d+ mph$/.test(v)), 'the range in mph');
-  assert.ok(mph.some((v) => /^\d+\.\d mph$/.test(v)), 'the speed in mph');
+  assert.ok(mph.some((v) => /^\d+\.\d$/.test(v)) && mph.includes('mph'), 'the speed in mph');
 });
 
 test('a real render: both cards are 1080 x 1350 PNGs, lit lime at the edge, and differ', async () => {
