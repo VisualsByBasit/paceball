@@ -125,9 +125,12 @@ corrupt one.
 
 ## Sound
 
-Recordings carry sound when the microphone is allowed. Capture offers
-it once, on the first visit, after the camera is allowed; declining
-records video only and measures exactly the same way. fps, frame count
+Recordings carry sound when the Sound setting is on and the microphone
+is allowed. Capture offers it once, on the first visit, after the camera
+is allowed; declining records video only and measures exactly the same
+way. The Sound chip on Capture and the switch in Settings are the same
+remembered setting; turning it on asks for the microphone, and a refusal
+leaves it off with one line pointing to the system settings. fps, frame count
 and dimensions are read from the video track alone, so a sound track
 cannot move a reading. A recording that fails on its sound before it
 starts is retried once without sound; a failure after it has started
@@ -235,10 +238,16 @@ personal best, or the delivery the player picked by tapping it (stored
 per player in settings, falling back to the best if it is deleted or no
 longer counts); it is called "Personal best · Highest estimate" only
 when it is the highest estimate, and "Featured delivery" otherwise. Capture
-has a self-timer chip (off, 3, 5 or 10 s, the last choice remembered):
-record then counts down in large lime seconds, a light haptic each, and
-starts the recorder exactly as the button does without it; a tap, leaving
-or losing the camera cancels it. The launcher icon and
+keeps its portrait layout whichever way the phone is held: no control or
+label turns, moves or reflows, and only the guide inside the viewfinder
+turns to stay readable. Under the viewfinder sit Delay, Sound and Length,
+one row of equal-height chips. Delay (off, 3, 5 or 10 s, the last choice
+remembered): record then counts down in large lime seconds, a light
+haptic each, and starts the recorder exactly as the button does without
+it; a tap, leaving or losing the camera cancels it. Length (until stopped,
+the default, or 3 to 30 s, remembered) stops the recording by itself at
+that length with a haptic while the readout counts down; stopping early
+still waits out the 3-second minimum. The launcher icon and
 adaptive icon come from assets/, a copy of the website's logo.
 
 The paywall is reached from Capture (the weekly limit), the share sheet
