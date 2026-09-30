@@ -122,7 +122,7 @@ What can leave the phone, and when:
 - **Sentry, only after opting in:** crash reports, as above.
 - **Whatever the user chooses to share,** such as a result card.
 
-Deliveries can be shared as an image card or as a short video clip with the reading burned in. Free exports carry a "PACEBALL · FREE" strip between the speed and its range; Pro's are clean.
+Deliveries can be shared as an image card or as a short video clip with the reading burned in. Free exports carry a translucent "PACEBALL FREE" band across the picture, clear of the marks and the reading; Pro's are clean.
 
 Permissions: the camera; the microphone, optional, to keep the sound of the delivery (it measures the same without); and adding an image to the gallery when saving one. Reading the gallery is blocked in the manifest. Replays are muted by default on every clip, and exports are silent by default.
 

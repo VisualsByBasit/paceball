@@ -55,18 +55,16 @@ export type NativeVideoExportRequest = {
   rangeText: string;
   methodText: string;
   pathText: string;
-  /** No longer read by native: the band below replaced the strip. */
-  stripText?: string;
   /** "FREE", drawn in lime after the wordmark in the free band; empty for Pro. */
-  bandText?: string;
+  bandText: string;
   /**
    * The PACEBALL wordmark's traced paths and their box (src/ui/wordmarkPaths.ts):
    * absolute M, L, Q and Z, which native draws in the band. Empty for Pro.
    */
-  wordmarkWhite?: string;
-  wordmarkLime?: string;
-  wordmarkWidth?: number;
-  wordmarkHeight?: number;
+  wordmarkWhite: string;
+  wordmarkLime: string;
+  wordmarkWidth: number;
+  wordmarkHeight: number;
   /** App tokens, as #RRGGBB. */
   colorBg: string;
   colorText: string;

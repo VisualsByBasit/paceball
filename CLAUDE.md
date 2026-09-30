@@ -266,7 +266,10 @@ image" and "Remove watermark"; a free user gets a translucent PACEBALL
 FREE band across the frame, kept clear of the Release and Bounce labels,
 and an upgrade bar, and "Remove watermark" opens the paywall. An
 implausible reading carries "Check this reading" on either. Pro's clips
-carry no watermark, everyone else's carry the "PACEBALL · FREE" strip. A created image
+carry no watermark; everyone else's carry the free card's band, the wordmark and
+FREE in lime across the picture, clear of every mark, label and the reading's
+plate. PACEBALL is always the logo's own traced wordmark
+(src/ui/wordmarkPaths.ts, assets/brand/wordmark.png), never a system font. A created image
 is previewed from its own PNG, and a finished clip plays back muted from
 its own file, before either is shared or saved. The clip runs
 from 0.5 s before release to 0.75 s after bounce, timed from the video
