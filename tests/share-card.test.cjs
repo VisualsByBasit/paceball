@@ -60,16 +60,22 @@ test('the free card: FREE pill, the band across the frame, and the upgrade bar u
   const s = session();
   const drawn = drawMock(s, true);
   const values = texts(drawn);
-  for (const expected of ['FREE', ...CARD_BAND, CARD_UPGRADE, CARD_FOOT]) assert.ok(values.includes(expected), expected);
+  for (const expected of ['FREE', CARD_UPGRADE, CARD_FOOT]) assert.ok(values.includes(expected), expected);
   assert.ok(!values.includes('PRO'));
   assert.deepEqual([...CARD_BAND], ['PACEBALL', 'FREE']);
   assert.equal(CARD_UPGRADE, 'Upgrade to Pro for clean exports');
-  // The band words are drawn turned -30 degrees, inside the frame's clip, faint.
-  const [name, free] = CARD_BAND.map((word) => drawn.filter((d) => d.value === word).find((d) => d.rotated === CARD.band.angle));
-  assert.ok(name && free, 'both band words drawn turned');
+  // The band is drawn turned -30 degrees, inside the frame's clip, faint:
+  // the traced wordmark, never PACEBALL set in a font, then FREE in lime.
+  const { WORDMARK_PATHS } = require('../src/ui/wordmarkPaths.ts');
+  const band = drawn.paths.filter((p) => p.rotated === CARD.band.angle);
+  const name = band.find((p) => p.svg === WORDMARK_PATHS.white);
+  const free = drawn.find((d) => d.value === 'FREE' && d.rotated === CARD.band.angle);
+  assert.ok(name && free, 'wordmark and FREE drawn turned');
+  assert.ok(band.some((p) => p.svg === WORDMARK_PATHS.lime));
   assert.ok(name.clipped && free.clipped);
   assert.ok(name.alpha < 0.6 && free.alpha < 0.6);
   assert.equal(free.color, '#D4FF3F');
+  assert.ok(!values.includes('PACEBALL'), 'PACEBALL is never set in a font');
   // The upgrade bar is the last thing on the card, under the date.
   assert.ok(at(drawn, CARD_UPGRADE).y > at(drawn, CARD_FOOT).y);
   // The old strip is gone.

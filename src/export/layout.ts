@@ -24,7 +24,8 @@ export const CARD = {
   /** From the card's edge to the panels inside it, and between panels. */
   inset: 16,
   gap: 14,
-  header: { height: 118, icon: 88, pill: { width: 184, height: 64 } },
+  /** The wordmark's height is its traced letters' height, drawn from paths. */
+  header: { height: 118, icon: 88, wordmark: 46, pill: { width: 184, height: 64 } },
   frame: { radius: 28, border: 3, min: 360 },
   reading: { radius: 28, pad: 28, border: 2 },
   footer: { height: 96, radius: 24 },
@@ -33,7 +34,6 @@ export const CARD = {
   heightFree: 1272,
   heightPro: 1172,
   text: {
-    wordmark: 64,
     pill: 40,
     label: 32,
     speed: 104,

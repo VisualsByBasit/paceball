@@ -15,6 +15,7 @@ const anything = () => new Proxy(() => {}, { get: (_, key) => (key === 'dispose'
 function mockCanvas() {
   const drawn = [];
   const calls = [];
+  const paths = [];
   let depth = 0;
   let rotated = 0;
   const stack = [];
@@ -35,7 +36,11 @@ function mockCanvas() {
     Point: (x, y) => ({ x, y }),
     XYWHRect: (x, y, width, height) => ({ x, y, width, height }),
     RRectXY: (rect, rx, ry) => ({ rect, rx, ry }),
-    Path: { Make: () => anything() },
+    Path: {
+      Make: () => anything(),
+      // The wordmark's traced paths: recorded, so a test can see which were drawn.
+      MakeFromSVGString: (svg) => ({ svg, dispose: () => {} }),
+    },
     Shader: { MakeLinearGradient: () => ({}) },
     MaskFilter: { MakeBlur: () => ({}) },
     ImageFilter: { MakeBlur: () => ({}) },
@@ -45,21 +50,27 @@ function mockCanvas() {
       if (key === 'drawText') {
         return (value, x, y, p) => drawn.push({ value, x, y, color: p.color, alpha: p.alpha, rotated, clipped: depth > 0 });
       }
+      if (key === 'drawPath') {
+        return (path, p) => {
+          calls.push({ key, args: [path, p] });
+          if (path && path.svg) paths.push({ svg: path.svg, color: p.color, alpha: p.alpha, rotated, clipped: depth > 0 });
+        };
+      }
       if (key === 'save') return () => { stack.push(rotated); depth++; };
       if (key === 'restore') return () => { rotated = stack.pop() ?? 0; depth--; };
       if (key === 'rotate') return (deg) => { rotated += deg; calls.push({ key, args: [deg] }); };
       return (...args) => calls.push({ key, args });
     },
   });
-  return { drawn, calls, skia, canvas };
+  return { drawn, calls, paths, skia, canvas };
 }
 
 /** Draw a session's card and return what was written, and every other call. */
 function drawMock(session, watermark, details = { playerName: 'Sam' }) {
-  const { drawn, calls, skia, canvas } = mockCanvas();
+  const { drawn, calls, paths, skia, canvas } = mockCanvas();
   const photo = { width: () => session.width, height: () => session.height };
   drawCard(skia, canvas, photo, session, watermark, () => null, PALETTE, details);
-  return Object.assign(drawn, { calls });
+  return Object.assign(drawn, { calls, paths });
 }
 
 module.exports = { PALETTE, mockCanvas, drawMock };

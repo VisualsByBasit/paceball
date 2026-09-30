@@ -82,9 +82,14 @@ test('the share card is 1080 x 1350 and carries the whole reading, whose it is a
   const session = createMockSession('card-content', 128.4, new Date(2026, 8, 29, 12).getTime());
   const reading = measurementState(session);
   const values = drawMock(session, false).map((d) => d.value);
-  // The wordmark, letter by letter so its A's can be lime.
-  // Each letter is stroked, then filled: heavy type.
-  assert.equal(values.slice(0, 16).filter((_, i) => i % 2 === 1).join(''), 'PACEBALL');
+  // The wordmark is the traced logo, drawn as paths in white and lime, never
+  // set in a system font.
+  const { WORDMARK_PATHS } = require('../src/ui/wordmarkPaths.ts');
+  const drawn = drawMock(session, false);
+  const header = drawn.paths.filter((p) => p.rotated === 0);
+  assert.equal(header.find((p) => p.svg === WORDMARK_PATHS.white)?.color, '#FFFFFF');
+  assert.equal(header.find((p) => p.svg === WORDMARK_PATHS.lime)?.color, '#D4FF3F');
+  assert.ok(!values.includes('PACEBALL') && !values.includes('P'));
   for (const expected of ['Bowling Speed', `${reading.speedKmh.toFixed(1)} km/h`, `± ${reading.errorKmh} km/h`,
     'Average speed, release to bounce', 'Sam', 'Release', 'Bounce', 'Near', 'Far', 'Marked, not tracked',
     '29 September 2026', 'Estimated from marked distance and frame timing.']) {

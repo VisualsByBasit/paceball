@@ -6,9 +6,11 @@ import { CALIBRATION_SPECS, travelWarning } from '../physics/calibration';
 import { referenceFraming, spanBetween } from '../capture/framing';
 import { CHECK_READING, implausible } from '../ui/gauge';
 import { errorIn, formatSpeed, unitLabel } from '../ui/units';
+import { WORDMARK_PATHS, wordmarkWidth } from '../ui/wordmarkPaths';
 import {
   ballBox,
   bandPlacement,
+  capHeight,
   CARD,
   coverGeometry,
   EXPORT_HEIGHT,
@@ -33,13 +35,15 @@ export type CardPalette = {
 };
 type FontFor = (size: number, bold?: boolean) => SkFont;
 
-export const CARD_WORDMARK = 'PACEBALL';
 export const CARD_LABEL = 'Bowling Speed';
 export const CARD_METHOD = 'Average speed, release to bounce';
 export const CARD_PATH_LABEL = 'Marked, not tracked';
 export const CARD_FOOT = 'Estimated from marked distance and frame timing.';
 export const CARD_UPGRADE = 'Upgrade to Pro for clean exports';
-/** The free card's band across the frame: the name in grey, then FREE in lime. */
+/**
+ * The free card's band across the frame: the wordmark, then FREE in lime.
+ * The wordmark is drawn from its traced paths, never set in a font.
+ */
 export const CARD_BAND = ['PACEBALL', 'FREE'] as const;
 
 // Skia's own enum values, as numbers so this file loads without the native
@@ -183,6 +187,23 @@ export function drawCard(
   const text = (value: string, x: number, y: number, px: number, color = colors.text, bold = false, alpha = 1) =>
     canvas.drawText(value, x, y, fill(color, alpha), font(px, bold));
 
+  // The PACEBALL wordmark, from the paths traced off the logo: white letters,
+  // lime in the A's and the E. Never set in a system font.
+  const wordPaths = [
+    { path: skia.Path.MakeFromSVGString(WORDMARK_PATHS.white), lime: false },
+    { path: skia.Path.MakeFromSVGString(WORDMARK_PATHS.lime), lime: true },
+  ];
+  const wordmark = (x: number, top: number, height: number, alpha = 1, limeAlpha = alpha) => {
+    const k = height / WORDMARK_PATHS.height;
+    canvas.save();
+    canvas.translate(x, top);
+    canvas.scale(k, k);
+    for (const { path, lime } of wordPaths) {
+      if (path) canvas.drawPath(path, fill(lime ? colors.accent : colors.text, lime ? limeAlpha : alpha));
+    }
+    canvas.restore();
+  };
+
   try {
     canvas.drawRect(skia.XYWHRect(0, 0, EXPORT_WIDTH, EXPORT_HEIGHT), fill(colors.bg));
 
@@ -201,8 +222,8 @@ export function drawCard(
     // Header: a faint dot grid, the icon, the wordmark, and PRO or FREE.
     const { header, icon, pill } = layout;
     const wordX = icon.x + icon.width + 18;
-    const wordSize = Math.min(size.wordmark, (pill.x - 40 - wordX) / (widthAt(size.wordmark, true)(CARD_WORDMARK) / size.wordmark * 1.04));
-    const wordWidth = widthAt(wordSize, true)(CARD_WORDMARK) * 1.04;
+    const wordHeight = Math.min(CARD.header.wordmark, (pill.x - 40 - wordX) * WORDMARK_PATHS.height / WORDMARK_PATHS.width);
+    const wordWidth = wordmarkWidth(wordHeight);
     const gridFrom = wordX + wordWidth + 24;
     for (let gx = gridFrom; gx < pill.x - 14; gx += 16) {
       for (let gy = header.y + 26; gy < header.y + header.height - 20; gy += 16) {
@@ -219,19 +240,7 @@ export function drawCard(
     } else {
       canvas.drawCircle(icon.x + icon.width * 0.58, icon.y + icon.height / 2, icon.width * 0.34, stroke(colors.accent, 4));
     }
-    // Heavy italic: slanted, and stroked as well as filled; the A's in lime.
-    const wordBase = header.y + header.height / 2 + Math.round(wordSize * 0.36);
-    canvas.save();
-    canvas.translate(wordX, wordBase);
-    canvas.skew(-0.2, 0);
-    let wx = 0;
-    for (const letter of CARD_WORDMARK) {
-      const color = letter === 'A' ? colors.accent : colors.text;
-      canvas.drawText(letter, wx, 0, stroke(color, 2.6), font(wordSize, true));
-      canvas.drawText(letter, wx, 0, fill(color), font(wordSize, true));
-      wx += widthAt(wordSize, true)(letter) * 1.04;
-    }
-    canvas.restore();
+    wordmark(wordX, header.y + (header.height - wordHeight) / 2, wordHeight);
     canvas.drawRRect(rrect(pill, pill.height / 2), glow(stroke(colors.accent, 6, 0.35), 8));
     canvas.drawRRect(rrect(pill, pill.height / 2), vertical(fill(colors.limeDeep), pill.y, pill.y + pill.height, colors.limeDeep, colors.bg));
     canvas.drawRRect(rrect(pill, pill.height / 2), stroke(colors.accent, 3));
@@ -310,12 +319,14 @@ export function drawCard(
       canvas.drawRect(skia.XYWHRect(-length / 2, -t / 2, length, t), fill(colors.text, 0.1));
       canvas.drawLine(-length / 2, -t / 2, length / 2, -t / 2, stroke(colors.text, 1.5, 0.28));
       canvas.drawLine(-length / 2, t / 2, length / 2, t / 2, stroke(colors.text, 1.5, 0.28));
-      const [first, second] = CARD_BAND;
-      const w1 = widthAt(size.band, true)(`${first} `);
+      // The wordmark as tall as FREE's capitals, then FREE, centred together.
+      const [, second] = CARD_BAND;
+      const markHeight = capHeight(size.band);
+      const w1 = wordmarkWidth(markHeight) + size.band * 0.3;
       const w2 = widthAt(size.band, true)(second);
       const bx = -(w1 + w2) / 2;
       const by = Math.round(size.band * 0.36);
-      text(first, bx, by, size.band, colors.text, true, 0.4);
+      wordmark(bx, by - markHeight, markHeight, 0.4, 0.5);
       text(second, bx + w1, by, size.band, colors.accent, true, 0.5);
       canvas.restore();
     }
@@ -426,6 +437,7 @@ export function drawCard(
     }
   } finally {
     for (const p of paints) p.dispose();
+    for (const { path } of wordPaths) path?.dispose();
   }
 
   /** A calendar page, drawn in the card's lavender. */
