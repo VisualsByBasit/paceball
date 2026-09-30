@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { CONTACT_EMAIL } from "@/lib/site";
+import { CONTACT_EMAIL, SOCIAL } from "@/lib/site";
+
+const LINK = "inline-flex min-h-target items-center hover:text-text";
 
 export function Footer() {
   return (
@@ -7,18 +9,28 @@ export function Footer() {
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-8 text-body text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <ul className="flex flex-wrap gap-x-6">
           <li>
-            <Link href="/privacy" className="inline-flex min-h-target items-center hover:text-text">
+            <Link href="/privacy" className={LINK}>
               Privacy
             </Link>
           </li>
           <li>
-            <Link href="/terms" className="inline-flex min-h-target items-center hover:text-text">
+            <Link href="/terms" className={LINK}>
               Terms
             </Link>
           </li>
           <li>
-            <a href={`mailto:${CONTACT_EMAIL}`} className="inline-flex min-h-target items-center hover:text-text">
+            <a href={`mailto:${CONTACT_EMAIL}`} className={LINK}>
               Contact
+            </a>
+          </li>
+          <li>
+            <a href={SOCIAL.github} className={LINK}>
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a href={SOCIAL.license} className={LINK}>
+              MIT licence
             </a>
           </li>
         </ul>

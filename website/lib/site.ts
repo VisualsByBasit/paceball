@@ -14,6 +14,18 @@
 export const BETA_GROUP_URL = "https://groups.google.com/g/paceball-testers";
 export const BETA_URL = "https://play.google.com/apps/testing/com.paceball.app";
 
+/**
+ * The store listing. It opens for testers once they have opted in, and for
+ * everyone once Paceball is in production.
+ */
+export const PLAY_LISTING_URL = "https://play.google.com/store/apps/details?id=com.paceball.app";
+
+/**
+ * The demo video, as an embed URL (for YouTube, the youtube-nocookie.com/embed/
+ * form). While it is empty, the hero shows a "Demo video coming soon" frame.
+ */
+export const DEMO_VIDEO_EMBED_URL = "";
+
 export const CONTACT_EMAIL = "paceballpro@gmail.com";
 
 /**
@@ -39,12 +51,14 @@ export const SOCIAL = {
   x: "https://x.com/paceballpro",
   instagram: "https://www.instagram.com/paceballpro/",
   github: "https://github.com/VisualsByBasit/paceball",
+  license: "https://github.com/VisualsByBasit/paceball/blob/main/LICENSE",
   /** An empty link shows the card without one. */
   hackernoon: "https://hackernoon.com/u/abdulbasitso019?tab=stories",
 } as const;
 
+/** The logo in the header links home, so the list starts with the judges' guide. */
 export const NAV = [
-  { href: "/", label: "Home" },
+  { href: "/#judges", label: "Judges" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
 ] as const;

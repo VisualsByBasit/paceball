@@ -116,7 +116,10 @@ test('the website uses the app tokens: every colour, the type scale, radii and 4
   const nav = read('website', 'components', 'NavLinks.tsx');
   const footer = read('website', 'components', 'Footer.tsx');
   assert.match(nav, /min-h-target/);
-  assert.equal((footer.match(/min-h-target/g) ?? []).length, 3);
+  const footerLinks = footer.match(/<(Link|a)\s[^>]*>/g) ?? [];
+  assert.ok(footerLinks.length >= 5, 'privacy, terms, contact, GitHub and the licence');
+  assert.match(footer, /const LINK = "[^"]*min-h-target[^"]*";/);
+  for (const link of footerLinks) assert.match(link, /className=\{LINK\}/, link);
   const buttons = read('website', 'components', 'buttons.ts');
   assert.equal((buttons.match(/min-h-button/g) ?? []).length, 2);
   assert.match(read('website', 'components', 'BetaSteps.tsx'), /const primary = PRIMARY_BUTTON;\s+const secondary = SECONDARY_BUTTON;/);

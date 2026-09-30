@@ -105,6 +105,20 @@ body {
   background-size: 14px 14px;
 }
 
+/*
+ * A short rise as a block scrolls into view. Only where the browser can tie it
+ * to scrolling, and never with reduced motion; everywhere else it simply shows.
+ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 60%;
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

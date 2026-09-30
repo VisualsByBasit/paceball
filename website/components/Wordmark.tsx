@@ -3,22 +3,29 @@ import { HAS_LOGO, LOGO_SRC } from "@/lib/logo";
 
 type Props = { size?: "sm" | "lg" };
 
+/** The traced wordmark, copied from the app's assets/brand/wordmark.png. */
+export const WORDMARK_SRC = "/wordmark.png";
+const WORDMARK_RATIO = 1326 / 156;
+
 /**
- * The logo, then the name. The name is always written out beside it, so the
- * image is decorative (empty alt) and a screen reader reads "Paceball" once.
+ * The logo, then the name as the logo's own traced wordmark, never a system
+ * font. The logo is decorative (empty alt); the wordmark carries "Paceball",
+ * so a screen reader reads the name once. The small header size drops the
+ * wordmark on the narrowest phones, where the header link's own label names it.
  */
 export function Wordmark({ size = "sm" }: Props) {
   const large = size === "lg";
-  const px = large ? 44 : 28;
+  const px = large ? 48 : 28;
+  const wordHeight = large ? 40 : 16;
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className={`inline-flex items-center ${large ? "gap-4" : "gap-2"}`}>
       {HAS_LOGO ? (
         <Image
           src={LOGO_SRC}
           alt=""
           width={px}
           height={px}
-          priority={large}
+          preload={large}
           className="shrink-0 rounded-sm object-contain"
           style={{ width: px, height: px }}
         />
@@ -28,11 +35,15 @@ export function Wordmark({ size = "sm" }: Props) {
           <circle cx="14" cy="8" r="4" fill="var(--color-accent)" />
         </svg>
       )}
-      <span
-        className={`font-mono font-bold uppercase tracking-[0.2em] ${large ? "text-h1" : "text-caption"}`}
-      >
-        Paceball
-      </span>
+      <Image
+        src={WORDMARK_SRC}
+        alt="Paceball"
+        width={Math.round(wordHeight * WORDMARK_RATIO)}
+        height={wordHeight}
+        preload={large}
+        unoptimized
+        className={large ? "h-7 w-auto sm:h-10" : "hidden h-4 w-auto min-[400px]:block"}
+      />
     </span>
   );
 }
