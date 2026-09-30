@@ -28,6 +28,11 @@ type ReadingBlockProps = {
   reveal?: Reveal;
   /** Once the reading has landed, or straight away when it is not revealed. */
   onLanded?: () => void;
+  /**
+   * The figures' face: the fixed-width measured-data face, or the app's own
+   * face with tabular figures, for a calm dashboard like Stats.
+   */
+  face?: 'mono' | 'tabular';
 };
 
 /**
@@ -38,7 +43,7 @@ type ReadingBlockProps = {
  * number is never shown alone. When the count lands the range comes up to full
  * strength and the number turns lime: the reading is complete.
  */
-export function ReadingBlock({ reading, size, reveal, onLanded }: ReadingBlockProps) {
+export function ReadingBlock({ reading, size, reveal, onLanded, face = 'mono' }: ReadingBlockProps) {
   const still = !reveal || reveal.still;
   // 0 muted, 1 full strength. Only the range reads it.
   const emphasis = useSharedValue(still ? 1 : 0);
@@ -73,7 +78,11 @@ export function ReadingBlock({ reading, size, reveal, onLanded }: ReadingBlockPr
     color: interpolateColor(emphasis.value, [0, 1], [colors.muted, colors.text]),
   }));
 
-  const number = NUMBER[size];
+  const number = face === 'mono' ? NUMBER[size] : TABULAR[size];
+  const rangeStyle =
+    face === 'mono'
+      ? size === 'reading' ? styles.rangeSmall : styles.range
+      : size === 'reading' ? styles.rangeSmallTabular : styles.rangeTabular;
 
   return (
     <View
@@ -98,7 +107,7 @@ export function ReadingBlock({ reading, size, reveal, onLanded }: ReadingBlockPr
         )}
         <Text style={size === 'reading' ? styles.unitSmall : styles.unit}>{reading.unit}</Text>
       </View>
-      <Animated.Text style={[size === 'reading' ? styles.rangeSmall : styles.range, range]}>
+      <Animated.Text style={[rangeStyle, range]}>
         {reading.range}
       </Animated.Text>
       <Text style={styles.method}>{reading.method}</Text>
@@ -113,7 +122,7 @@ function StaticNumber({
   onShown,
 }: {
   text: string;
-  style: (typeof NUMBER)[ReadingSize];
+  style: (typeof NUMBER)[ReadingSize] | (typeof TABULAR)[ReadingSize];
   onShown: () => void;
 }) {
   useEffect(() => {
@@ -141,6 +150,12 @@ const styles = StyleSheet.create({
   numberHero: { ...type.hero, ...type.mono },
   numberHeroCompact: { ...type.heroCompact, ...type.mono },
   numberReading: { ...type.reading, ...type.mono },
+  // The app's own face with tabular figures, for a calm dashboard.
+  tabularHero: { ...type.hero, ...type.tabular },
+  tabularHeroCompact: { ...type.heroCompact, ...type.tabular },
+  tabularReading: { ...type.reading, ...type.tabular },
+  rangeTabular: { ...type.h2, ...type.tabular, marginTop: space.xs },
+  rangeSmallTabular: { ...type.body, ...type.tabular },
   landed: { color: colors.accent },
   unit: { ...type.h2, color: colors.muted, marginLeft: space.sm },
   unitSmall: { ...type.body, color: colors.muted, marginLeft: space.xs },
@@ -153,4 +168,10 @@ const NUMBER = {
   hero: styles.numberHero,
   heroCompact: styles.numberHeroCompact,
   reading: styles.numberReading,
+};
+
+const TABULAR = {
+  hero: styles.tabularHero,
+  heroCompact: styles.tabularHeroCompact,
+  reading: styles.tabularReading,
 };

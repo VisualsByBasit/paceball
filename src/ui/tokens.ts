@@ -95,9 +95,13 @@ export const size = {
   gaugeSmall: 200,
   /** A delivery row's minimum height. */
   row: 80,
-  /** Stats: the narrowest a KPI tile may be at the user's text size, before tiles stack. */
-  kpiMin: 104,
-  /** Stats: the lit round badge an icon sits in, and the icon inside it. */
+  /**
+   * Stats: the narrowest a KPI tile may be at the user's text size, before
+   * tiles stack. Three fit across a 360 dp phone at 1.3x text: their one-word
+   * labels are measured against it in stats-labels.test.
+   */
+  kpiMin: 80,
+  /** The celebration's lit round badge an icon sits in, and the icon inside it; Stats' quiet icons. */
   iconBadge: 40,
   icon: 22,
   /** The same badge and icon, compact, on the purchase celebration's unlocked cards. */
@@ -106,9 +110,6 @@ export const size = {
   /** Stats: the plot height of Speed over time, and of Deliveries per day. */
   chart: 180,
   bars: 120,
-  /** Stats: a bounce confidence gauge's width, and the measured donut's diameter. */
-  halfGauge: 128,
-  donut: 128,
   /** Stats: the tooltip over Speed over time. */
   tooltip: 168,
   /** The finished video clip, played back muted in the share sheet before it is shared. */
@@ -230,6 +231,8 @@ export const motion = {
     glow: 2160,
     total: 2500,
   },
+  /** Stats' cards arriving: a short fade and rise, each a beat after the one before. */
+  enter: { duration: 240, stagger: 40 },
   /** A notice arriving. Opacity only, never a shake. */
   notice: 120,
   /** The record button turning from a circle to a rounded square and back, with the recorder. */

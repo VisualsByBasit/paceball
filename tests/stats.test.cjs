@@ -113,24 +113,35 @@ test('no tile text can overrun its tile, at any width or text size', () => {
   // No LOCKED word competing with a title for the row, and nothing cut short.
   assert.doesNotMatch(stats, />\s*LOCKED\s*</);
   assert.doesNotMatch(stats, /numberOfLines/);
-  // Every heading title takes the rest of its row and wraps.
-  assert.match(stats, /headTitle: \{ \.\.\.type\.body, color: colors\.text, fontWeight: '700', flex: 1, flexShrink: 1 \}/);
-  for (const style of ['kpiTitle', 'kpiCaption', 'lockedText', 'legendLabel', 'listDate']) {
+  // Every card title takes the rest of its row and wraps, at a space.
+  assert.match(read('src/ui/StatCard.tsx'), /title: \{ \.\.\.type\.label, color: colors\.muted, flex: 1, flexShrink: 1 \}/);
+  for (const style of ['kpiTitle', 'lockedText', 'listDate']) {
     assert.match(stats, new RegExp(`${style}: \\{[^}]*flexShrink: 1`), style);
   }
-  assert.match(read('src/ui/tokens.ts'), /kpiMin: 104,/);
+  assert.match(read('src/ui/tokens.ts'), /kpiMin: 80,/);
 });
 
-test('free users: the best works, every other tile is its name, icon and a lock, and one way to Pro', () => {
+test('free users: the best works, every other card is a dimmed outline, a Pro pill and one line, and one way to Pro', () => {
   const stats = read('app/stats.tsx');
-  const locked = stats.slice(stats.indexOf(') : (\n          <>\n            {(\n              [\n                [\'trend\''), stats.indexOf('function TileHead'));
+  const locked = stats.slice(stats.indexOf('{LOCKED.map('), stats.indexOf('label="See Pro stats"'));
   assert.ok(locked.length > 0);
-  // No charts behind the lock, blurred or otherwise: titles and icons only.
-  assert.doesNotMatch(locked, /SpeedChart|DayBars|HalfGauge|MeasuredDonut|BlurMask|summary\./);
-  assert.match(locked, /<LockedTile key=\{title\} icon=\{icon\} title=\{title\} style=\{styles\.wide\} \/>/);
+  // No real chart and no figure behind the lock: the player's data stays Pro.
+  assert.doesNotMatch(locked, /SpeedChart|DayBars|SplitBar|BlurMask|summary\./);
+  assert.match(locked, /<LockedTile icon=\{icon\} title=\{title\} preview=\{preview\} line=\{line\} \/>/);
+  const tile = stats.slice(stats.indexOf('function LockedTile'), stats.indexOf('const styles'));
+  assert.match(tile, /<LockedPreview kind=\{preview\} \/>/);
+  assert.match(tile, /<ProPill \/>/);
+  assert.doesNotMatch(tile, /summary|kpiValues/);
+  // The preview is a fixed outline, drawn from no data at all.
+  const charts = read('src/ui/StatsCharts.tsx');
+  const preview = charts.slice(charts.indexOf('export function LockedPreview'), charts.indexOf('const styles'));
+  assert.doesNotMatch(preview, /points|days\b|summary|<Text/);
+  // One line each on what the card shows.
+  const lockedList = stats.match(/const LOCKED = \[([\s\S]*?)\] as const;/)[1];
+  assert.equal((lockedList.match(/\['/g) ?? []).length, 4);
   assert.equal((stats.match(/label="See Pro stats"/g) ?? []).length, 1);
-  // The KPI tiles lock the same way.
-  assert.match(stats, /<LockedTile key=\{title\} icon=\{icon\} title=\{title\} style=\{\{ width: kpiWidth \}\} \/>/);
+  // The KPI tiles lock the same way, with the pill where the figure would be.
+  assert.match(stats, /<LockedTile icon=\{icon\} title=\{title\} \/>/);
   // The personal best sits outside the lock.
   assert.ok(stats.indexOf('<TileHead icon="best" title="Personal best" />') < stats.indexOf('{pro ? (\n          <>'));
 });
@@ -143,12 +154,12 @@ test('no speed without its range, and charts drawn with Skia alone', () => {
   assert.match(tip, /pick\.view\.speed/);
   assert.match(tip, /pick\.view\.range/);
   // The range is drawn as a band around the line.
-  assert.match(charts, /<Path path=\{geometry\.band\} color=\{colors\.accent\} opacity=\{opacity\.band\} \/>/);
+  assert.match(charts, /<Path path=\{geometry\.band\} color=\{colors\.accent\} opacity=\{opacity\.faint\} \/>/);
   const stats = read('app/stats.tsx');
   assert.match(stats, /\{p\.view\.speed\} <Text style=\{styles\.listRange\}>\{p\.view\.range\}<\/Text>/);
-  assert.match(stats, /<ReadingBlock reading=\{bestView\} size="reading" \/>/);
+  assert.match(stats, /<ReadingBlock reading=\{bestView\} size="reading" face="tabular" \/>/);
   // No chart library: only Skia, React Native and Reanimated.
-  for (const file of ['src/ui/StatsCharts.tsx', 'src/ui/GlossCard.tsx', 'app/stats.tsx']) {
+  for (const file of ['src/ui/StatsCharts.tsx', 'src/ui/StatCard.tsx', 'app/stats.tsx']) {
     const imports = [...read(file).matchAll(/from '([^']+)'/g)].map((m) => m[1]);
     for (const from of imports) {
       assert.ok(
@@ -159,4 +170,35 @@ test('no speed without its range, and charts drawn with Skia alone', () => {
     assert.doesNotMatch(read(file), /#[0-9a-f]{3,8}\b/i, `${file} hardcodes a colour`);
     assert.doesNotMatch(read(file), /—/, `${file} has an em dash`);
   }
+});
+
+test('Stats reads as a calm instrument: flat cards, no glow or gloss, plain tabular figures, one entrance', () => {
+  const files = ['app/stats.tsx', 'src/ui/StatsCharts.tsx', 'src/ui/StatCard.tsx'];
+  for (const file of files) {
+    const source = read(file);
+    // No glossy cards, lit badges, glows, gradients or shadows.
+    assert.doesNotMatch(source, /<GlossCard\b|IconBadge|BlurMask|LinearGradient|RadialGradient|shadow|elevation/, file);
+    // Figures in the app's own face with tabular digits, never monospace.
+    assert.doesNotMatch(source, /type\.mono/, file);
+    assert.doesNotMatch(source, /HalfGauge|MeasuredDonut|addArc/, file);
+  }
+  // The card: the surface, a hairline edge, the standard radius.
+  const card = read('src/ui/StatCard.tsx');
+  assert.match(card, /card: \{\s*backgroundColor: colors\.surface,\s*borderRadius: radius\.lg,\s*borderWidth: stroke\.hairline,\s*borderColor: colors\.line,/);
+  // Titles in the label face, like FRAMING on Capture.
+  assert.match(card, /\{title\.toUpperCase\(\)\}/);
+  // Bounce confidence and measured vs no speed are one split bar each.
+  const stats = read('app/stats.tsx');
+  assert.equal((stats.match(/<SplitBar\b/g) ?? []).length, 2);
+  assert.match(stats, /\{leftOut \? <Text style=\{styles\.note\}>\{leftOut\}<\/Text> : null\}/);
+  // Deliveries per day: today's bar in full lime, the rest calmer.
+  const charts = read('src/ui/StatsCharts.tsx');
+  assert.match(charts, /opacity=\{i === today \? opacity\.full : opacity\.inactive\}/);
+  // Speed over time rings its best reading.
+  assert.match(charts, /geometry\.best/);
+  // Everything arrives once, on the motion tokens, and is still with reduced motion.
+  assert.match(card, /const reduced = useReducedMotion\(\);/);
+  assert.match(card, /withTiming\(1, \{ duration: motion\.enter\.duration, easing: STANDARD \}\)/);
+  assert.match(card, /index \* motion\.enter\.stagger/);
+  assert.ok((stats.match(/<Rise\b/g) ?? []).length >= 7);
 });

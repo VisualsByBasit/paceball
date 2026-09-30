@@ -201,11 +201,17 @@ type.mono for measured data only. type.tabular for numbers that change
 in place, like timers and frame counters.
 
 Numbers are the hero. The interface is flat: cards, lists, buttons and
-sheets have no shadows, no gradients and no glassmorphism. The
-exceptions, at AB's request, are the Stats dashboard's cards and the
-purchase celebration's unlocked list (GlossCard: a soft gradient, a lit
-top edge, a soft shadow, lit icon badges), with Stats' charts drawn in
-Skia; their text is still plain views that wrap.
+sheets have no shadows, no gradients and no glassmorphism. The one
+exception, at AB's request, is the purchase celebration's unlocked list
+(GlossCard: a soft gradient, a lit top edge, a soft shadow, lit icon
+badges); its text is still plain views that wrap. The Stats dashboard's
+glossy exception is removed: Stats is a calm instrument, flat cards
+(StatCard: the surface, a hairline edge, the standard radius) with small
+letter-spaced titles, figures in the app's face with tabular digits,
+thin charts drawn in Skia, split bars for shares, and one short fade and
+rise as it arrives (none with reduced motion). A locked card shows a
+dimmed outline of its shape, a Pro pill and one line on what it shows,
+never a figure.
 
 The pictures are 3D: the ball, stumps and bails, the pitch and the
 floodlit stadium, the speedometer, the launch intro, the purchase
