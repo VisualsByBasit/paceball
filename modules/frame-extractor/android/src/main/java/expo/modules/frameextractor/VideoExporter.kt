@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -31,9 +32,11 @@ import expo.modules.kotlin.records.Record
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 
 class VideoExportRequest : Record {
   @Field lateinit var exportId: String
@@ -70,7 +73,13 @@ class VideoExportRequest : Record {
   @Field var rangeText: String = ""
   @Field var methodText: String = ""
   @Field var pathText: String = ""
-  @Field var stripText: String = ""
+  /** "FREE" on a free export, drawn in lime after the wordmark in the band; empty for Pro. */
+  @Field var bandText: String = ""
+  /** The PACEBALL wordmark's traced paths (absolute M, L, Q, Z) and their box, from TypeScript. */
+  @Field var wordmarkWhite: String = ""
+  @Field var wordmarkLime: String = ""
+  @Field var wordmarkWidth: Double = 0.0
+  @Field var wordmarkHeight: Double = 0.0
   @Field var colorBg: String = ""
   @Field var colorText: String = ""
   @Field var colorMuted: String = ""
@@ -274,8 +283,13 @@ class VideoExporter(
       throw IllegalArgumentException("Video export needs a measured speed and error range.")
     }
     // Fail closed: a free export is never written without its watermark.
-    if (request.watermark && request.stripText.isBlank()) {
+    if (request.watermark && (request.bandText.isBlank() || request.wordmarkWhite.isBlank() ||
+        request.wordmarkLime.isBlank() || !(request.wordmarkWidth > 0.0) || !(request.wordmarkHeight > 0.0))) {
       throw IllegalArgumentException("A free video export must carry the Paceball watermark.")
+    }
+    if (request.watermark) {
+      parseWordmark(request.wordmarkWhite)
+      parseWordmark(request.wordmarkLime)
     }
     for (color in listOf(request.colorBg, request.colorText, request.colorMuted, request.colorAccent)) {
       if (!Regex("^#[0-9A-Fa-f]{6}$").matches(color)) {
@@ -318,12 +332,42 @@ class VideoExporter(
 }
 
 /**
+ * The wordmark's traced paths, as TypeScript writes them: absolute M, L, Q and
+ * Z, space separated. Anything else is refused, so a free export never goes
+ * out with a broken watermark.
+ */
+private fun parseWordmark(data: String): Path {
+  val t = data.trim().split(Regex("\\s+"))
+  val path = Path()
+  var i = 0
+  try {
+    while (i < t.size) {
+      when (t[i]) {
+        "M" -> { path.moveTo(t[i + 1].toFloat(), t[i + 2].toFloat()); i += 3 }
+        "L" -> { path.lineTo(t[i + 1].toFloat(), t[i + 2].toFloat()); i += 3 }
+        "Q" -> {
+          path.quadTo(t[i + 1].toFloat(), t[i + 2].toFloat(), t[i + 3].toFloat(), t[i + 4].toFloat())
+          i += 5
+        }
+        "Z" -> { path.close(); i += 1 }
+        else -> throw IllegalArgumentException("unknown command")
+      }
+    }
+  } catch (error: RuntimeException) {
+    throw IllegalArgumentException("The Paceball wordmark could not be read.", error)
+  }
+  return path
+}
+
+/**
  * The HUD. Every frame carries the whole reading on an opaque plate: the speed,
- * a free export's watermark strip, then the range and what the reading is. The
- * marks arrive with the frames they were placed on: references throughout,
- * release from the release frame, the bounce, the straight connector and
- * "Marked, not tracked" from the bounce frame. Nothing moves between marks,
- * nothing is interpolated and nothing counts up.
+ * then the range and what the reading is. A free export also carries the band
+ * the free card carries, the wordmark and FREE in lime across the picture,
+ * placed clear of every mark, label and the plate. The marks arrive with the
+ * frames they were placed on: references throughout, release from the release
+ * frame, the bounce, the straight connector and "Marked, not tracked" from the
+ * bounce frame. Nothing moves between marks, nothing is interpolated and
+ * nothing counts up.
  */
 @OptIn(UnstableApi::class)
 private class PaceballOverlay(
@@ -354,6 +398,10 @@ private class PaceballOverlay(
   private val regular = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
   }
+  /** The band's own paint, so its faint alphas never leak into the HUD. */
+  private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val wordWhite: Path? = if (request.watermark) parseWordmark(request.wordmarkWhite) else null
+  private val wordLime: Path? = if (request.watermark) parseWordmark(request.wordmarkLime) else null
 
   override fun onDraw(canvas: Canvas, presentationTimeUs: Long) {
     canvasWidth = canvas.width
@@ -382,6 +430,29 @@ private class PaceballOverlay(
     val topClear = marks.all { it.second > plateHeight + reach }
     val bottomClear = marks.all { it.second < canvas.height - plateHeight - reach }
     val plateTop = if (topClear || !bottomClear) 0f else canvas.height - plateHeight
+    // Beside the plate, on the side away from the marks.
+    val pathY = if (plateTop == 0f) plateHeight + 12f * s else plateTop - 12f * s - 30f * s
+
+    if (request.watermark) {
+      // Placed from every mark and label at once, so it never moves as they arrive.
+      val avoid = mutableListOf(
+        markBox(release, s), labelRect(canvas, "Release", release, s),
+        markBox(bounce, s), labelRect(canvas, "Bounce", bounce, s),
+        plateRect(canvas, request.pathText, 16f * s, pathY, s),
+      )
+      if (request.showReferences) {
+        for ((p, name) in listOf(a to request.referenceALabel, b to request.referenceBLabel)) {
+          avoid.add(markBox(p, s))
+          if (name.isNotBlank()) avoid.add(labelRect(canvas, name, p, s))
+        }
+      }
+      val picture = if (plateTop == 0f) {
+        RectF(0f, plateHeight, canvas.width.toFloat(), canvas.height.toFloat())
+      } else {
+        RectF(0f, 0f, canvas.width.toFloat(), plateTop)
+      }
+      drawBand(canvas, picture, avoid, s)
+    }
 
     if (request.showReferences) {
       for ((p, name) in listOf(a to request.referenceALabel, b to request.referenceBLabel)) {
@@ -430,8 +501,6 @@ private class PaceballOverlay(
         canvas.drawCircle(bounce.first, bounce.second, 7f * s, fill)
       }
       label(canvas, "Bounce", bounce, s)
-      // Beside the plate, on the side away from the marks.
-      val pathY = if (plateTop == 0f) plateHeight + 12f * s else plateTop - 12f * s - 30f * s
       plate(canvas, request.pathText, 16f * s, pathY, s)
     }
 
@@ -448,13 +517,12 @@ private class PaceballOverlay(
 
   private fun plateHeight(canvas: Canvas, s: Float): Float {
     var h = 14f * s + 44f * s + 10f * s
-    if (request.watermark) h += 30f * s + 10f * s
     h += 26f * s
     if (!rangeFits(canvas, s)) h += 24f * s
     return h + 12f * s
   }
 
-  /** The speed, the strip on a free export, then its range and what it is. Opaque, full width. */
+  /** The speed, then its range and what it is. Opaque, full width. */
   private fun drawReading(canvas: Canvas, top: Float, height: Float, s: Float) {
     val oneLine = rangeFits(canvas, s)
     fill.color = bg
@@ -466,17 +534,6 @@ private class PaceballOverlay(
     bold.textAlign = Paint.Align.LEFT
     canvas.drawText(request.speedText, x, y + 36f * s, bold)
     y += 44f * s + 10f * s
-    if (request.watermark) {
-      // Edge to edge between the speed and its range, so cropping it cuts the reading.
-      fill.color = fg
-      canvas.drawRect(0f, y, canvas.width.toFloat(), y + 30f * s, fill)
-      bold.color = bg
-      bold.textSize = 18f * s
-      bold.textAlign = Paint.Align.CENTER
-      canvas.drawText(request.stripText, canvas.width / 2f, y + 21f * s, bold)
-      bold.textAlign = Paint.Align.LEFT
-      y += 30f * s + 10f * s
-    }
     regular.color = fg
     regular.textSize = 24f * s
     val rangeWidth = regular.measureText(request.rangeText)
@@ -490,6 +547,102 @@ private class PaceballOverlay(
     }
   }
 
+  /**
+   * The free card's band, on the video: a translucent strip at -30 degrees
+   * with the wordmark and FREE in lime, moved along its normal as little from
+   * the picture's centre as it can be until it covers none of `avoid`. Kept
+   * inside the picture, so it never runs under the reading's plate.
+   */
+  private fun drawBand(canvas: Canvas, picture: RectF, avoid: List<RectF>, s: Float) {
+    val white = wordWhite ?: return
+    val lime = wordLime ?: return
+    val angle = -30f
+    val rad = Math.toRadians(angle.toDouble())
+    val nx = (-sin(rad)).toFloat()
+    val ny = cos(rad).toFloat()
+    val cx = picture.centerX()
+    val cy = picture.centerY()
+    val thickness = 64f * s
+    val margin = 8f * s
+    fun across(r: RectF): Pair<Float, Float> {
+      val d = listOf(
+        (r.left - cx) * nx + (r.top - cy) * ny, (r.right - cx) * nx + (r.top - cy) * ny,
+        (r.left - cx) * nx + (r.bottom - cy) * ny, (r.right - cx) * nx + (r.bottom - cy) * ny,
+      )
+      return Pair(d.minOrNull() ?: 0f, d.maxOrNull() ?: 0f)
+    }
+    val spans = avoid.map { across(it) }
+    fun hits(offset: Float): Int = spans.count { (lo, hi) ->
+      hi + margin > offset - thickness / 2f && lo - margin < offset + thickness / 2f
+    }
+    // Well inside the picture, so the band always crosses a good length of it.
+    val reach = abs(across(picture).first) * 0.62f
+    var bestOffset = 0f
+    var bestHits = hits(0f)
+    var step = 4f * s
+    while (step <= reach && bestHits > 0) {
+      for (offset in floatArrayOf(step, -step)) {
+        val h = hits(offset)
+        if (h < bestHits) {
+          bestOffset = offset
+          bestHits = h
+        }
+        if (h == 0) break
+      }
+      step += 4f * s
+    }
+
+    canvas.save()
+    canvas.clipRect(picture)
+    canvas.translate(cx + nx * bestOffset, cy + ny * bestOffset)
+    canvas.rotate(angle)
+    val length = hypot(picture.width(), picture.height()) * 1.2f
+    bandPaint.style = Paint.Style.FILL
+    bandPaint.color = fg
+    bandPaint.alpha = 26
+    canvas.drawRect(-length / 2f, -thickness / 2f, length / 2f, thickness / 2f, bandPaint)
+    bandPaint.style = Paint.Style.STROKE
+    bandPaint.strokeWidth = 1.5f * s
+    bandPaint.color = fg
+    bandPaint.alpha = 71
+    canvas.drawLine(-length / 2f, -thickness / 2f, length / 2f, -thickness / 2f, bandPaint)
+    canvas.drawLine(-length / 2f, thickness / 2f, length / 2f, thickness / 2f, bandPaint)
+
+    // The wordmark as tall as FREE's capitals, then FREE, centred together.
+    val textSize = 40f * s
+    bandPaint.style = Paint.Style.FILL
+    bandPaint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+    bandPaint.textSize = textSize
+    bandPaint.textAlign = Paint.Align.LEFT
+    val freeWidth = bandPaint.measureText(request.bandText)
+    val markHeight = textSize * 0.74f
+    val k = markHeight / request.wordmarkHeight.toFloat()
+    val markWidth = request.wordmarkWidth.toFloat() * k
+    val gap = textSize * 0.3f
+    val left = -(markWidth + gap + freeWidth) / 2f
+    val baseline = textSize * 0.36f
+    canvas.save()
+    canvas.translate(left, baseline - markHeight)
+    canvas.scale(k, k)
+    bandPaint.color = fg
+    bandPaint.alpha = 102
+    canvas.drawPath(white, bandPaint)
+    bandPaint.color = accent
+    bandPaint.alpha = 128
+    canvas.drawPath(lime, bandPaint)
+    canvas.restore()
+    bandPaint.color = accent
+    bandPaint.alpha = 128
+    canvas.drawText(request.bandText, left + markWidth + gap, baseline, bandPaint)
+    canvas.restore()
+  }
+
+  /** A mark's ring, with a little room around it. */
+  private fun markBox(p: Pair<Float, Float>, s: Float): RectF {
+    val r = 14f * s
+    return RectF(p.first - r, p.second - r, p.first + r, p.second + r)
+  }
+
   private fun ring(canvas: Canvas, p: Pair<Float, Float>, s: Float) {
     fill.color = bg
     canvas.drawCircle(p.first, p.second, 12f * s, fill)
@@ -497,24 +650,36 @@ private class PaceballOverlay(
 
   /** A label on an opaque plate above its mark, or below it when there is no room. */
   private fun label(canvas: Canvas, text: String, p: Pair<Float, Float>, s: Float) {
+    val r = labelRect(canvas, text, p, s)
+    plate(canvas, text, r.left, r.top, s)
+  }
+
+  /** Where `label` puts its plate. */
+  private fun labelRect(canvas: Canvas, text: String, p: Pair<Float, Float>, s: Float): RectF {
     regular.textSize = 18f * s
     val w = regular.measureText(text) + 12f * s
     val h = 30f * s
     val above = p.second - 18f * s - h
-    plate(canvas, text, p.first - w / 2f, if (above >= 0f) above else p.second + 18f * s, s)
+    return plateRect(canvas, text, p.first - w / 2f, if (above >= 0f) above else p.second + 18f * s, s)
   }
 
-  /** Text on an opaque plate, kept inside the frame. */
-  private fun plate(canvas: Canvas, text: String, left: Float, top: Float, s: Float) {
+  /** Where `plate` draws: its text's width, kept inside the frame. */
+  private fun plateRect(canvas: Canvas, text: String, left: Float, top: Float, s: Float): RectF {
     regular.textSize = 18f * s
-    regular.color = fg
     val w = regular.measureText(text) + 12f * s
     val h = 30f * s
     val x = left.coerceIn(0f, max(0f, canvas.width - w))
     val y = top.coerceIn(0f, max(0f, canvas.height - h))
+    return RectF(x, y, x + w, y + h)
+  }
+
+  /** Text on an opaque plate, kept inside the frame. */
+  private fun plate(canvas: Canvas, text: String, left: Float, top: Float, s: Float) {
+    val r = plateRect(canvas, text, left, top, s)
+    regular.color = fg
     fill.color = bg
-    canvas.drawRect(x, y, x + w, y + h, fill)
-    canvas.drawText(text, x + 6f * s, y + 21f * s, regular)
+    canvas.drawRect(r, fill)
+    canvas.drawText(text, r.left + 6f * s, r.top + 21f * s, regular)
   }
 
   private fun map(x: Double, y: Double, canvas: Canvas): Pair<Float, Float> {

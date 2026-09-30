@@ -19,7 +19,7 @@ export type NativeVideoExportRequest = {
   /** Scale the output to this short side, keeping its aspect; 0 keeps the source size. */
   outputShortSide: number;
   includeAudio: boolean;
-  /** When true the HUD must draw `stripText`; native refuses a free export without it. */
+  /** When true the HUD must draw the band; native refuses a free export without its words and wordmark. */
   watermark: boolean;
   /** Encoded MP4 dimensions, before display rotation. */
   sourceWidth: number;
@@ -55,8 +55,18 @@ export type NativeVideoExportRequest = {
   rangeText: string;
   methodText: string;
   pathText: string;
-  /** "PACEBALL · FREE" on a free export, empty for Pro. */
-  stripText: string;
+  /** No longer read by native: the band below replaced the strip. */
+  stripText?: string;
+  /** "FREE", drawn in lime after the wordmark in the free band; empty for Pro. */
+  bandText?: string;
+  /**
+   * The PACEBALL wordmark's traced paths and their box (src/ui/wordmarkPaths.ts):
+   * absolute M, L, Q and Z, which native draws in the band. Empty for Pro.
+   */
+  wordmarkWhite?: string;
+  wordmarkLime?: string;
+  wordmarkWidth?: number;
+  wordmarkHeight?: number;
   /** App tokens, as #RRGGBB. */
   colorBg: string;
   colorText: string;

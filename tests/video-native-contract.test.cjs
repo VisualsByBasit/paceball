@@ -62,16 +62,54 @@ test('native HUD: the whole reading from the first frame, marks only from their 
   assert.doesNotMatch(draw, /AVG SPEED|MARK-TO-MARK|KM\/H/);
 });
 
-test('native HUD: a free clip always carries the strip, between the speed and its range', () => {
+test('native HUD: a free clip carries the free card band, clear of the marks and the plate; Pro is clean', () => {
   const draw = hud();
-  const reading = draw.slice(draw.indexOf('private fun drawReading'), draw.indexOf('private fun ring'));
-  const speed = reading.indexOf('request.speedText');
-  const strip = reading.indexOf('request.stripText');
-  const range = reading.indexOf('request.rangeText');
-  assert.ok(speed > 0 && speed < strip && strip < range, 'speed, strip, range, in that order');
-  assert.match(reading, /if \(request\.watermark\) \{[\s\S]*?drawRect\(0f, y, canvas\.width\.toFloat\(\)/, 'edge to edge');
+  const native = exporter();
+  // The reading plate no longer carries a strip; the band is its own drawing.
+  const reading = draw.slice(draw.indexOf('private fun drawReading'), draw.indexOf('private fun drawBand'));
+  assert.doesNotMatch(reading, /stripText|bandText|watermark/);
+  assert.doesNotMatch(native, /stripText/);
+  // Only on a free clip, placed from every mark, label and the path plate at once.
+  const onDraw = draw.slice(draw.indexOf('override fun onDraw'), draw.indexOf('private fun rangeFits'));
+  assert.match(onDraw, /if \(request\.watermark\) \{[\s\S]*?markBox\(release, s\), labelRect\(canvas, "Release", release, s\),[\s\S]*?markBox\(bounce, s\), labelRect\(canvas, "Bounce", bounce, s\),[\s\S]*?plateRect\(canvas, request\.pathText/);
+  // Kept to the picture outside the reading's plate, so it never covers the HUD.
+  assert.match(onDraw, /RectF\(0f, plateHeight, canvas\.width\.toFloat\(\), canvas\.height\.toFloat\(\)\)/);
+  assert.match(onDraw, /RectF\(0f, 0f, canvas\.width\.toFloat\(\), plateTop\)/);
+  // Drawn before the marks, so any mark would sit on top of it all the same.
+  assert.ok(onDraw.indexOf('drawBand(') < onDraw.indexOf('if (released)'));
+  const band = draw.slice(draw.indexOf('private fun drawBand'), draw.indexOf('private fun markBox'));
+  assert.match(band, /canvas\.clipRect\(picture\)/);
+  assert.match(band, /val angle = -30f/);
+  assert.match(band, /canvas\.drawPath\(white, bandPaint\)[\s\S]*canvas\.drawPath\(lime, bandPaint\)[\s\S]*canvas\.drawText\(request\.bandText/);
+  // The same search as the card's bandPlacement: out from the centre, 4 at a time, both ways.
+  assert.match(band, /for \(offset in floatArrayOf\(step, -step\)\)/);
+  assert.match(band, /val reach = abs\(across\(picture\)\.first\) \* 0\.62f/);
   // Native refuses a free export it could not brand, rather than writing it clean.
-  assert.match(exporter(), /if \(request\.watermark && request\.stripText\.isBlank\(\)\) \{\s*throw/);
+  assert.match(native, /if \(request\.watermark && \(request\.bandText\.isBlank\(\) \|\| request\.wordmarkWhite\.isBlank\(\)/);
+  assert.match(native, /private val wordWhite: Path\? = if \(request\.watermark\) parseWordmark\(request\.wordmarkWhite\) else null/);
+  // No new Media3 class for it: plain Android graphics only.
+  assert.match(native, /^import android\.graphics\.RectF$/m);
+});
+
+test('the Kotlin wordmark parser reads every command the traced paths use, and nothing else', () => {
+  require('./register.cjs');
+  const { WORDMARK_PATHS } = require('../src/ui/wordmarkPaths.ts');
+  for (const data of [WORDMARK_PATHS.white, WORDMARK_PATHS.lime]) {
+    const tokens = data.trim().split(/\s+/);
+    let i = 0;
+    const arity = { M: 2, L: 2, Q: 4, Z: 0 };
+    while (i < tokens.length) {
+      assert.ok(tokens[i] in arity, `unknown command ${tokens[i]}`);
+      const n = arity[tokens[i]];
+      for (let k = 1; k <= n; k++) assert.ok(Number.isFinite(Number(tokens[i + k])), `${tokens[i]} at ${i}`);
+      i += 1 + n;
+    }
+    assert.equal(tokens[0], 'M');
+    assert.equal(tokens[tokens.length - 1], 'Z');
+  }
+  const parser = exporter().slice(exporter().indexOf('private fun parseWordmark'), exporter().indexOf('private class PaceballOverlay'));
+  for (const command of ['"M"', '"L"', '"Q"', '"Z"']) assert.ok(parser.includes(command), command);
+  assert.match(parser, /else -> throw IllegalArgumentException/);
 });
 
 test('native export scales down only, keeps the aspect, and reads verified frame times', () => {
