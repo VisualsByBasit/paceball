@@ -15,6 +15,7 @@ dist/
 # environment
 .env
 .env.*
+!.env.example
 
 # signing
 *.keystore

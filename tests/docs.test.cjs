@@ -24,8 +24,11 @@ test('README names everything that can leave the phone, and the website', () => 
   }
   assert.match(readme, /muted by default on every clip/);
   assert.match(readme, /silent by default/);
-  // The suite grows, so no count is pinned.
-  assert.doesNotMatch(readme, /\b\d+ (passing )?tests\b/);
+  // The suite grows, so a count is only ever given with the day it was taken.
+  for (const match of readme.matchAll(/\b\d+ (passing )?tests\b/g)) {
+    const sentence = readme.slice(Math.max(0, match.index - 60), match.index);
+    assert.match(sentence, /On \d{1,2} [A-Z][a-z]+ \d{4}, `npm test` ran $/, `"${match[0]}" is dated`);
+  }
 });
 
 test('CLAUDE.md matches the app, and AGENTS.md points at it', () => {

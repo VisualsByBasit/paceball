@@ -104,11 +104,29 @@ test('no env file or service account file is tracked', () => {
   const tracked = trackedFiles();
   const forbidden = tracked.filter((file) => {
     const name = path.posix.basename(file);
+    // The one exception: the root .env.example, which lists names with no values.
+    if (file === '.env.example') return false;
     if (name === '.env' || name.startsWith('.env.')) return true;
     // A service account arrives as a JSON key file; these names are the usual ones.
     return /(service[-_]?account|credentials|-key|keyfile)\.json$/i.test(name);
   });
   assert.deepEqual(forbidden, [], `these must not be committed:\n${forbidden.join('\n')}`);
+});
+
+test('.env.example names every variable and carries no value', () => {
+  const lines = fs
+    .readFileSync(path.join(ROOT, '.env.example'), 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+  assert.ok(lines.length > 0, 'it lists something');
+  for (const line of lines) {
+    assert.match(line, /^[A-Z][A-Z0-9_]*=$/, `${line} has an empty value`);
+  }
+  const names = lines.map((line) => line.slice(0, -1));
+  for (const name of ['EXPO_PUBLIC_REVENUECAT_ANDROID_KEY', 'EXPO_PUBLIC_SENTRY_DSN']) {
+    assert.ok(names.includes(name), name);
+  }
 });
 
 test('credential files are ignored by git, and so by the EAS upload', () => {
@@ -131,7 +149,7 @@ test('credential files are ignored by git, and so by the EAS upload', () => {
     assert.ok(ignored.trim().length > 0, `${name} is ignored`);
   }
   // And the rules do not swallow the app's own files.
-  for (const name of ['app.json', 'eas.json', 'package.json', 'src/purchases/links.ts']) {
+  for (const name of ['app.json', 'eas.json', 'package.json', 'src/purchases/links.ts', '.env.example']) {
     let ignored = true;
     try {
       execFileSync('git', ['check-ignore', '--no-index', '-q', name], { cwd: ROOT });
