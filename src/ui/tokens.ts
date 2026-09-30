@@ -100,7 +100,7 @@ export const size = {
    * tiles stack. Three fit across a 360 dp phone at 1.3x text: their one-word
    * labels are measured against it in stats-labels.test.
    */
-  kpiMin: 80,
+  kpiMin: 75,
   /** The celebration's lit round badge an icon sits in, and the icon inside it; Stats' quiet icons. */
   iconBadge: 40,
   icon: 22,

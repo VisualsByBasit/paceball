@@ -23,6 +23,7 @@ import { FrameScrubber } from '../src/ui/FrameScrubber';
 import { useHoldRepeat } from '../src/ui/useHoldRepeat';
 import { useSettings } from '../src/settings';
 import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
+import { ActionButton } from '../src/ui/ActionButton';
 import { AppBar } from '../src/ui/AppBar';
 import { BottomSheet } from '../src/ui/BottomSheet';
 import { DeliveryShareSheet } from '../src/ui/DeliveryShareSheet';
@@ -128,9 +129,7 @@ export default function AnalysisScreen() {
       <View style={[styles.screen, styles.center, { paddingTop: insets.top }]}>
         <Text style={styles.fallbackTitle}>{loaded.title}</Text>
         <Text style={styles.fallbackBody}>{loaded.body}</Text>
-        <Pressable style={styles.primaryButton} onPress={() => router.back()} accessibilityRole="button">
-          <Text style={styles.primaryButtonText}>Back</Text>
-        </Pressable>
+        <ActionButton label="Back" onPress={() => router.back()} />
       </View>
     );
   }
@@ -516,15 +515,9 @@ function Replay({
           </Text>
         </View>
 
+        {/* Frame by frame and play, then the two marked frames: two centred rows
+            of controls one height, so nothing runs off a small phone at large text. */}
         <View style={styles.transport}>
-          <Pressable
-            style={styles.jump}
-            onPress={() => seek(release.frame)}
-            accessibilityRole="button"
-            accessibilityLabel={`Go to release, frame ${release.frame}`}
-          >
-            <Text style={styles.jumpText}>Release</Text>
-          </Pressable>
           <Pressable
             style={[styles.stepButton, current === 0 && styles.off]}
             disabled={current === 0}
@@ -557,6 +550,16 @@ function Replay({
             accessibilityLabel="Next frame"
           >
             <Text style={styles.stepButtonText}>+</Text>
+          </Pressable>
+        </View>
+        <View style={styles.jumps}>
+          <Pressable
+            style={styles.jump}
+            onPress={() => seek(release.frame)}
+            accessibilityRole="button"
+            accessibilityLabel={`Go to release, frame ${release.frame}`}
+          >
+            <Text style={styles.jumpText}>Release</Text>
           </Pressable>
           <Pressable
             style={styles.jump}
@@ -711,31 +714,44 @@ const styles = StyleSheet.create({
   transport: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    gap: space.md,
     marginTop: space.md,
   },
+  jumps: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: space.sm,
+    marginTop: space.sm,
+  },
+  // A chip like the rate chips below it and Capture's.
   jump: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
-    paddingVertical: space.sm,
+    minHeight: size.target,
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
     paddingHorizontal: space.md,
   },
   jumpText: { ...type.caption, color: colors.text },
+  // The same frame step as Mark's: a 48 dp ring.
   stepButton: {
-    width: space.xl,
-    height: space.xl,
+    width: size.target,
+    height: size.target,
     borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
-    borderColor: colors.line,
+    borderWidth: stroke.medium,
+    borderColor: colors.control,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepButtonText: { ...type.h2, color: colors.text },
   play: {
+    minHeight: size.target,
+    minWidth: size.record,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.accent,
     borderRadius: radius.pill,
-    paddingVertical: space.sm,
     paddingHorizontal: space.lg,
   },
   playText: { ...type.body, color: colors.bg, fontWeight: '800' },
@@ -765,12 +781,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: space.lg,
   },
-  primaryButton: {
-    alignSelf: 'stretch',
-    backgroundColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingVertical: space.md,
-    alignItems: 'center',
-  },
-  primaryButtonText: { ...type.body, color: colors.bg, fontWeight: '800' },
 });

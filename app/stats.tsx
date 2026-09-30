@@ -95,7 +95,7 @@ export default function StatsScreen() {
 
   const open = (id: string) => router.push({ pathname: '/analysis', params: { id } });
   const toPaywall = () => router.push({ pathname: '/paywall', params: { context: 'stats' } });
-  const contentWidth = width - space.md * 2;
+  const contentWidth = width - space.lg * 2;
   const kpiColumns = tileColumns(contentWidth, fontScale, size.kpiMin, space.sm, 3);
   const kpiWidth = (contentWidth - space.sm * (kpiColumns - 1)) / kpiColumns;
 
@@ -326,7 +326,7 @@ function LockedTile({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   bar: { paddingHorizontal: space.md },
-  content: { paddingHorizontal: space.md, paddingTop: space.md, gap: space.md },
+  content: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.md },
   muted: { ...type.body, color: colors.muted },
   note: { ...type.caption, color: colors.muted, marginTop: space.md },
   centerCaption: { ...type.caption, color: colors.muted, textAlign: 'center', marginTop: space.xs },

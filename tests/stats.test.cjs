@@ -118,7 +118,7 @@ test('no tile text can overrun its tile, at any width or text size', () => {
   for (const style of ['kpiTitle', 'lockedText', 'listDate']) {
     assert.match(stats, new RegExp(`${style}: \\{[^}]*flexShrink: 1`), style);
   }
-  assert.match(read('src/ui/tokens.ts'), /kpiMin: 80,/);
+  assert.match(read('src/ui/tokens.ts'), /kpiMin: 75,/);
 });
 
 test('free users: the best works, every other card is a dimmed outline, a Pro pill and one line, and one way to Pro', () => {

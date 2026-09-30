@@ -67,7 +67,13 @@ test('the small chips reach 48 dp under the finger without changing how they loo
   const capture = read('app/capture.tsx');
   assert.match(capture, /lens: \{\s*minWidth: size\.target,\s*minHeight: size\.target,/);
   const history = read('app/history.tsx');
-  assert.match(history.slice(history.indexOf('onPress={() => setRange(r.key)}')), /hitSlop=\{\{ top: space\.xs, bottom: space\.md \}\}/);
+  // History's range chips are drawn 48 dp now, like every other chip.
+  assert.match(history, /range: \{\s*minHeight: size\.target,/);
+  assert.doesNotMatch(history.slice(history.indexOf('onPress={() => setRange(r.key)}'), history.indexOf('onPress={() => setRange(r.key)}') + 200), /hitSlop/);
+  // Analysis's jumps and frame steps are drawn 48 dp too, all one height.
+  assert.match(analysis, /jump: \{\s*minHeight: size\.target,/);
+  assert.match(analysis, /stepButton: \{\s*width: size\.target,\s*height: size\.target,/);
+  assert.match(analysis, /play: \{\s*minHeight: size\.target,/);
   // The picked point says so, not only by colour.
   assert.match(mark, /accessibilityState=\{\{ selected: isActive \}\}/);
 });

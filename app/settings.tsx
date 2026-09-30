@@ -610,16 +610,17 @@ const styles = StyleSheet.create({
   optionTitle: { ...type.body, color: colors.text },
   optionDetail: { ...type.caption, color: colors.muted, marginTop: space.xs },
 
+  // The app's secondary button: the same height, radius and edge as ActionButton's.
   button: {
-    minHeight: size.target,
+    minHeight: size.button,
     justifyContent: 'center',
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
     borderColor: colors.control,
-    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
     alignItems: 'center',
   },
-  buttonText: { ...type.body, color: colors.text },
+  buttonText: { ...type.button, color: colors.text, textAlign: 'center' },
   off: { opacity: opacity.disabled },
   restoreNote: { ...type.body, marginTop: space.md },
 

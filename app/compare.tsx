@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
 
   verdict: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: stroke.hairline,
     borderColor: colors.line,
     padding: space.md,

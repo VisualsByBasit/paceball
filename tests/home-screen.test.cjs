@@ -95,7 +95,9 @@ test('Home leads with the hero, then a large record button, then recent cards', 
   assert.match(home, /sessions\.length === 0 \? \(\s*<View style=\{styles\.stillCard\}>\s*<CricketStill /);
   // The hero sits on the floodlit panel, and the record button has its lit edge.
   assert.match(home, /<FloodlitPanel style=\{styles\.hero\}>\s*<Text style=\{styles\.heroLabel\}>PERSONAL BEST<\/Text>/);
-  assert.match(home, /<LitEdge style=\{styles\.primary\}>\s*<ActionButton\s+label="Record a delivery"/);
+  // Flat, like every other control: no lit edge or glow.
+  assert.match(home, /<View style=\{styles\.primary\}>\s*<ActionButton\s+label="Record a delivery"/);
+  assert.doesNotMatch(home, /LitEdge|BlurMask/);
   assert.doesNotMatch(home, /MOCK_|SAMPLE_|mockOffering/);
   // The avatar still opens Stats.
   assert.match(home, /onPress=\{\(\) => router\.push\('\/stats'\)\}/);

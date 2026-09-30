@@ -421,8 +421,6 @@ export default function HistoryScreen() {
                       <Pressable
                         key={r.key}
                         onPress={() => setRange(r.key)}
-                        // Downwards only: the player row above is not a target.
-                        hitSlop={{ top: space.xs, bottom: space.md }}
                         style={[styles.range, on && styles.rangeOn]}
                         accessibilityRole="radio"
                         accessibilityState={{ selected: on }}
@@ -819,12 +817,14 @@ const styles = StyleSheet.create({
   playerCount: { ...type.caption, ...type.tabular, color: colors.muted },
 
   ranges: { flexDirection: 'row', marginBottom: space.sm },
+  // The app's chip: a full 48 dp target, like Capture's and Analysis's.
   range: {
-    borderRadius: radius.pill,
-    borderWidth: stroke.hairline,
+    minHeight: size.target,
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: stroke.medium,
     borderColor: colors.control,
     paddingHorizontal: space.md,
-    paddingVertical: space.xs,
     marginRight: space.sm,
   },
   rangeOn: { backgroundColor: colors.text, borderColor: colors.text },
@@ -833,7 +833,7 @@ const styles = StyleSheet.create({
 
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: stroke.hairline,
     borderColor: colors.line,
     padding: space.md,

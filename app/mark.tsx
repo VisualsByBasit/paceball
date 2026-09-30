@@ -35,6 +35,7 @@ import { errorMessage } from '../src/ui/format';
 import { colors, opacity, radius, size, space, stroke, type } from '../src/ui/tokens';
 import { useHoldRepeat } from '../src/ui/useHoldRepeat';
 import { first, positiveNumber } from '../src/ui/routeParams';
+import { useLargeText } from '../src/ui/useLargeText';
 import type { CalibrationMethod, MarkConfidence, Player, Point } from '../src/types';
 
 type StepKey = 'calA' | 'calB' | 'release' | 'bounce';
@@ -139,6 +140,9 @@ const NO_POINTS: Points = {
 export default function MarkScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // Four step chips across a small phone clip "✓ Release" at large text, so
+  // they go two by two there.
+  const largeText = useLargeText();
   const params = useLocalSearchParams();
 
   const videoPath = first(params.videoPath);
@@ -556,7 +560,7 @@ export default function MarkScreen() {
         <Text style={styles.scaleChange}>Change</Text>
       </Pressable>
 
-      <View style={styles.steps}>
+      <View style={[styles.steps, largeText && styles.stepsWrapped]}>
         {steps.map((s) => {
           const placed = points[s.key] !== null;
           const isActive = s.key === activeKey;
@@ -566,7 +570,7 @@ export default function MarkScreen() {
               onPress={() => setSelected(s.key)}
               accessibilityRole="button"
               accessibilityState={{ selected: isActive }}
-              style={[styles.step, placed && styles.stepDone, isActive && styles.stepActive]}
+              style={[styles.step, largeText && styles.stepHalf, placed && styles.stepDone, isActive && styles.stepActive]}
               accessibilityLabel={
                 placed
                   ? `${s.label}, placed on frame ${points[s.key]!.frame}. Move it.`
@@ -848,6 +852,9 @@ const styles = StyleSheet.create({
   scaleChange: { ...type.caption, color: colors.text, textDecorationLine: 'underline' },
 
   steps: { flexDirection: 'row', gap: space.xs, paddingHorizontal: space.lg, marginBottom: space.sm },
+  stepsWrapped: { flexWrap: 'wrap' },
+  // Two to a row: half the row, less half the gap between them.
+  stepHalf: { flexBasis: '45%' },
   step: {
     flex: 1,
     minHeight: size.target,

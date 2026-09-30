@@ -47,9 +47,10 @@ async function measurer() {
 
 test('Stats tile labels fit on one line, three across a 360 dp phone at 1.3x text: never broken mid-word', async () => {
   const width = await measurer();
-  const content = SCREEN - space.md * 2;
-  assert.match(read('app/stats.tsx'), /const contentWidth = width - space\.md \* 2;/);
-  assert.match(read('app/stats.tsx'), /content: \{ paddingHorizontal: space\.md,/);
+  // The app's own 24 dp gutter, as on every other screen.
+  const content = SCREEN - space.lg * 2;
+  assert.match(read('app/stats.tsx'), /const contentWidth = width - space\.lg \* 2;/);
+  assert.match(read('app/stats.tsx'), /content: \{ paddingHorizontal: space\.lg,/);
   const columns = tileColumns(content, SCALE, size.kpiMin, space.sm, 3);
   assert.equal(columns, 3, 'three tiles across');
   const tile = (content - space.sm * (columns - 1)) / columns;
@@ -67,7 +68,7 @@ test('Stats tile labels fit on one line, three across a 360 dp phone at 1.3x tex
 
 test('Stats card titles and locked lines only ever wrap at a space', async () => {
   const width = await measurer();
-  const content = SCREEN - space.md * 2;
+  const content = SCREEN - space.lg * 2;
   // A wide card: its padding and edge, the small icon and its gap, and the Pro pill on a locked one.
   const card = content - space.md * 2 - stroke.hairline * 2;
   const pill = width('PRO', type.label, true) + space.sm * 2 + stroke.hairline * 2;

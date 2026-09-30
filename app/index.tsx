@@ -13,7 +13,6 @@ import { BottomSheet } from '../src/ui/BottomSheet';
 import { DeliveryCard } from '../src/ui/DeliveryCard';
 import { DeliveryRow } from '../src/ui/DeliveryRow';
 import { EmptyState } from '../src/ui/EmptyState';
-import { LitEdge } from '../src/ui/LitEdge';
 import { CricketStill, FloodlitPanel } from '../src/ui/cricket3d';
 import { ReadingBlock } from '../src/ui/ReadingBlock';
 import { SpeedGauge } from '../src/ui/SpeedGauge';
@@ -184,14 +183,14 @@ export default function Index() {
           </FloodlitPanel>
         )}
 
-        {/* The largest control on the screen, with a lit edge. */}
-        <LitEdge style={styles.primary}>
+        {/* The largest control on the screen. Flat, like every other control. */}
+        <View style={styles.primary}>
           <ActionButton
             label="Record a delivery"
             onPress={() => router.push('/capture')}
             large
           />
-        </LitEdge>
+        </View>
         <View style={styles.allowance}>
           <AllowanceLine line={allowanceNote} allowance={allowance} weekday={weekdayOf} />
         </View>
