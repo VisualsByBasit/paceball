@@ -24,7 +24,7 @@ export const PLAY_LISTING_URL = "https://play.google.com/store/apps/details?id=c
  * The demo video, as an embed URL (for YouTube, the youtube-nocookie.com/embed/
  * form). While it is empty, the hero shows a "Demo video coming soon" frame.
  */
-export const DEMO_VIDEO_EMBED_URL = "";
+export const DEMO_VIDEO_EMBED_URL = "https://www.youtube-nocookie.com/embed/5rGaKlQ_En8";
 
 export const CONTACT_EMAIL = "paceballpro@gmail.com";
 

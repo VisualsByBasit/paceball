@@ -16,12 +16,14 @@
 <h3 align="center"><a href="docs/JUDGES.md">Judges: how to try Paceball</a></h3>
 
 <p align="center">
-  Demo video (link to come) <!-- DEMO_VIDEO_URL: replace this line's text with [Demo video](DEMO_VIDEO_URL) -->
+  <a href="https://youtu.be/5rGaKlQ_En8">Demo video</a>
   &nbsp;·&nbsp;
   <a href="https://paceballpro.vercel.app">Website</a>
   &nbsp;·&nbsp;
   <a href="https://groups.google.com/g/paceball-testers">Google Play testing</a>
 </p>
+
+[![Watch the Paceball demo](https://img.youtube.com/vi/5rGaKlQ_En8/maxresdefault.jpg)](https://youtu.be/5rGaKlQ_En8)
 
 Built for RevenueCat Shipaton 2026.
 
